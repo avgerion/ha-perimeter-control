@@ -1,0 +1,20 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.conf.yaml": "yaml",
+      "*.nft": "plaintext"
+    },
+    "editor.formatOnSave": true,
+    "[yaml]": {
+      "editor.tabSize": 2
+    },
+    "[shellscript]": {
+      "editor.tabSize": 2
+    }
+  }
+}
