@@ -98,10 +98,17 @@ devices:
 
 # ── Default Policy ───────────────────────────────────────────────────────────
 # Applied to any device connecting via WiFi that is NOT listed in devices[].
+# NEW: Unknown devices automatically enter MAX SNIFF MODE for reverse engineering!
 default_policy:
-  internet: deny                      # unknown devices get no internet
-  lan_access: deny                    # and no LAN access
-  logging: metadata                   # but we still log who tried to connect
+  internet: log-only                  # allow internet but log EVERYTHING
+  lan_access: []                      # no LAN access for security
+  logging: full                       # full packet metadata logging
+  capture:
+    enabled: true                     # auto-capture ALL unknown devices
+    filter: ""                        # capture everything
+    output: /mnt/isolator/captures/unknown  # stored in unknown/ subdirectory
+    rotate_mb: 100                    # rotate at 100MB to prevent disk fill
+    live: true                        # enable live Wireshark streaming
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging:
@@ -116,3 +123,24 @@ capture:
   interface: wlan0                    # interface tcpdump binds to (AP-side)
   snaplen: 65535                      # bytes per packet (65535 = full packet)
   # live_pipe_dir: /run/isolator      # named pipes live here; one per device with live: true
+
+# ── Bridge Mode ──────────────────────────────────────────────────────────────
+# ADVANCED: Connect to a target device's AP (drones, cameras, etc.) for reverse engineering.
+# Requires a second WiFi adapter (USB recommended).
+# See docs/BRIDGE-MODE.md for full setup guide.
+bridge:
+  enabled: false                      # set to true to activate bridge mode
+  client_interface: wlan1             # second WiFi adapter (USB)
+  target_ap:
+    ssid: "TargetDevice_AP"           # the device's WiFi AP name
+    password: ""                      # leave empty for open networks
+  
+  # Traffic routing options
+  route_to_internet: false            # true = target gets internet; false = fully isolated (safer)
+  
+  # Capture all bridge traffic
+  capture:
+    enabled: true
+    output: /mnt/isolator/captures/bridge
+    rotate_mb: 200
+    live: true                        # stream to /run/isolator/bridge.pipe

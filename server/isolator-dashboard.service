@@ -1,0 +1,24 @@
+[Unit]
+Description=Network Isolator Web Dashboard
+After=network.target isolator.service
+Requires=isolator.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/isolator/web
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 /opt/isolator/web/dashboard.py
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/isolator /mnt/isolator
+
+[Install]
+WantedBy=multi-user.target

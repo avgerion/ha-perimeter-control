@@ -1,0 +1,8 @@
+# Network Isolator Web Dashboard Dependencies
+# Install with: pip3 install -r requirements.txt
+
+bokeh>=3.3.0
+pandas>=2.0.0
+pyyaml>=6.0
+pyinotify>=0.9.6
+tornado>=6.3.0

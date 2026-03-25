@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""
+Dashboard layout definitions using Bokeh widgets and plots.
+Creates the visual structure of the Network Isolator Quick View.
+"""
+
+import logging
+from datetime import datetime
+
+from bokeh.layouts import column, row, gridplot
+from bokeh.models import (
+    Div, Button, Select, Toggle, DataTable, TableColumn, 
+    ColumnDataSource, DateFormatter, PreText
+)
+from bokeh.plotting import figure
+from bokeh.palettes import Category20_20
+
+logger = logging.getLogger('isolator.layouts')
+
+
+def create_dashboard_layout(data_manager):
+    """Create the complete dashboard layout."""
+    
+    # ── Header ──────────────────────────────────────────────────────────────
+    header = Div(
+        text="""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h1 style="color: white; margin: 0;">🛡️ Network Isolator Quick View</h1>
+            <p style="color: #f0f0f0; margin: 5px 0 0 0;">
+                Real-time device monitoring and traffic analysis
+            </p>
+        </div>
+        """,
+        sizing_mode="stretch_width"
+    )
+    
+    # ── System Status Panel ─────────────────────────────────────────────────
+    system_status = create_system_status_panel(data_manager)
+    
+    # ── Device Cards Grid ───────────────────────────────────────────────────
+    device_grid = create_device_grid(data_manager)
+    
+    # ── Live Traffic Graphs ─────────────────────────────────────────────────
+    bandwidth_plot = create_bandwidth_plot()
+    protocol_pie = create_protocol_distribution()
+    
+    traffic_row = row(bandwidth_plot, protocol_pie, sizing_mode="stretch_width")
+    
+    # ── Active Connections Table ────────────────────────────────────────────
+    connections_table = create_connections_table()
+    
+    # ── Events & Alerts Log ─────────────────────────────────────────────────
+    events_log = create_events_log()
+    
+    bottom_row = row(
+        column(Div(text="<h3>Active Connections</h3>"), connections_table, width=700),
+        column(Div(text="<h3>Events & Alerts</h3>"), events_log, width=500),
+        sizing_mode="stretch_width"
+    )
+    
+    # ── Configuration Sidebar ───────────────────────────────────────────────
+    config_panel = create_config_panel(data_manager)
+    
+    # ── SSH Helper Panel ────────────────────────────────────────────────────
+    ssh_panel = create_ssh_helper_panel()
+    
+    # ── Main Layout ─────────────────────────────────────────────────────────
+    main_content = column(
+        header,
+        system_status,
+        Div(text="<h2>Connected Devices</h2>"),
+        device_grid,
+        Div(text="<h2>Live Traffic</h2>"),
+        traffic_row,
+        bottom_row,
+        sizing_mode="stretch_width"
+    )
+    
+    sidebar = column(
+        config_panel,
+        ssh_panel,
+        width=350
+    )
+    
+    layout = row(main_content, sidebar, sizing_mode="stretch_both")
+    
+    # Store references for callbacks
+    layout.data_manager = data_manager
+    layout.device_grid = device_grid
+    layout.bandwidth_plot = bandwidth_plot
+    layout.connections_table = connections_table
+    layout.events_log = events_log
+    layout.system_status = system_status
+    
+    return layout
+
+
+def create_system_status_panel(data_manager):
+    """System health indicators."""
+    status_html = """
+    <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; 
+                display: flex; justify-content: space-around; margin-bottom: 20px;">
+        <div style="text-align: center;">
+            <div id="hostapd-status" style="font-size: 24px;">🟢</div>
+            <div style="font-size: 12px;">hostapd</div>
+        </div>
+        <div style="text-align: center;">
+            <div id="nftables-status" style="font-size: 24px;">🟢</div>
+            <div style="font-size: 12px;">nftables</div>
+        </div>
+        <div style="text-align: center;">
+            <div id="capture-count" style="font-size: 20px; font-weight: bold;">0</div>
+            <div style="font-size: 12px;">Active Captures</div>
+        </div>
+        <div style="text-align: center;">
+            <div id="disk-usage" style="font-size: 20px; font-weight: bold;">--</div>
+            <div style="font-size: 12px;">Disk Free</div>
+        </div>
+    </div>
+    """
+    return Div(text=status_html, sizing_mode="stretch_width")
+
+
+def create_device_grid(data_manager):
+    """Grid of device status cards."""
+    # Placeholder - will be populated by callbacks with live data
+    device_cards_html = """
+    <div id="device-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+                                   gap: 15px; margin-bottom: 20px;">
+        <div style="border: 2px solid #3498db; border-radius: 8px; padding: 15px; background: #ecf0f1;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h4 style="margin: 0;">📱 Loading...</h4>
+                <span style="width: 12px; height: 12px; background: #95a5a6; border-radius: 50%;"></span>
+            </div>
+            <div style="font-size: 11px; color: #7f8c8d; margin-top: 8px;">
+                Fetching connected devices...
+            </div>
+        </div>
+    </div>
+    """
+    return Div(text=device_cards_html, sizing_mode="stretch_width")
+
+
+def create_bandwidth_plot():
+    """Real-time bandwidth graph."""
+    p = figure(
+        title="Bandwidth (last 30s)",
+        x_axis_type="datetime",
+        height=300,
+        width=700,
+        toolbar_location="above",
+        tools="pan,box_zoom,reset,save"
+    )
+    
+    p.title.text_font_size = "14pt"
+    p.xaxis.axis_label = "Time"
+    p.yaxis.axis_label = "KB/s"
+    
+    # Create empty data source (will be populated by callbacks)
+    source = ColumnDataSource(data={
+        'time': [],
+        'total_download': [],
+        'total_upload': []
+    })
+    
+    p.line('time', 'total_download', source=source, line_width=2, 
+           color='#3498db', legend_label="Download")
+    p.line('time', 'total_upload', source=source, line_width=2, 
+           color='#e74c3c', legend_label="Upload")
+    
+    p.legend.location = "top_left"
+    p.legend.click_policy = "hide"
+    
+    # Store source reference
+    p.data_source = source
+    
+    return p
+
+
+def create_protocol_distribution():
+    """Protocol breakdown pie chart (using vbar as placeholder)."""
+    p = figure(
+        title="Protocol Distribution",
+        height=300,
+        width=400,
+        toolbar_location=None
+    )
+    
+    source = ColumnDataSource(data={
+        'protocols': ['HTTP', 'HTTPS', 'DNS', 'MQTT', 'Other'],
+        'counts': [0, 0, 0, 0, 0],
+        'colors': ['#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#95a5a6']
+    })
+    
+    p.vbar(x='protocols', top='counts', source=source, width=0.8, 
+           color='colors', alpha=0.8)
+    
+    p.xaxis.major_label_orientation = 0.8
+    p.yaxis.axis_label = "Packet Count"
+    
+    p.data_source = source
+    return p
+
+
+def create_connections_table():
+    """Table showing active network connections."""
+    source = ColumnDataSource(data={
+        'device': [],
+        'protocol': [],
+        'remote_ip': [],
+        'remote_port': [],
+        'state': [],
+        'duration': [],
+        'packets': []
+    })
+    
+    columns = [
+        TableColumn(field='device', title='Device'),
+        TableColumn(field='protocol', title='Proto'),
+        TableColumn(field='remote_ip', title='Remote IP'),
+        TableColumn(field='remote_port', title='Port'),
+        TableColumn(field='state', title='State'),
+        TableColumn(field='duration', title='Duration'),
+        TableColumn(field='packets', title='Packets')
+    ]
+    
+    table = DataTable(
+        source=source,
+        columns=columns,
+        height=250,
+        sizing_mode="stretch_width",
+        index_position=None
+    )
+    
+    table.data_source = source
+    return table
+
+
+def create_events_log():
+    """Live log of firewall events and alerts."""
+    log_text = PreText(
+        text="Waiting for events...\n",
+        height=250,
+        sizing_mode="stretch_width",
+        styles={
+            'background-color': '#2c3e50',
+            'color': '#ecf0f1',
+            'font-family': 'monospace',
+            'font-size': '12px',
+            'padding': '10px',
+            'border-radius': '5px',
+            'overflow-y': 'scroll'
+        }
+    )
+    return log_text
+
+
+def create_config_panel(data_manager):
+    """Configuration sidebar for quick rule changes."""
+    
+    device_select = Select(
+        title="Select Device:",
+        value="",
+        options=[],
+        width=300
+    )
+    
+    internet_toggle = Select(
+        title="Internet Access:",
+        value="allow",
+        options=["allow", "deny", "log-only"],
+        width=300
+    )
+    
+    capture_toggle = Toggle(
+        label="Enable Packet Capture",
+        active=False,
+        width=300
+    )
+    
+    logging_select = Select(
+        title="Logging Level:",
+        value="metadata",
+        options=["none", "metadata", "full"],
+        width=300
+    )
+    
+    apply_button = Button(
+        label="Apply Changes",
+        button_type="success",
+        width=300
+    )
+    
+    reload_button = Button(
+        label="Reload Config",
+        button_type="warning",
+        width=300
+    )
+    
+    panel = column(
+        Div(text="<h3>⚙️ Configuration</h3>"),
+        device_select,
+        internet_toggle,
+        capture_toggle,
+        logging_select,
+        apply_button,
+        reload_button,
+        Div(text="<hr>"),
+        sizing_mode="stretch_width"
+    )
+    
+    # Store widget references
+    panel.device_select = device_select
+    panel.internet_toggle = internet_toggle
+    panel.capture_toggle = capture_toggle
+    panel.logging_select = logging_select
+    panel.apply_button = apply_button
+    panel.reload_button = reload_button
+    
+    return panel
+
+
+def create_ssh_helper_panel():
+    """SSH commands and quick access helpers for remote management."""
+    
+    ssh_commands = """
+    <div style="background: #34495e; color: #ecf0f1; padding: 15px; border-radius: 5px;">
+        <h3 style="margin-top: 0;">🔐 SSH Quick Access</h3>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>Connect to Pi:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        ssh pi@isolator.local
+        </code>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>Access Dashboard via SSH tunnel:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        ssh -L 5006:localhost:5006 pi@isolator.local
+        </code>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>Stream live Wireshark capture:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        ssh pi@isolator.local "cat /run/isolator/device.pipe" | wireshark -k -i -
+        </code>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>Download capture files:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        scp -r pi@isolator.local:/mnt/isolator/captures/ ./captures/
+        </code>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>View live logs:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        ssh pi@isolator.local "tail -f /var/log/isolator/traffic.log"
+        </code>
+        
+        <p style="font-size: 12px; margin: 5px 0;"><strong>Reload firewall rules:</strong></p>
+        <code style="background: #2c3e50; padding: 5px; display: block; border-radius: 3px; font-size: 11px; margin-bottom: 10px;">
+        ssh pi@isolator.local "sudo systemctl reload isolator"
+        </code>
+        
+        <hr style="border-color: #7f8c8d; margin: 15px 0;">
+        
+        <p style="font-size: 11px; color: #95a5a6; margin: 0;">
+        💡 <strong>Tip:</strong> Use Windows Terminal or PowerShell with OpenSSH for best experience.
+        Install OpenSSH: <code style="font-size: 10px;">winget install Microsoft.OpenSSH.Beta</code>
+        </p>
+    </div>
+    """
+    
+    return Div(text=ssh_commands, sizing_mode="stretch_width")
