@@ -116,7 +116,10 @@ step_install_packages() {
     
     # Traffic capture and analysis
     apt install -y tcpdump tshark wireshark-common conntrack
-    
+
+    # Bluetooth LE scanning (bleak requires BlueZ D-Bus + python3-bleak for system fallback)
+    apt install -y bluez python3-bleak
+
     # Python for dashboard and scripts
     apt install -y python3 python3-pip python3-venv python3-dev
     

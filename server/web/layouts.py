@@ -7,24 +7,22 @@ Creates the visual structure of the Network Isolator Quick View.
 import logging
 from datetime import datetime
 
-from bokeh.layouts import column, row, gridplot
+from bokeh.layouts import column, row
 from bokeh.models import (
     Div, Button, Select, Toggle, DataTable, TableColumn, 
-    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, TextInput, CustomJS, Range1d
+    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, CustomJS, Range1d
 )
 from bokeh.plotting import figure
-from bokeh.palettes import Category20_20
 
 logger = logging.getLogger('isolator.layouts')
 
 
 def create_dashboard_layout(data_manager):
     """Create the complete dashboard layout."""
-    
-    # ── Header ──────────────────────────────────────────────────────────────
+
     header = Div(
         text="""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     padding: 20px; border-radius: 8px; margin-bottom: 20px;">
             <h1 style="color: white; margin: 0;">🛡️ Network Isolator Quick View</h1>
             <p style="color: #f0f0f0; margin: 5px 0 0 0;">
@@ -34,44 +32,27 @@ def create_dashboard_layout(data_manager):
         """,
         sizing_mode="stretch_width"
     )
-    
-    # ── System Status Panel ─────────────────────────────────────────────────
+
     system_status = create_system_status_panel(data_manager)
-    
-    # ── Device Cards Grid ───────────────────────────────────────────────────
     device_grid = create_device_grid(data_manager)
-    
-    # ── Live Traffic Graphs ─────────────────────────────────────────────────
+
     bandwidth_plot = create_bandwidth_plot()
     protocol_pie = create_protocol_distribution()
-    
     traffic_row = row(bandwidth_plot, protocol_pie, sizing_mode="stretch_width")
-    
-    # ── Active Connections Table ────────────────────────────────────────────
+
     connections_table = create_connections_table()
-    
-    # ── Events & Alerts Log ─────────────────────────────────────────────────
     events_log = create_events_log()
-    
     bottom_row = row(
         column(Div(text="<h3>Active Connections</h3>"), connections_table, width=700),
         column(Div(text="<h3>Events & Alerts</h3>"), events_log, width=500),
         sizing_mode="stretch_width"
     )
-    
-    # ── Configuration Sidebar ───────────────────────────────────────────────
+
     config_panel, config_widgets = create_config_panel(data_manager)
-    
-    # ── SSH Helper Panel ────────────────────────────────────────────────────
     ssh_panel = create_ssh_helper_panel()
-    
-    # ── Log Viewer Panel ────────────────────────────────────────────────────
     log_panel, log_widgets = create_log_viewer_panel()
-    
-    # ── BLE Viewer Panel ────────────────────────────────────────────────────
     ble_panel, ble_widgets = create_ble_viewer_panel()
-    
-    # ── Main Layout ─────────────────────────────────────────────────────────
+
     main_content = column(
         header,
         system_status,
@@ -84,16 +65,15 @@ def create_dashboard_layout(data_manager):
         ble_panel,
         sizing_mode="stretch_width"
     )
-    
+
     sidebar = column(
         config_panel,
         ssh_panel,
         width=350
     )
-    
+
     layout = row(main_content, sidebar, sizing_mode="stretch_both")
-    
-    # Return layout and widget references for callbacks
+
     widgets = {
         'data_manager': data_manager,
         'device_grid': device_grid,
@@ -101,11 +81,11 @@ def create_dashboard_layout(data_manager):
         'connections_table': connections_table,
         'events_log': events_log,
         'system_status': system_status,
-        **log_widgets,  # Include log viewer widgets
-        **ble_widgets,  # Include BLE viewer widgets
-        **config_widgets  # Include device_select, internet_toggle, etc.
+        **log_widgets,
+        **ble_widgets,
+        **config_widgets
     }
-    
+
     return layout, widgets
 
 
@@ -226,53 +206,57 @@ def create_bandwidth_plot():
         width=700,
         toolbar_location="above",
         tools="pan,box_zoom,reset,save",
-        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 30000, end=datetime.now().timestamp() * 1000),  # Last 30s
-        y_range=Range1d(start=0, end=100)  # 0-100 KB/s initial range
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 30000, end=datetime.now().timestamp() * 1000),
+        y_range=Range1d(start=0, end=100)
     )
-    
+
     p.title.text_font_size = "14pt"
     p.xaxis.axis_label = "Time"
     p.yaxis.axis_label = "KB/s"
-    
-    # Create empty data source (will be populated by callbacks)
+
+    now_ms = datetime.now().timestamp() * 1000
     source = ColumnDataSource(data={
-        'time': [],
-        'total_download': [],
-        'total_upload': []
+        'time': [now_ms - 5000, now_ms],
+        'total_download': [0, 10],
+        'total_upload': [0, 5]
     })
-    
-    p.line('time', 'total_download', source=source, line_width=2, 
+
+    p.line('time', 'total_download', source=source, line_width=2,
            color='#3498db', legend_label="Download")
-    p.line('time', 'total_upload', source=source, line_width=2, 
+    p.line('time', 'total_upload', source=source, line_width=2,
            color='#e74c3c', legend_label="Upload")
-    
+
     p.legend.location = "top_left"
     p.legend.click_policy = "hide"
-    
+
     return p
 
 
 def create_protocol_distribution():
-    """Protocol breakdown pie chart (using vbar as placeholder)."""
+    """Protocol breakdown bar chart."""
+    protocols = ['HTTP', 'HTTPS', 'DNS', 'MQTT', 'Other']
+
     p = figure(
         title="Protocol Distribution",
         height=300,
         width=400,
-        toolbar_location=None
+        toolbar_location=None,
+        x_range=protocols,
+        y_range=Range1d(start=0, end=10)
     )
-    
+
     source = ColumnDataSource(data={
-        'protocols': ['HTTP', 'HTTPS', 'DNS', 'MQTT', 'Other'],
+        'protocols': protocols,
         'counts': [0, 0, 0, 0, 0],
         'colors': ['#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#95a5a6']
     })
-    
-    p.vbar(x='protocols', top='counts', source=source, width=0.8, 
+
+    p.vbar(x='protocols', top='counts', source=source, width=0.8,
            color='colors', alpha=0.8)
-    
+
     p.xaxis.major_label_orientation = 0.8
     p.yaxis.axis_label = "Packet Count"
-    
+
     return p
 
 
@@ -303,6 +287,7 @@ def create_connections_table():
         columns=columns,
         height=250,
         sizing_mode="stretch_width",
+        reorderable=False,
         index_position=None
     )
     
@@ -490,15 +475,18 @@ def create_log_viewer_panel():
         columns=log_columns,
         width=900,
         height=400,
-        sizing_mode="stretch_width"
+        sizing_mode="stretch_width",
+        reorderable=False
     )
     
     # Timeline plot showing log activity
+    # Add two distinct points to create a valid range
+    now_ms = datetime.now().timestamp() * 1000
     timeline_source = ColumnDataSource(data={
-        'timestamp': [],
-        'value': [],
-        'action': [],
-        'color': []
+        'timestamp': [now_ms - 5000, now_ms],  # 5 seconds apart
+        'value': [0, 1],  # Different Y values
+        'action': ['', ''],
+        'color': ['#888888', '#888888']
     })
     
     timeline_plot = figure(
@@ -509,26 +497,22 @@ def create_log_viewer_panel():
         tools="pan,wheel_zoom,box_zoom,reset",
         active_drag="pan",
         active_scroll="wheel_zoom",
-        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),  # Last hour
-        y_range=Range1d(start=0, end=1),
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),
+        y_range=Range1d(start=-0.5, end=2.5),
         sizing_mode="stretch_width"
     )
-    
+
     timeline_plot.circle(
         'timestamp', 'value',
         source=timeline_source,
         size=8,
         color='color',
-        alpha=0.7,
-        legend_field='action'
+        alpha=0.7
     )
-    
+
     timeline_plot.xaxis.axis_label = "Time"
     timeline_plot.yaxis.visible = False
-    timeline_plot.legend.location = "top_right"
-    timeline_plot.legend.click_policy = "hide"
-    
-    # Hover tool for timeline
+
     hover = HoverTool(
         tooltips=[
             ('Time', '@timestamp{%F %T}'),
@@ -633,6 +617,7 @@ def create_ble_viewer_panel():
         width=900,
         height=250,
         sizing_mode="stretch_width",
+        reorderable=False,
         selectable='checkbox',
         index_position=None
     )
@@ -693,6 +678,13 @@ def create_ble_viewer_panel():
         </p>""",
         sizing_mode="stretch_width"
     )
+
+    # Client-side instrumentation to prove browser click handlers are firing.
+    ble_test_button.js_on_click(CustomJS(code="console.log('DBG ble_test_button js_on_click fired')"))
+    ble_scan_button.js_on_click(CustomJS(code="console.log('DBG ble_scan_button js_on_click fired')"))
+    ble_scan_stop_button.js_on_click(CustomJS(code="console.log('DBG ble_scan_stop_button js_on_click fired')"))
+    ble_capture_button.js_on_click(CustomJS(code="console.log('DBG ble_capture_button js_on_click fired')"))
+    ble_capture_stop_button.js_on_click(CustomJS(code="console.log('DBG ble_capture_stop_button js_on_click fired')"))
     
     capture_device_row = row(
         Div(text="<b>Selected Device:</b>", width=120),
@@ -706,6 +698,7 @@ def create_ble_viewer_panel():
         ble_capture_status,
         sizing_mode="stretch_width"
     )
+
     
     # ═══════════════════════════════════════════════════════════════════
     # STAGE 3: VIEW PAST CAPTURES
@@ -750,15 +743,18 @@ def create_ble_viewer_panel():
         columns=ble_columns,
         width=900,
         height=300,
-        sizing_mode="stretch_width"
+        sizing_mode="stretch_width",
+        reorderable=False
     )
     
     # Timeline plot for BLE events
+    # Add two distinct points to create a valid range  
+    now_ms = datetime.now().timestamp() * 1000
     ble_timeline_source = ColumnDataSource(data={
-        'timestamp': [],
-        'value': [],
-        'type': [],
-        'color': []
+        'timestamp': [now_ms - 5000, now_ms],  # 5 seconds apart
+        'value': [0, 1],  # Different Y values
+        'type': ['', ''],
+        'color': ['#888888', '#888888']
     })
     
     ble_timeline_plot = figure(
@@ -769,26 +765,22 @@ def create_ble_viewer_panel():
         tools="pan,wheel_zoom,box_zoom,reset",
         active_drag="pan",
         active_scroll="wheel_zoom",
-        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),  # Last hour
-        y_range=Range1d(start=0, end=1),
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),
+        y_range=Range1d(start=-0.5, end=2.5),
         sizing_mode="stretch_width"
     )
-    
+
     ble_timeline_plot.circle(
         'timestamp', 'value',
         source=ble_timeline_source,
         size=8,
         color='color',
-        alpha=0.7,
-        legend_field='type'
+        alpha=0.7
     )
-    
+
     ble_timeline_plot.xaxis.axis_label = "Time"
     ble_timeline_plot.yaxis.visible = False
-    ble_timeline_plot.legend.location = "top_right"
-    ble_timeline_plot.legend.click_policy = "hide"
-    
-    # Hover tool for timeline
+
     hover = HoverTool(
         tooltips=[
             ('Time', '@timestamp{%F %T}'),

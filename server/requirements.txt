@@ -6,3 +6,4 @@ pandas>=2.0.0
 pyyaml>=6.0
 pyinotify>=0.9.6
 tornado>=6.3.0
+bleak>=0.22.0

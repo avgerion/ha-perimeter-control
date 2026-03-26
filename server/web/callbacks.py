@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from functools import partial
 
 from bokeh.models import ColumnDataSource
+from bokeh.events import ButtonClick
 
 logger = logging.getLogger('isolator.callbacks')
 
@@ -23,7 +24,7 @@ def setup_callbacks(doc, data_manager):
     """
     
     # ── Periodic Update Callbacks ───────────────────────────────────────────
-    
+
     def update_devices():
         """Update device grid and connection status (every 2 seconds)."""
         try:
@@ -86,6 +87,9 @@ def setup_callbacks(doc, data_manager):
     def update_traffic():
         """Update bandwidth plots (every 1 second)."""
         try:
+            if not hasattr(doc.bandwidth_plot, 'renderers') or len(doc.bandwidth_plot.renderers) == 0:
+                return
+
             stats_df = data_manager.get_traffic_stats(time_window_sec=30)
             
             if not stats_df.empty:
@@ -99,9 +103,17 @@ def setup_callbacks(doc, data_manager):
                 agg['download_kbps'] = agg['bytes_in'] / 1024
                 agg['upload_kbps'] = agg['bytes_out'] / 1024
                 
+                # Keep X values as numeric ms for predictable client-side ranges
+                times_ms = []
+                for ts in agg['timestamp'].tolist():
+                    if hasattr(ts, 'timestamp'):
+                        times_ms.append(ts.timestamp() * 1000)
+                    else:
+                        times_ms.append(float(ts))
+                
                 # Update plot data source
                 new_data = {
-                    'time': agg['timestamp'].tolist(),
+                    'time': times_ms,
                     'total_download': agg['download_kbps'].tolist(),
                     'total_upload': agg['upload_kbps'].tolist()
                 }
@@ -116,6 +128,9 @@ def setup_callbacks(doc, data_manager):
     def update_connections():
         """Update active connections table (every 3 seconds)."""
         try:
+            if not hasattr(doc.connections_table, 'source'):
+                return
+
             conn_df = data_manager.get_active_connections()
             
             if not conn_df.empty:
@@ -204,11 +219,12 @@ def setup_callbacks(doc, data_manager):
                     'dst_port': [''],
                     'bytes': ['']
                 }
+                now_ms = datetime.now().timestamp() * 1000
                 doc.timeline_source.data = {
-                    'timestamp': [],
-                    'value': [],
-                    'action': [],
-                    'color': []
+                    'timestamp': [now_ms - 5000, now_ms],
+                    'value': [0, 1],
+                    'action': ['', ''],
+                    'color': ['#888888', '#888888']
                 }
                 return
             
@@ -233,11 +249,12 @@ def setup_callbacks(doc, data_manager):
                     'dst_port': [''],
                     'bytes': ['']
                 }
+                now_ms = datetime.now().timestamp() * 1000
                 doc.timeline_source.data = {
-                    'timestamp': [],
-                    'value': [],
-                    'action': [],
-                    'color': []
+                    'timestamp': [now_ms - 5000, now_ms],
+                    'value': [0, 1],
+                    'action': ['', ''],
+                    'color': ['#888888', '#888888']
                 }
                 return
             
@@ -519,10 +536,10 @@ def setup_callbacks(doc, data_manager):
                     'info': ['']
                 }
                 doc.ble_timeline_source.data = {
-                    'timestamp': [],
-                    'value': [],
-                    'type': [],
-                    'color': []
+                    'timestamp': [0],
+                    'value': [0],
+                    'type': [''],
+                    'color': ['#888888']
                 }
                 return
             
@@ -549,11 +566,12 @@ def setup_callbacks(doc, data_manager):
                     'handle': [''],
                     'info': ['']
                 }
+                now_ms = datetime.now().timestamp() * 1000
                 doc.ble_timeline_source.data = {
-                    'timestamp': [],
-                    'value': [],
-                    'type': [],
-                    'color': []
+                    'timestamp': [now_ms - 5000, now_ms],
+                    'value': [0, 1],
+                    'type': ['', ''],
+                    'color': ['#888888', '#888888']
                 }
                 return
             
@@ -645,32 +663,31 @@ def setup_callbacks(doc, data_manager):
     def on_apply_changes():
         """Handle Apply Changes button click."""
         try:
-            # Find config panel widgets
-            for child in layout.children[1].children:
-                if hasattr(child, 'device_select'):
-                    device_id = child.device_select.value
-                    internet = child.internet_toggle.value
-                    capture_enabled = child.capture_toggle.active
-                    logging_level = child.logging_select.value
-                    
-                    if device_id:
-                        # Update rules
-                        data_manager.update_device_rule(device_id, 'internet', internet)
-                        data_manager.update_device_rule(device_id, 'logging', logging_level)
-                        
-                        # Update capture config
-                        capture_config = {
-                            'enabled': capture_enabled,
-                            'filter': '',
-                            'output': f'/mnt/isolator/captures/{device_id}',
-                            'rotate_mb': 100,
-                            'live': True
-                        }
-                        data_manager.update_device_rule(device_id, 'capture', capture_config)
-                        
-                        logger.info(f"Applied configuration changes for {device_id}")
-                    
-                    break
+            if not all(hasattr(doc, attr) for attr in ['device_select', 'internet_toggle', 'capture_toggle', 'logging_select']):
+                logger.warning("Config widgets not available on document; skipping apply")
+                return
+
+            device_id = doc.device_select.value
+            internet = doc.internet_toggle.value
+            capture_enabled = doc.capture_toggle.active
+            logging_level = doc.logging_select.value
+
+            if device_id:
+                # Update rules
+                data_manager.update_device_rule(device_id, 'internet', internet)
+                data_manager.update_device_rule(device_id, 'logging', logging_level)
+
+                # Update capture config
+                capture_config = {
+                    'enabled': capture_enabled,
+                    'filter': '',
+                    'output': f'/mnt/isolator/captures/{device_id}',
+                    'rotate_mb': 100,
+                    'live': True
+                }
+                data_manager.update_device_rule(device_id, 'capture', capture_config)
+
+                logger.info(f"Applied configuration changes for {device_id}")
         
         except Exception as e:
             logger.error(f"Error applying changes: {e}")
@@ -683,7 +700,7 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error reloading config: {e}")
     
-    def on_ble_scan_start():
+    def on_ble_scan_start(event=None):
         """Handle BLE Scan Start button click."""
         import sys
         print("===== PYTHON CALLBACK FIRED =====", file=sys.stderr, flush=True)
@@ -706,7 +723,7 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error starting BLE scan: {e}")
             doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
-    def on_ble_scan_stop():
+    def on_ble_scan_stop(event=None):
         """Handle BLE Scan Stop button click."""
         try:
             result = data_manager.stop_ble_scan()
@@ -724,7 +741,7 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error stopping BLE scan: {e}")
             doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
-    def on_ble_capture_start():
+    def on_ble_capture_start(event=None):
         """Handle BLE Capture Start button click."""
         try:
             # Get selected device from scan table
@@ -765,7 +782,7 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error starting BLE capture: {e}")
             doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
-    def on_ble_capture_stop():
+    def on_ble_capture_stop(event=None):
         """Handle BLE Capture Stop button click."""
         try:
             result = data_manager.stop_ble_capture()
@@ -784,50 +801,130 @@ def setup_callbacks(doc, data_manager):
             doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
     # TEST BUTTON - Simple callback to verify buttons work
-    import datetime
     test_click_count = [0]  # Mutable to allow modification in closure
     
-    def on_test_button_click():
+    def on_test_button_click(event=None):
         """Minimal test callback."""
         test_click_count[0] += 1
         import sys
         print(f"===== TEST BUTTON CLICKED {test_click_count[0]} =====", file=sys.stderr, flush=True)
         logger.info(f"===== TEST button clicked {test_click_count[0]} times =====")
-        doc.ble_test_status.text = f"<p style='color: green;'>✓ Test button clicked {test_click_count[0]} times at {datetime.datetime.now().strftime('%H:%M:%S')}</p>"
+        doc.ble_test_status.text = f"<p style='color: green;'>✓ Test button clicked {test_click_count[0]} times at {datetime.now().strftime('%H:%M:%S')}</p>"
     
     # Register button handlers
-    logger.info("Registering BLE button handlers...")
+    session_id = None
+    if getattr(doc, 'session_context', None) is not None:
+        session_id = doc.session_context.id
+    logger.info(f"Registering BLE button handlers for session={session_id}")
     
+    event_logger_refs = []
+
     # Test button first
     if hasattr(doc, 'ble_test_button'):
-        logger.info("  - Registering ble_test_button callback")
+        logger.info(f"  - Registering ble_test_button callback model_id={doc.ble_test_button.id}")
         doc.ble_test_button.on_click(on_test_button_click)
+        doc.ble_test_button._update_event_callbacks()
+        logger.info(f"  - ble_test_button subscribed_events={list(doc.ble_test_button.subscribed_events)}")
+
+        def _log_test_event(event):
+            logger.info(f"ButtonClick event received: ble_test_button session={session_id} model_id={doc.ble_test_button.id}")
+
+        doc.ble_test_button.on_event(ButtonClick, _log_test_event)
+        doc.ble_test_button._update_event_callbacks()
+        event_logger_refs.append(_log_test_event)
     else:
         logger.warning("  - ble_test_button NOT FOUND in doc")
     
     if hasattr(doc, 'ble_scan_button'):
-        logger.info("  - Registering ble_scan_button callback")
+        logger.info(f"  - Registering ble_scan_button callback model_id={doc.ble_scan_button.id}")
         doc.ble_scan_button.on_click(on_ble_scan_start)
+        doc.ble_scan_button._update_event_callbacks()
+        logger.info(f"  - ble_scan_button subscribed_events={list(doc.ble_scan_button.subscribed_events)}")
+
+        def _log_scan_event(event):
+            logger.info(f"ButtonClick event received: ble_scan_button session={session_id} model_id={doc.ble_scan_button.id}")
+
+        doc.ble_scan_button.on_event(ButtonClick, _log_scan_event)
+        doc.ble_scan_button._update_event_callbacks()
+        event_logger_refs.append(_log_scan_event)
     else:
         logger.warning("  - ble_scan_button NOT FOUND in doc")
     
     if hasattr(doc, 'ble_scan_stop_button'):
-        logger.info("  - Registering ble_scan_stop_button callback")
+        logger.info(f"  - Registering ble_scan_stop_button callback model_id={doc.ble_scan_stop_button.id}")
         doc.ble_scan_stop_button.on_click(on_ble_scan_stop)
+        doc.ble_scan_stop_button._update_event_callbacks()
+        logger.info(f"  - ble_scan_stop_button subscribed_events={list(doc.ble_scan_stop_button.subscribed_events)}")
+
+        def _log_scan_stop_event(event):
+            logger.info(f"ButtonClick event received: ble_scan_stop_button session={session_id} model_id={doc.ble_scan_stop_button.id}")
+
+        doc.ble_scan_stop_button.on_event(ButtonClick, _log_scan_stop_event)
+        doc.ble_scan_stop_button._update_event_callbacks()
+        event_logger_refs.append(_log_scan_stop_event)
     else:
         logger.warning("  - ble_scan_stop_button NOT FOUND in doc")
     
     if hasattr(doc, 'ble_capture_button'):
-        logger.info("  - Registering ble_capture_button callback")
+        logger.info(f"  - Registering ble_capture_button callback model_id={doc.ble_capture_button.id}")
         doc.ble_capture_button.on_click(on_ble_capture_start)
+        doc.ble_capture_button._update_event_callbacks()
+        logger.info(f"  - ble_capture_button subscribed_events={list(doc.ble_capture_button.subscribed_events)}")
+
+        def _log_capture_event(event):
+            logger.info(f"ButtonClick event received: ble_capture_button session={session_id} model_id={doc.ble_capture_button.id}")
+
+        doc.ble_capture_button.on_event(ButtonClick, _log_capture_event)
+        doc.ble_capture_button._update_event_callbacks()
+        event_logger_refs.append(_log_capture_event)
     else:
         logger.warning("  - ble_capture_button NOT FOUND in doc")
     
     if hasattr(doc, 'ble_capture_stop_button'):
-        logger.info("  - Registering ble_capture_stop_button callback")
+        logger.info(f"  - Registering ble_capture_stop_button callback model_id={doc.ble_capture_stop_button.id}")
         doc.ble_capture_stop_button.on_click(on_ble_capture_stop)
+        doc.ble_capture_stop_button._update_event_callbacks()
+        logger.info(f"  - ble_capture_stop_button subscribed_events={list(doc.ble_capture_stop_button.subscribed_events)}")
+
+        def _log_capture_stop_event(event):
+            logger.info(f"ButtonClick event received: ble_capture_stop_button session={session_id} model_id={doc.ble_capture_stop_button.id}")
+
+        doc.ble_capture_stop_button.on_event(ButtonClick, _log_capture_stop_event)
+        doc.ble_capture_stop_button._update_event_callbacks()
+        event_logger_refs.append(_log_capture_stop_event)
     else:
         logger.warning("  - ble_capture_stop_button NOT FOUND in doc")
+
+    def _register_value_debug(attr_name):
+        if hasattr(doc, attr_name):
+            model = getattr(doc, attr_name)
+            if hasattr(model, 'on_change'):
+                logger.info(f"  - Registering value-change debug for {attr_name} model_id={getattr(model, 'id', 'n/a')}")
+
+                def _on_value_change(attr, old, new, _attr_name=attr_name):
+                    logger.info(f"Client->server value change: {_attr_name} old={old!r} new={new!r} session={session_id}")
+
+                model.on_change('value', _on_value_change)
+
+    _register_value_debug('log_action_filter')
+    _register_value_debug('log_device_select')
+    _register_value_debug('ble_event_filter')
+    _register_value_debug('ble_capture_select')
+
+    # Keep strong references to callback closures for the life of this session.
+    # Some callback registries can hold weak refs, which can drop local closures.
+    callback_refs = [
+        on_test_button_click,
+        on_ble_scan_start,
+        on_ble_scan_stop,
+        on_ble_capture_start,
+        on_ble_capture_stop,
+        *event_logger_refs,
+    ]
+    if hasattr(doc, '_isolator_callback_refs'):
+        doc._isolator_callback_refs.extend(callback_refs)
+    else:
+        doc._isolator_callback_refs = callback_refs
     
     # TODO: Register other button callbacks (need widget references)
     # Currently other buttons are not interactive - data updates periodically
