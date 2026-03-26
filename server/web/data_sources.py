@@ -940,9 +940,9 @@ class DataManager:
                     'message': f'BLE scan already running (PID {status["pid"]}). Stop it first.'
                 }
             
-            # Start scanner in background (no duration = run until stopped)
+            # Start scanner v2 in background (uses bluetoothctl instead of hcitool)
             result = subprocess.Popen(
-                ['sudo', 'python3', '/opt/isolator/scripts/ble-scanner.py'],
+                ['sudo', 'python3', '/opt/isolator/scripts/ble-scanner-v2.py'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True
@@ -991,9 +991,9 @@ class DataManager:
                     'message': 'No active BLE scan to stop'
                 }
             
-            # Kill the ble-scanner process
+            # Kill the ble-scanner-v2 process
             result = subprocess.run(
-                ['sudo', 'pkill', '-f', 'ble-scanner.py'],
+                ['sudo', 'pkill', '-f', 'ble-scanner-v2.py'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -1021,7 +1021,7 @@ class DataManager:
         """
         try:
             result = subprocess.run(
-                ['pgrep', '-f', 'ble-scanner.py'],
+                ['pgrep', '-f', 'ble-scanner-v2.py'],
                 capture_output=True,
                 text=True,
                 timeout=2

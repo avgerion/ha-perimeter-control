@@ -103,6 +103,7 @@ def main():
             f"isolator.local:{PORT}",
             f"127.0.0.1:{PORT}"
         ],
+        session_token_expiration=86400000,  # 24 hours (in milliseconds)
         num_procs=1  # Single process on Pi 3
     )
     

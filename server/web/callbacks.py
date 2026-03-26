@@ -195,7 +195,7 @@ def setup_callbacks(doc, data_manager):
             if not selected_device:
                 # No device selected, show info message
                 doc.log_source.data = {
-                    'timestamp': [],
+                    'timestamp': [0],
                     'time_str': ['Select a device above to view logs'],
                     'action': [''],
                     'protocol': [''],
@@ -224,7 +224,7 @@ def setup_callbacks(doc, data_manager):
             
             if not logs:
                 doc.log_source.data = {
-                    'timestamp': [],
+                    'timestamp': [0],
                     'time_str': [f'No {action_filter} logs found for {selected_device}'],
                     'action': [''],
                     'protocol': [''],
@@ -510,7 +510,7 @@ def setup_callbacks(doc, data_manager):
             if not selected_capture:
                 # No capture selected, show info message
                 doc.ble_source.data = {
-                    'timestamp': [],
+                    'timestamp': [0],
                     'time_str': ['Select a capture session above to view events'],
                     'type': [''],
                     'address': [''],
@@ -541,7 +541,7 @@ def setup_callbacks(doc, data_manager):
             
             if not events:
                 doc.ble_source.data = {
-                    'timestamp': [],
+                    'timestamp': [0],
                     'time_str': [f'No {event_filter} events found in {capture_file}'],
                     'type': [''],
                     'address': [''],
@@ -685,6 +685,8 @@ def setup_callbacks(doc, data_manager):
     
     def on_ble_scan_start():
         """Handle BLE Scan Start button click."""
+        import sys
+        print("===== PYTHON CALLBACK FIRED =====", file=sys.stderr, flush=True)
         logger.info("===== BLE Scan Start button clicked =====")
         try:
             # Start BLE device discovery scan
@@ -781,8 +783,28 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error stopping BLE capture: {e}")
             doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
+    # TEST BUTTON - Simple callback to verify buttons work
+    import datetime
+    test_click_count = [0]  # Mutable to allow modification in closure
+    
+    def on_test_button_click():
+        """Minimal test callback."""
+        test_click_count[0] += 1
+        import sys
+        print(f"===== TEST BUTTON CLICKED {test_click_count[0]} =====", file=sys.stderr, flush=True)
+        logger.info(f"===== TEST button clicked {test_click_count[0]} times =====")
+        doc.ble_test_status.text = f"<p style='color: green;'>✓ Test button clicked {test_click_count[0]} times at {datetime.datetime.now().strftime('%H:%M:%S')}</p>"
+    
     # Register button handlers
     logger.info("Registering BLE button handlers...")
+    
+    # Test button first
+    if hasattr(doc, 'ble_test_button'):
+        logger.info("  - Registering ble_test_button callback")
+        doc.ble_test_button.on_click(on_test_button_click)
+    else:
+        logger.warning("  - ble_test_button NOT FOUND in doc")
+    
     if hasattr(doc, 'ble_scan_button'):
         logger.info("  - Registering ble_scan_button callback")
         doc.ble_scan_button.on_click(on_ble_scan_start)

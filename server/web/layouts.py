@@ -10,7 +10,7 @@ from datetime import datetime
 from bokeh.layouts import column, row, gridplot
 from bokeh.models import (
     Div, Button, Select, Toggle, DataTable, TableColumn, 
-    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, TextInput
+    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, TextInput, CustomJS, Range1d
 )
 from bokeh.plotting import figure
 from bokeh.palettes import Category20_20
@@ -225,7 +225,9 @@ def create_bandwidth_plot():
         height=300,
         width=700,
         toolbar_location="above",
-        tools="pan,box_zoom,reset,save"
+        tools="pan,box_zoom,reset,save",
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 30000, end=datetime.now().timestamp() * 1000),  # Last 30s
+        y_range=Range1d(start=0, end=100)  # 0-100 KB/s initial range
     )
     
     p.title.text_font_size = "14pt"
@@ -507,6 +509,8 @@ def create_log_viewer_panel():
         tools="pan,wheel_zoom,box_zoom,reset",
         active_drag="pan",
         active_scroll="wheel_zoom",
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),  # Last hour
+        y_range=Range1d(start=0, end=1),
         sizing_mode="stretch_width"
     )
     
@@ -583,6 +587,18 @@ def create_ble_viewer_panel():
         width=120
     )
     
+    # DEBUG TEST BUTTON
+    ble_test_button = Button(
+        label="TEST",
+        button_type="success",
+        width=80
+    )
+    
+    ble_test_status = Div(
+        text="<p>Test button not clicked</p>",
+        width=300
+    )
+    
     ble_scan_stop_button = Button(
         label="⏹️ Stop Scan",
         button_type="warning",
@@ -633,8 +649,10 @@ def create_ble_viewer_panel():
     
     scan_controls = row(
         ble_scan_button,
+        ble_test_button,
         ble_scan_stop_button,
         ble_scan_status,
+        ble_test_status,
         sizing_mode="stretch_width"
     )
     
@@ -751,6 +769,8 @@ def create_ble_viewer_panel():
         tools="pan,wheel_zoom,box_zoom,reset",
         active_drag="pan",
         active_scroll="wheel_zoom",
+        x_range=Range1d(start=datetime.now().timestamp() * 1000 - 3600000, end=datetime.now().timestamp() * 1000),  # Last hour
+        y_range=Range1d(start=0, end=1),
         sizing_mode="stretch_width"
     )
     
@@ -826,6 +846,8 @@ def create_ble_viewer_panel():
     ble_widgets = {
         # Stage 1: Scan widgets
         'ble_scan_button': ble_scan_button,
+        'ble_test_button': ble_test_button,
+        'ble_test_status': ble_test_status,
         'ble_scan_stop_button': ble_scan_stop_button,
         'ble_scan_status': ble_scan_status,
         'ble_scan_table': ble_scan_table,
