@@ -1,0 +1,28 @@
+[Unit]
+Description=Network Isolator Traffic Logger
+Documentation=https://github.com/your-repo/NetworkIsolator
+After=isolator.service
+Requires=isolator.service
+
+[Service]
+Type=simple
+ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/traffic-logger.py --config /mnt/isolator/conf/isolator.conf.yaml --log-dir /var/log/isolator/devices
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=isolator-traffic
+
+# Security
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=true
+PrivateTmp=yes
+
+# Allow reading kernel logs
+SupplementaryGroups=systemd-journal
+
+[Install]
+WantedBy=multi-user.target

@@ -10,7 +10,7 @@ from datetime import datetime
 from bokeh.layouts import column, row, gridplot
 from bokeh.models import (
     Div, Button, Select, Toggle, DataTable, TableColumn, 
-    ColumnDataSource, DateFormatter, PreText
+    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, TextInput
 )
 from bokeh.plotting import figure
 from bokeh.palettes import Category20_20
@@ -66,7 +66,10 @@ def create_dashboard_layout(data_manager):
     ssh_panel = create_ssh_helper_panel()
     
     # ── Log Viewer Panel ────────────────────────────────────────────────────
-    log_panel, log_viewer = create_log_viewer_panel()
+    log_panel, log_widgets = create_log_viewer_panel()
+    
+    # ── BLE Viewer Panel ────────────────────────────────────────────────────
+    ble_panel, ble_widgets = create_ble_viewer_panel()
     
     # ── Main Layout ─────────────────────────────────────────────────────────
     main_content = column(
@@ -78,6 +81,7 @@ def create_dashboard_layout(data_manager):
         traffic_row,
         bottom_row,
         log_panel,
+        ble_panel,
         sizing_mode="stretch_width"
     )
     
@@ -97,7 +101,8 @@ def create_dashboard_layout(data_manager):
         'connections_table': connections_table,
         'events_log': events_log,
         'system_status': system_status,
-        'log_viewer': log_viewer,
+        **log_widgets,  # Include log viewer widgets
+        **ble_widgets,  # Include BLE viewer widgets
         **config_widgets  # Include device_select, internet_toggle, etc.
     }
     
@@ -438,27 +443,407 @@ def create_ssh_helper_panel():
 
 
 def create_log_viewer_panel():
-    """Live log viewer showing recent events and alerts."""
+    """Interactive log viewer with timeline and device selection."""
     
-    log_viewer = PreText(
-        text="Loading logs...",
-        width=800,
-        height=400,
-        styles={
-            'background-color': '#1e1e1e',
-            'color': '#d4d4d4',
-            'font-family': 'Consolas, Monaco, monospace',
-            'font-size': '11px',
-            'padding': '10px',
-            'border-radius': '5px',
-            'overflow': 'auto'
-        }
+    # Device selector for logs
+    log_device_select = Select(
+        title="Select Device to View Logs:",
+        value="",
+        options=[],
+        width=300
     )
     
-    panel = column(
-        Div(text="<h2>📋 Live Logs</h2>"),
-        log_viewer,
+    # Action filter
+    log_action_filter = Select(
+        title="Filter by Action:",
+        value="ALL",
+        options=["ALL", "ALLOWED", "BLOCKED"],
+        width=200
+    )
+    
+    # Log data table
+    log_source = ColumnDataSource(data={
+        'timestamp': [],
+        'time_str': [],
+        'action': [],
+        'protocol': [],
+        'src_ip': [],
+        'dst_ip': [],
+        'dst_port': [],
+        'bytes': []
+    })
+    
+    log_columns = [
+        TableColumn(field='time_str', title='Time', width=150),
+        TableColumn(field='action', title='Action', width=80),
+        TableColumn(field='protocol', title='Proto', width=60),
+        TableColumn(field='src_ip', title='Source IP', width=130),
+        TableColumn(field='dst_ip', title='Destination IP', width=130),
+        TableColumn(field='dst_port', title='Port', width=60),
+        TableColumn(field='bytes', title='Bytes', width=80)
+    ]
+    
+    log_table = DataTable(
+        source=log_source,
+        columns=log_columns,
+        width=900,
+        height=400,
         sizing_mode="stretch_width"
     )
     
-    return panel, log_viewer
+    # Timeline plot showing log activity
+    timeline_source = ColumnDataSource(data={
+        'timestamp': [],
+        'value': [],
+        'action': [],
+        'color': []
+    })
+    
+    timeline_plot = figure(
+        title="Traffic Log Timeline (last 100 events)",
+        x_axis_type='datetime',
+        height=150,
+        width=900,
+        tools="pan,wheel_zoom,box_zoom,reset",
+        active_drag="pan",
+        active_scroll="wheel_zoom",
+        sizing_mode="stretch_width"
+    )
+    
+    timeline_plot.circle(
+        'timestamp', 'value',
+        source=timeline_source,
+        size=8,
+        color='color',
+        alpha=0.7,
+        legend_field='action'
+    )
+    
+    timeline_plot.xaxis.axis_label = "Time"
+    timeline_plot.yaxis.visible = False
+    timeline_plot.legend.location = "top_right"
+    timeline_plot.legend.click_policy = "hide"
+    
+    # Hover tool for timeline
+    hover = HoverTool(
+        tooltips=[
+            ('Time', '@timestamp{%F %T}'),
+            ('Action', '@action'),
+        ],
+        formatters={'@timestamp': 'datetime'}
+    )
+    timeline_plot.add_tools(hover)
+    
+    # Info div
+    log_info = Div(
+        text="<p style='color: #7f8c8d; font-size: 12px;'>Select a device from the dropdown to view its traffic logs. Logs show real-time packet-level activity.</p>",
+        sizing_mode="stretch_width"
+    )
+    
+    # Control row
+    controls = row(
+        log_device_select,
+        log_action_filter,
+        sizing_mode="stretch_width"
+    )
+    
+    panel = column(
+        Div(text="<h2>📊 Device Traffic Logs</h2>"),
+        log_info,
+        controls,
+        timeline_plot,
+        Div(text="<h3 style='margin-top: 20px;'>Log Entries</h3>"),
+        log_table,
+        sizing_mode="stretch_width"
+    )
+    
+    # Return panel and widget references
+    log_widgets = {
+        'log_device_select': log_device_select,
+        'log_action_filter': log_action_filter,
+        'log_table': log_table,
+        'log_source': log_source,
+        'timeline_plot': timeline_plot,
+        'timeline_source': timeline_source
+    }
+    
+    return panel, log_widgets
+
+
+def create_ble_viewer_panel():
+    """Interactive BLE scanner and capture with 2-stage workflow: scan → select → capture."""
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STAGE 1: DEVICE DISCOVERY (Active Scan)
+    # ═══════════════════════════════════════════════════════════════════
+    
+    ble_scan_button = Button(
+        label="🔍 Start Scan",
+        button_type="primary",
+        width=120
+    )
+    
+    ble_scan_stop_button = Button(
+        label="⏹️ Stop Scan",
+        button_type="warning",
+        width=120,
+        disabled=True
+    )
+    
+    ble_scan_status = Div(
+        text="<p style='color: #7f8c8d;'>⚪ Not scanning - Click 'Start Scan' to discover devices</p>",
+        width=400
+    )
+    
+    # Discovered devices table
+    ble_scan_source = ColumnDataSource(data={
+        'mac': [],
+        'name': [],
+        'last_seen': [],
+        'count': [],
+        'selected': []
+    })
+    
+    ble_scan_columns = [
+        TableColumn(field='name', title='Device Name', width=200),
+        TableColumn(field='mac', title='MAC Address', width=150),
+        TableColumn(field='last_seen', title='Last Seen', width=150),
+        TableColumn(field='count', title='Count', width=80)
+    ]
+    
+    ble_scan_table = DataTable(
+        source=ble_scan_source,
+        columns=ble_scan_columns,
+        width=900,
+        height=250,
+        sizing_mode="stretch_width",
+        selectable='checkbox',
+        index_position=None
+    )
+    
+    ble_scan_info = Div(
+        text="""<p style='color: #7f8c8d; font-size: 12px;'>
+        <b>Step 1: Device Discovery</b><br>
+        Click 'Start Scan' to perform active BLE scanning and discover nearby devices.
+        Devices will appear in the table below as they're discovered.
+        Select a device, then proceed to Step 2 to start targeted capture.
+        </p>""",
+        sizing_mode="stretch_width"
+    )
+    
+    scan_controls = row(
+        ble_scan_button,
+        ble_scan_stop_button,
+        ble_scan_status,
+        sizing_mode="stretch_width"
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STAGE 2: TARGETED CAPTURE (Sniff selected device)
+    # ═══════════════════════════════════════════════════════════════════
+    
+    ble_selected_device = Div(
+        text="<p style='color: #7f8c8d;'>No device selected</p>",
+        width=400
+    )
+    
+    ble_capture_button = Button(
+        label="🔴 Start Capture",
+        button_type="success",
+        width=130,
+        disabled=True
+    )
+    
+    ble_capture_stop_button = Button(
+        label="🛑 Stop Capture",
+        button_type="danger",
+        width=130,
+        disabled=True
+    )
+    
+    ble_capture_status = Div(
+        text="<p style='color: #7f8c8d;'>⚪ Not capturing - Select a device from scan results first</p>",
+        width=500
+    )
+    
+    ble_capture_info = Div(
+        text="""<p style='color: #7f8c8d; font-size: 12px;'>
+        <b>Step 2: Targeted Capture</b><br>
+        After selecting a device above, click 'Start Capture' to begin sniffing that device's BLE traffic.
+        Capture runs indefinitely until you click 'Stop Capture' - no timeout.
+        All traffic (advertisements, connections, GATT operations) will be captured.
+        </p>""",
+        sizing_mode="stretch_width"
+    )
+    
+    capture_device_row = row(
+        Div(text="<b>Selected Device:</b>", width=120),
+        ble_selected_device,
+        sizing_mode="stretch_width"
+    )
+    
+    capture_controls = row(
+        ble_capture_button,
+        ble_capture_stop_button,
+        ble_capture_status,
+        sizing_mode="stretch_width"
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STAGE 3: VIEW PAST CAPTURES
+    # ═══════════════════════════════════════════════════════════════════
+    
+    ble_capture_select = Select(
+        title="View Capture Session:",
+        value="",
+        options=[],
+        width=400
+    )
+    
+    ble_event_filter = Select(
+        title="Filter by Event Type:",
+        value="ALL",
+        options=["ALL", "advertisement", "connection", "gatt_read", "gatt_write"],
+        width=200
+    )
+    
+    # BLE event data table
+    ble_source = ColumnDataSource(data={
+        'timestamp': [],
+        'time_str': [],
+        'type': [],
+        'address': [],
+        'name': [],
+        'handle': [],
+        'info': []
+    })
+    
+    ble_columns = [
+        TableColumn(field='time_str', title='Time', width=150),
+        TableColumn(field='type', title='Event Type', width=120),
+        TableColumn(field='address', title='Address', width=130),
+        TableColumn(field='name', title='Device Name', width=150),
+        TableColumn(field='handle', title='Handle', width=80),
+        TableColumn(field='info', title='Additional Info', width=200)
+    ]
+    
+    ble_table = DataTable(
+        source=ble_source,
+        columns=ble_columns,
+        width=900,
+        height=300,
+        sizing_mode="stretch_width"
+    )
+    
+    # Timeline plot for BLE events
+    ble_timeline_source = ColumnDataSource(data={
+        'timestamp': [],
+        'value': [],
+        'type': [],
+        'color': []
+    })
+    
+    ble_timeline_plot = figure(
+        title="BLE Event Timeline",
+        x_axis_type='datetime',
+        height=120,
+        width=900,
+        tools="pan,wheel_zoom,box_zoom,reset",
+        active_drag="pan",
+        active_scroll="wheel_zoom",
+        sizing_mode="stretch_width"
+    )
+    
+    ble_timeline_plot.circle(
+        'timestamp', 'value',
+        source=ble_timeline_source,
+        size=8,
+        color='color',
+        alpha=0.7,
+        legend_field='type'
+    )
+    
+    ble_timeline_plot.xaxis.axis_label = "Time"
+    ble_timeline_plot.yaxis.visible = False
+    ble_timeline_plot.legend.location = "top_right"
+    ble_timeline_plot.legend.click_policy = "hide"
+    
+    # Hover tool for timeline
+    hover = HoverTool(
+        tooltips=[
+            ('Time', '@timestamp{%F %T}'),
+            ('Type', '@type'),
+        ],
+        formatters={'@timestamp': 'datetime'}
+    )
+    ble_timeline_plot.add_tools(hover)
+    
+    view_controls = row(
+        ble_capture_select,
+        ble_event_filter,
+        sizing_mode="stretch_width"
+    )
+    
+    ble_view_info = Div(
+        text="""<p style='color: #7f8c8d; font-size: 12px;'>
+        <b>Step 3: Analysis</b><br>
+        Select a past capture session from the dropdown to view its events.
+        Use the timeline and table to analyze BLE traffic patterns.
+        </p>""",
+        sizing_mode="stretch_width"
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # ASSEMBLE PANEL
+    # ═══════════════════════════════════════════════════════════════════
+    
+    panel = column(
+        Div(text="<h2>📡 BLE Traffic Analyzer</h2>"),
+        
+        # Stage 1: Scan
+        Div(text="<h3>Step 1: Device Discovery</h3>"),
+        ble_scan_info,
+        scan_controls,
+        ble_scan_table,
+        
+        # Stage 2: Capture
+        Div(text="<h3 style='margin-top: 30px;'>Step 2: Targeted Capture</h3>"),
+        ble_capture_info,
+        capture_device_row,
+        capture_controls,
+        
+        # Stage 3: View
+        Div(text="<h3 style='margin-top: 30px;'>Step 3: View Past Captures</h3>"),
+        ble_view_info,
+        view_controls,
+        ble_timeline_plot,
+        ble_table,
+        
+        sizing_mode="stretch_width"
+    )
+    
+    # Return panel and widget references
+    ble_widgets = {
+        # Stage 1: Scan widgets
+        'ble_scan_button': ble_scan_button,
+        'ble_scan_stop_button': ble_scan_stop_button,
+        'ble_scan_status': ble_scan_status,
+        'ble_scan_table': ble_scan_table,
+        'ble_scan_source': ble_scan_source,
+        
+        # Stage 2: Capture widgets
+        'ble_selected_device': ble_selected_device,
+        'ble_capture_button': ble_capture_button,
+        'ble_capture_stop_button': ble_capture_stop_button,
+        'ble_capture_status': ble_capture_status,
+        
+        # Stage 3: View widgets
+        'ble_capture_select': ble_capture_select,
+        'ble_event_filter': ble_event_filter,
+        'ble_table': ble_table,
+        'ble_source': ble_source,
+        'ble_timeline_plot': ble_timeline_plot,
+        'ble_timeline_source': ble_timeline_source
+    }
+    
+    return panel, ble_widgets

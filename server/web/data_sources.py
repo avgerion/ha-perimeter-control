@@ -265,96 +265,108 @@ class DataManager:
         
         return df
     
-    def get_recent_logs(self, max_lines: int = 50) -> List[Dict[str, Any]]:
+    def get_device_logs(self, device_id: str = None, max_lines: int = 100) -> List[Dict[str, Any]]:
         """
-        Tail recent log events from /var/log/isolator/traffic.log.
-        Falls back to dashboard.log if traffic.log doesn't exist yet.
+        Get traffic logs for a specific device from /var/log/isolator/devices/{device_id}.log
+        
+        Args:
+            device_id: Device ID to get logs for (e.g., 'moto-g-2025'). 
+                       If None, returns list of available log files.
+            max_lines: Maximum number of log lines to return
         
         Returns list of log entries (newest first), each with:
-          - timestamp: Event time
-          - level: info/warning/error
-          - device_id: Device involved
-          - event_type: connection_blocked / new_device / capture_started / etc.
-          - message: Human-readable description
+          - timestamp: Event time (ISO format)
+          - device_id: Device ID
+          - action: 'ALLOWED' or 'BLOCKED'
+          - protocol: 'TCP', 'UDP', 'ICMP', etc.
+          - src_ip: Source IP address
+          - dst_ip: Destination IP address
+          - src_port: Source port (optional)
+          - dst_port: Destination port (optional)
+          - bytes: Packet size in bytes (optional)
         """
-        traffic_log = Path('/var/log/isolator/traffic.log')
-        dashboard_log = Path('/var/log/isolator/dashboard.log')
+        devices_log_dir = Path('/var/log/isolator/devices')
         logs = []
         
-        # Prefer traffic.log, fall back to dashboard.log
-        log_file = traffic_log if traffic_log.exists() else dashboard_log
-        
         try:
-            if log_file.exists():
-                # Tail last N lines
-                result = subprocess.run(
-                    ['tail', '-n', str(max_lines), str(log_file)],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
+            # If no device specified, return list of available devices with logs
+            if device_id is None:
+                if devices_log_dir.exists():
+                    available = [f.stem for f in devices_log_dir.glob('*.log')]
+                    return [{
+                        'timestamp': datetime.now().isoformat(),
+                        'device_id': 'system',
+                        'action': 'INFO',
+                        'protocol': '',
+                        'src_ip': '',
+                        'dst_ip': '',
+                        'message': f'Available device logs: {", ".join(available) if available else "None"}. Select a device to view its traffic logs.'
+                    }]
+                else:
+                    return [{
+                        'timestamp': datetime.now().isoformat(),
+                        'device_id': 'system',
+                        'action': 'INFO',
+                        'protocol': '',
+                        'src_ip': '',
+                        'dst_ip': '',
+                        'message': 'Traffic logging not started yet. Enable isolator-traffic.service to begin logging.'
+                    }]
+            
+            # Get logs for specific device
+            log_file = devices_log_dir / f"{device_id}.log"
+            
+            if not log_file.exists():
+                return [{
+                    'timestamp': datetime.now().isoformat(),
+                    'device_id': device_id,
+                    'action': 'INFO',
+                    'protocol': '',
+                    'src_ip': '',
+                    'dst_ip': '',
+                    'message': f'No traffic logs found for {device_id}. Device may not have sent/received any packets yet.'
+                }]
+            
+            # Tail last N lines from device log file
+            result = subprocess.run(
+                ['tail', '-n', str(max_lines), str(log_file)],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            
+            # Parse JSON log entries
+            for line in result.stdout.strip().split('\n'):
+                if not line:
+                    continue
                 
-                # Parse log entries
-                for line in result.stdout.strip().split('\n'):
-                    if not line:
-                        continue
-                    
-                    # Try JSON format first (traffic.log)
-                    try:
-                        entry = json.loads(line)
-                        logs.append(entry)
-                    except json.JSONDecodeError:
-                        # Parse Python logging format (dashboard.log)
-                        # Format: "2026-03-26 14:32:09,348 [INFO] logger.name: message"
-                        try:
-                            parts = line.split(' ', 2)
-                            if len(parts) >= 3:
-                                timestamp = f"{parts[0]}T{parts[1].replace(',', '.')}"
-                                rest = parts[2]
-                                
-                                # Extract level
-                                level_match = rest.split('[', 1)[1].split(']', 1)[0] if '[' in rest else 'INFO'
-                                level = level_match.lower()
-                                
-                                # Extract message (everything after ": ")
-                                message = rest.split(': ', 1)[1] if ': ' in rest else rest
-                                
-                                # Extract module name
-                                module = rest.split(']', 1)[1].split(':', 1)[0].strip() if ']' in rest else 'system'
-                                
-                                logs.append({
-                                    'timestamp': timestamp,
-                                    'level': level,
-                                    'device_id': module,
-                                    'event_type': 'log',
-                                    'message': message
-                                })
-                        except Exception:
-                            # If parsing fails, just use the raw line
-                            logs.append({
-                                'timestamp': datetime.now().isoformat(),
-                                'level': 'info',
-                                'device_id': 'system',
-                                'event_type': 'log',
-                                'message': line
-                            })
-            else:
-                # No logs available yet
+                try:
+                    entry = json.loads(line)
+                    logs.append(entry)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse log line for {device_id}: {e}")
+                    continue
+            
+            if not logs:
                 logs.append({
                     'timestamp': datetime.now().isoformat(),
-                    'level': 'info',
-                    'device_id': 'system',
-                    'event_type': 'log',
-                    'message': 'Log files not available yet. Traffic logging will start when packets are captured.'
+                    'device_id': device_id,
+                    'action': 'INFO',
+                    'protocol': '',
+                    'src_ip': '',
+                    'dst_ip': '',
+                    'message': f'Log file exists but contains no valid entries yet.'
                 })
                 
         except Exception as e:
-            logger.error(f"Failed to read logs: {e}")
+            logger.error(f"Failed to read logs for {device_id}: {e}")
             logs.append({
                 'timestamp': datetime.now().isoformat(),
-                'level': 'error',
-                'device_id': 'system',
-                'event_type': 'error',
+                'device_id': device_id or 'system',
+                'action': 'ERROR',
+                'protocol': '',
+                'src_ip': '',
+                'dst_ip': '',
                 'message': f'Error reading logs: {e}'
             })
         
@@ -607,3 +619,471 @@ class DataManager:
             logger.error(f"Failed to get system stats: {e}")
         
         return stats
+    
+    def get_ble_captures(self) -> List[Dict[str, Any]]:
+        """
+        Get list of available BLE capture sessions.
+        
+        Returns list of capture info, each with:
+          - filename: Capture file basename (e.g., 'DeviceName_2026-03-26_143022.json')
+          - target: Target device name or MAC
+          - timestamp: Capture start time
+          - size_kb: File size in KB
+          - event_count: Number of events in capture
+        """
+        ble_log_dir = Path('/var/log/isolator/ble')
+        captures = []
+        
+        try:
+            if not ble_log_dir.exists():
+                return []
+            
+            # Find all JSON capture files
+            for json_file in sorted(ble_log_dir.glob('*.json'), key=lambda f: f.stat().st_mtime, reverse=True):
+                try:
+                    stat = json_file.stat()
+                    size_kb = stat.st_size / 1024
+                    
+                    # Count events in file
+                    event_count = 0
+                    with open(json_file, 'r') as f:
+                        for line in f:
+                            if line.strip():
+                                event_count += 1
+                    
+                    # Parse filename: target_YYYY-MM-DD_HHMMSS.json
+                    basename = json_file.stem  # Remove .json
+                    parts = basename.rsplit('_', 2)  # Split from right, max 2 splits
+                    if len(parts) >= 3:
+                        target = parts[0]
+                        date_str = parts[1]
+                        time_str = parts[2]
+                        timestamp = f"{date_str} {time_str[:2]}:{time_str[2:4]}:{time_str[4:6]}"
+                    else:
+                        target = basename
+                        timestamp = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    captures.append({
+                        'filename': json_file.name,
+                        'target': target,
+                        'timestamp': timestamp,
+                        'size_kb': round(size_kb, 1),
+                        'event_count': event_count
+                    })
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process BLE capture {json_file}: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Failed to list BLE captures: {e}")
+        
+        return captures
+    
+    def get_ble_logs(self, capture_file: str = None, max_events: int = 200) -> List[Dict[str, Any]]:
+        """
+        Get BLE events from a capture file.
+        
+        Args:
+            capture_file: Filename of capture (e.g., 'DeviceName_2026-03-26_143022.json')
+                         If None, returns most recent capture
+            max_events: Maximum number of events to return (newest first)
+        
+        Returns list of BLE events, each with:
+          - timestamp: Event time (ISO format)
+          - type: Event type (advertisement, connection, gatt_read, gatt_write, etc.)
+          - data: Dict with event-specific data (address, name, handle, value, etc.)
+        """
+        ble_log_dir = Path('/var/log/isolator/ble')
+        events = []
+        
+        try:
+            if not ble_log_dir.exists():
+                return [{
+                    'timestamp': datetime.now().isoformat(),
+                    'type': 'info',
+                    'data': {'message': 'BLE logging directory not found. No captures available yet.'}
+                }]
+            
+            # If no file specified, get most recent
+            if capture_file is None:
+                json_files = list(ble_log_dir.glob('*.json'))
+                if not json_files:
+                    return [{
+                        'timestamp': datetime.now().isoformat(),
+                        'type': 'info',
+                        'data': {'message': 'No BLE captures found. Start a capture to begin.'}
+                    }]
+                capture_file = max(json_files, key=lambda f: f.stat().st_mtime).name
+            
+            log_file = ble_log_dir / capture_file
+            
+            if not log_file.exists():
+                return [{
+                    'timestamp': datetime.now().isoformat(),
+                    'type': 'error',
+                    'data': {'message': f'Capture file not found: {capture_file}'}
+                }]
+            
+            # Read JSON events
+            with open(log_file, 'r') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                        events.append(event)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse BLE event: {e}")
+                        continue
+            
+            if not events:
+                return [{
+                    'timestamp': datetime.now().isoformat(),
+                    'type': 'info',
+                    'data': {'message': f'Capture file exists but contains no events yet: {capture_file}'}
+                }]
+                
+        except Exception as e:
+            logger.error(f"Failed to read BLE logs: {e}")
+            return [{
+                'timestamp': datetime.now().isoformat(),
+                'type': 'error',
+                'data': {'message': f'Error reading BLE logs: {e}'}
+            }]
+        
+        # Return newest first, limited to max_events
+        return events[-max_events:][::-1]
+    
+    def start_ble_capture(self, target_name: str = None, target_mac: str = None, duration: int = 300) -> Dict[str, Any]:
+        """
+        Start a new BLE capture session.
+        
+        Args:
+            target_name: Target device name to filter (optional)
+            target_mac: Target device MAC address to filter (optional)
+            duration: Capture duration in seconds (default: 300 = 5 minutes)
+        
+        Returns:
+            Dict with 'success' (bool), 'message' (str), 'pid' (int if success)
+        """
+        try:
+            # Check if already running
+            status = self.get_ble_capture_status()
+            if status['active']:
+                return {
+                    'success': False,
+                    'message': f'BLE capture already running (PID {status["pid"]}). Stop it first.'
+                }
+            
+            # Build command
+            cmd = ['sudo', 'python3', '/opt/isolator/scripts/ble-sniffer.py']
+            
+            if target_name:
+                cmd.extend(['--target', target_name])
+            elif target_mac:
+                cmd.extend(['--target-mac', target_mac])
+            else:
+                return {
+                    'success': False,
+                    'message': 'Either target_name or target_mac must be specified'
+                }
+            
+            if duration:
+                cmd.extend(['--duration', str(duration)])
+            
+            # Start capture in background
+            result = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+            
+            # Give it a moment to start
+            import time
+            time.sleep(1)
+            
+            # Check if still running
+            if result.poll() is None:
+                target = target_name or target_mac
+                logger.info(f"Started BLE capture for {target} (PID {result.pid})")
+                return {
+                    'success': True,
+                    'message': f'BLE capture started for {target} (duration: {duration}s)',
+                    'pid': result.pid
+                }
+            else:
+                stderr = result.stderr.read().decode('utf-8', errors='ignore')
+                return {
+                    'success': False,
+                    'message': f'BLE capture failed to start: {stderr[:200]}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to start BLE capture: {e}")
+            return {
+                'success': False,
+                'message': f'Error starting BLE capture: {e}'
+            }
+    
+    def stop_ble_capture(self) -> Dict[str, Any]:
+        """
+        Stop active BLE capture.
+        
+        Returns:
+            Dict with 'success' (bool) and 'message' (str)
+        """
+        try:
+            status = self.get_ble_capture_status()
+            if not status['active']:
+                return {
+                    'success': False,
+                    'message': 'No active BLE capture to stop'
+                }
+            
+            # Kill the ble-sniffer process
+            result = subprocess.run(
+                ['sudo', 'pkill', '-f', 'ble-sniffer.py'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            logger.info("Stopped BLE capture")
+            return {
+                'success': True,
+                'message': 'BLE capture stopped'
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to stop BLE capture: {e}")
+            return {
+                'success': False,
+                'message': f'Error stopping BLE capture: {e}'
+            }
+    
+    def get_ble_capture_status(self) -> Dict[str, Any]:
+        """
+        Check if BLE capture is currently running.
+        
+        Returns:
+            Dict with 'active' (bool), 'pid' (int or None), 'target' (str or None)
+        """
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'ble-sniffer.py'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                pid = int(result.stdout.strip().split()[0])
+                
+                # Try to get target from command line
+                try:
+                    cmdline_result = subprocess.run(
+                        ['ps', '-p', str(pid), '-o', 'args='],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    cmdline = cmdline_result.stdout.strip()
+                    
+                    # Parse target from command line
+                    target = None
+                    if '--target ' in cmdline:
+                        target = cmdline.split('--target ')[1].split()[0]
+                    elif '--target-mac ' in cmdline:
+                        target = cmdline.split('--target-mac ')[1].split()[0]
+                    
+                    return {
+                        'active': True,
+                        'pid': pid,
+                        'target': target
+                    }
+                except:
+                    return {
+                        'active': True,
+                        'pid': pid,
+                        'target': None
+                    }
+            else:
+                return {
+                    'active': False,
+                    'pid': None,
+                    'target': None
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to check BLE capture status: {e}")
+            return {
+                'active': False,
+                'pid': None,
+                'target': None
+            }
+    
+    def start_ble_scan(self) -> Dict[str, Any]:
+        """
+        Start BLE device discovery scan (active scanning).
+        
+        Returns:
+            Dict with 'success' (bool), 'message' (str), 'pid' (int if success)
+        """
+        try:
+            # Check if already running
+            status = self.get_ble_scan_status()
+            if status['active']:
+                return {
+                    'success': False,
+                    'message': f'BLE scan already running (PID {status["pid"]}). Stop it first.'
+                }
+            
+            # Start scanner in background (no duration = run until stopped)
+            result = subprocess.Popen(
+                ['sudo', 'python3', '/opt/isolator/scripts/ble-scanner.py'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+            
+            # Give it a moment to start
+            import time
+            time.sleep(1)
+            
+            # Check if still running
+            if result.poll() is None:
+                logger.info(f"Started BLE scan (PID {result.pid})")
+                return {
+                    'success': True,
+                    'message': 'BLE device scan started',
+                    'pid': result.pid
+                }
+            else:
+                stderr_text = ""
+                if result.stderr:
+                    stderr_text = result.stderr.read().decode('utf-8', errors='ignore')
+                return {
+                    'success': False,
+                    'message': f'BLE scan failed to start: {stderr_text[:200]}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to start BLE scan: {e}")
+            return {
+                'success': False,
+                'message': f'Error starting BLE scan: {e}'
+            }
+    
+    def stop_ble_scan(self) -> Dict[str, Any]:
+        """
+        Stop active BLE device scan.
+        
+        Returns:
+            Dict with 'success' (bool) and 'message' (str)
+        """
+        try:
+            status = self.get_ble_scan_status()
+            if not status['active']:
+                return {
+                    'success': False,
+                    'message': 'No active BLE scan to stop'
+                }
+            
+            # Kill the ble-scanner process
+            result = subprocess.run(
+                ['sudo', 'pkill', '-f', 'ble-scanner.py'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            logger.info("Stopped BLE scan")
+            return {
+                'success': True,
+                'message': 'BLE scan stopped'
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to stop BLE scan: {e}")
+            return {
+                'success': False,
+                'message': f'Error stopping BLE scan: {e}'
+            }
+    
+    def get_ble_scan_status(self) -> Dict[str, Any]:
+        """
+        Check if BLE scan is currently running.
+        
+        Returns:
+            Dict with 'active' (bool), 'pid' (int or None), 'device_count' (int)
+        """
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'ble-scanner.py'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                pid = int(result.stdout.strip().split()[0])
+                
+                # Get device count from latest scan file
+                device_count = len(self.get_ble_scan_devices())
+                
+                return {
+                    'active': True,
+                    'pid': pid,
+                    'device_count': device_count
+                }
+            else:
+                return {
+                    'active': False,
+                    'pid': None,
+                    'device_count': 0
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to check BLE scan status: {e}")
+            return {
+                'active': False,
+                'pid': None,
+                'device_count': 0
+            }
+    
+    def get_ble_scan_devices(self) -> List[Dict[str, Any]]:
+        """
+        Get list of devices discovered by active BLE scan.
+        
+        Returns list of discovered devices, each with:
+          - mac: Device MAC address
+          - name: Device name (or Unknown_XXXXXX)
+          - first_seen: ISO timestamp when first discovered
+          - last_seen: ISO timestamp of last advertisement
+          - count: Number of times seen
+        """
+        ble_log_dir = Path('/var/log/isolator/ble')
+        devices = []
+        
+        try:
+            if not ble_log_dir.exists():
+                return []
+            
+            # Find most recent scan_*.json file
+            scan_files = list(ble_log_dir.glob('scan_*.json'))
+            if not scan_files:
+                return []
+            
+            latest_scan = max(scan_files, key=lambda f: f.stat().st_mtime)
+            
+            # Read device list
+            with open(latest_scan, 'r') as f:
+                scan_data = json.load(f)
+                devices = scan_data.get('devices', [])
+            
+        except Exception as e:
+            logger.error(f"Failed to read BLE scan devices: {e}")
+        
+        return devices

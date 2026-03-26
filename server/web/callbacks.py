@@ -174,33 +174,144 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error updating logs: {e}")
     
     def update_log_viewer():
-        """Update log viewer panel (every 2 seconds)."""
+        """Update device log viewer with timeline and table (every 3 seconds)."""
         try:
-            if hasattr(doc, 'log_viewer'):
-                logs = data_manager.get_recent_logs(max_lines=100)
+            if not hasattr(doc, 'log_device_select'):
+                return
+            
+            # Update device selector options if changed
+            devices_df = data_manager.get_connected_devices()
+            device_options = [""] + [f"{d['device_id']}" for _, d in devices_df.iterrows()]
+            
+            if doc.log_device_select.options != device_options:
+                current_value = doc.log_device_select.value
+                doc.log_device_select.options = device_options
+                # Keep current selection if still valid
+                if current_value and current_value not in device_options:
+                    doc.log_device_select.value = device_options[0] if device_options else ""
+            
+            # Get selected device
+            selected_device = doc.log_device_select.value
+            if not selected_device:
+                # No device selected, show info message
+                doc.log_source.data = {
+                    'timestamp': [],
+                    'time_str': ['Select a device above to view logs'],
+                    'action': [''],
+                    'protocol': [''],
+                    'src_ip': [''],
+                    'dst_ip': [''],
+                    'dst_port': [''],
+                    'bytes': ['']
+                }
+                doc.timeline_source.data = {
+                    'timestamp': [],
+                    'value': [],
+                    'action': [],
+                    'color': []
+                }
+                return
+            
+            # Get logs for selected device
+            logs = data_manager.get_device_logs(selected_device, max_lines=100)
+            
+            # Get action filter
+            action_filter = doc.log_action_filter.value if hasattr(doc, 'log_action_filter') else 'ALL'
+            
+            # Filter logs by action if needed
+            if action_filter != 'ALL':
+                logs = [log for log in logs if log.get('action') == action_filter]
+            
+            if not logs:
+                doc.log_source.data = {
+                    'timestamp': [],
+                    'time_str': [f'No {action_filter} logs found for {selected_device}'],
+                    'action': [''],
+                    'protocol': [''],
+                    'src_ip': [''],
+                    'dst_ip': [''],
+                    'dst_port': [''],
+                    'bytes': ['']
+                }
+                doc.timeline_source.data = {
+                    'timestamp': [],
+                    'value': [],
+                    'action': [],
+                    'color': []
+                }
+                return
+            
+            # Prepare table data
+            timestamps = []
+            time_strs = []
+            actions = []
+            protocols = []
+            src_ips = []
+            dst_ips = []
+            dst_ports = []
+            byte_counts = []
+            
+            for entry in logs:
+                ts = entry.get('timestamp', '')
+                try:
+                    # Parse ISO timestamp
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    timestamps.append(dt)
+                    time_strs.append(dt.strftime('%H:%M:%S.%f')[:-3])  # HH:MM:SS.mmm
+                except Exception:
+                    timestamps.append(datetime.now())
+                    time_strs.append(ts)
                 
-                # Format log entries for terminal-style display
-                log_lines = []
-                for entry in logs:
-                    ts = entry.get('timestamp', '')
-                    level = entry.get('level', 'info').upper()
-                    device_id = entry.get('device_id', 'system')
-                    message = entry.get('message', '')
-                    
-                    # Color codes based on level
-                    level_color = {
-                        'ERROR': '\x1b[31m',   # Red
-                        'WARNING': '\x1b[33m',  # Yellow
-                        'INFO': '\x1b[32m',     # Green
-                    }.get(level, '')
-                    reset = '\x1b[0m' if level_color else ''
-                    
-                    log_lines.append(f"{ts} [{level_color}{level:8s}{reset}] {device_id:20s} {message}")
+                actions.append(entry.get('action', 'INFO'))
+                protocols.append(entry.get('protocol', ''))
+                src_ips.append(entry.get('src_ip', ''))
+                dst_ips.append(entry.get('dst_ip', ''))
                 
-                doc.log_viewer.text = '\n'.join(log_lines[-100:])
+                dst_port = entry.get('dst_port')
+                dst_ports.append(str(dst_port) if dst_port else '')
+                
+                byte_count = entry.get('bytes')
+                byte_counts.append(str(byte_count) if byte_count else '')
+            
+            # Update table
+            doc.log_source.data = {
+                'timestamp': timestamps,
+                'time_str': time_strs,
+                'action': actions,
+                'protocol': protocols,
+                'src_ip': src_ips,
+                'dst_ip': dst_ips,
+                'dst_port': dst_ports,
+                'bytes': byte_counts
+            }
+            
+            # Update timeline (scatter plot)
+            # Y-axis: 0 for BLOCKED, 1 for ALLOWED, 2 for others
+            timeline_values = []
+            timeline_colors = []
+            
+            for action in actions:
+                if action == 'BLOCKED':
+                    timeline_values.append(0)
+                    timeline_colors.append('#e74c3c')  # Red
+                elif action == 'ALLOWED':
+                    timeline_values.append(1)
+                    timeline_colors.append('#2ecc71')  # Green
+                else:
+                    timeline_values.append(2)
+                    timeline_colors.append('#3498db')  # Blue
+            
+            doc.timeline_source.data = {
+                'timestamp': timestamps,
+                'value': timeline_values,
+                'action': actions,
+                'color': timeline_colors
+            }
+            
+            logger.debug(f"Updated log viewer for {selected_device}: {len(logs)} entries")
         
         except Exception as e:
-            logger.error(f"Error updating log viewer: {e}")
+            logger.error(f"Error updating log viewer: {e}", exc_info=True)
     
     def update_system_status():
         """Update system status indicators (every 5 seconds)."""
@@ -297,12 +408,237 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error updating system status: {e}")
     
+    def update_ble_viewer():
+        """Update BLE viewer with scan results, capture status, and past captures (every 3 seconds)."""
+        try:
+            # ═══════════════════════════════════════════════════════════════
+            # STAGE 1: Update scan status and discovered devices
+            # ═══════════════════════════════════════════════════════════════
+            
+            if not hasattr(doc, 'ble_scan_status'):
+                return
+            
+            scan_status = data_manager.get_ble_scan_status()
+            
+            if scan_status['active']:
+                device_count = scan_status['device_count']
+                doc.ble_scan_status.text = f"<p style='color: #2ecc71;'>🟢 Scanning active - {device_count} devices found (PID {scan_status['pid']})</p>"
+                doc.ble_scan_button.disabled = True
+                doc.ble_scan_stop_button.disabled = False
+                
+                # Update discovered devices table
+                devices = data_manager.get_ble_scan_devices()
+                if devices:
+                    # Format last_seen timestamps
+                    for device in devices:
+                        try:
+                            dt = datetime.fromisoformat(device['last_seen'])
+                            device['last_seen'] = dt.strftime('%H:%M:%S')
+                        except:
+                            pass
+                    
+                    doc.ble_scan_source.data = {
+                        'mac': [d['mac'] for d in devices],
+                        'name': [d['name'] for d in devices],
+                        'last_seen': [d['last_seen'] for d in devices],
+                        'count': [str(d['count']) for d in devices],
+                        'selected': [False] * len(devices)
+                    }
+                else:
+                    doc.ble_scan_source.data = {
+                        'mac': [],
+                        'name': [],
+                        'last_seen': [],
+                        'count': [],
+                        'selected': []
+                    }
+            else:
+                doc.ble_scan_status.text = "<p style='color: #7f8c8d;'>⚪ Not scanning - Click 'Start Scan' to discover devices</p>"
+                doc.ble_scan_button.disabled = False
+                doc.ble_scan_stop_button.disabled = True
+            
+            # ═══════════════════════════════════════════════════════════════
+            # STAGE 2: Handle device selection and capture controls
+            # ═══════════════════════════════════════════════════════════════
+            
+            # Check if user selected a device from scan table
+            selected_indices = doc.ble_scan_source.selected.indices if hasattr(doc.ble_scan_source.selected, 'indices') else []
+            
+            if selected_indices and len(selected_indices) > 0:
+                # Get selected device info
+                idx = selected_indices[0]
+                devices = data_manager.get_ble_scan_devices()
+                if idx < len(devices):
+                    selected_device = devices[idx]
+                    doc.ble_selected_device.text = f"<p style='color: #2ecc71;'><b>{selected_device['name']}</b> ({selected_device['mac']})</p>"
+                    doc.ble_capture_button.disabled = False
+                else:
+                    doc.ble_selected_device.text = "<p style='color: #7f8c8d;'>No device selected</p>"
+                    doc.ble_capture_button.disabled = True
+            else:
+                doc.ble_selected_device.text = "<p style='color: #7f8c8d;'>No device selected</p>"
+                doc.ble_capture_button.disabled = True
+            
+            # Update capture status
+            capture_status = data_manager.get_ble_capture_status()
+            if capture_status['active']:
+                target = capture_status['target'] or 'Unknown'
+                doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>🔴 Capturing {target} (PID {capture_status['pid']}) - Running until stopped</p>"
+                doc.ble_capture_button.disabled = True
+                doc.ble_capture_stop_button.disabled = False
+            else:
+                doc.ble_capture_status.text = "<p style='color: #7f8c8d;'>⚪ Not capturing - Select a device and click 'Start Capture'</p>"
+                doc.ble_capture_stop_button.disabled = True
+            
+            # ═══════════════════════════════════════════════════════════════
+            # STAGE 3: Update past captures list and viewer
+            # ═══════════════════════════════════════════════════════════════
+            
+            # Update capture session list
+            captures = data_manager.get_ble_captures()
+            capture_options = [""] + [f"{c['filename']} ({c['event_count']} events)" for c in captures]
+            
+            if doc.ble_capture_select.options != capture_options:
+                current_value = doc.ble_capture_select.value
+                doc.ble_capture_select.options = capture_options
+                # Keep current selection if still valid
+                if current_value and current_value not in capture_options and capture_options:
+                    doc.ble_capture_select.value = capture_options[0] if len(capture_options) > 1 else ""
+            
+            # Get selected capture for viewing
+            selected_capture = doc.ble_capture_select.value
+            if not selected_capture:
+                # No capture selected, show info message
+                doc.ble_source.data = {
+                    'timestamp': [],
+                    'time_str': ['Select a capture session above to view events'],
+                    'type': [''],
+                    'address': [''],
+                    'name': [''],
+                    'handle': [''],
+                    'info': ['']
+                }
+                doc.ble_timeline_source.data = {
+                    'timestamp': [],
+                    'value': [],
+                    'type': [],
+                    'color': []
+                }
+                return
+            
+            # Extract filename from selection (format: "filename.json (N events)")
+            capture_file = selected_capture.split(' (')[0]
+            
+            # Get events for selected capture
+            events = data_manager.get_ble_logs(capture_file, max_events=200)
+            
+            # Get event filter
+            event_filter = doc.ble_event_filter.value if hasattr(doc, 'ble_event_filter') else 'ALL'
+            
+            # Filter events by type if needed
+            if event_filter != 'ALL':
+                events = [evt for evt in events if evt.get('type') == event_filter]
+            
+            if not events:
+                doc.ble_source.data = {
+                    'timestamp': [],
+                    'time_str': [f'No {event_filter} events found in {capture_file}'],
+                    'type': [''],
+                    'address': [''],
+                    'name': [''],
+                    'handle': [''],
+                    'info': ['']
+                }
+                doc.ble_timeline_source.data = {
+                    'timestamp': [],
+                    'value': [],
+                    'type': [],
+                    'color': []
+                }
+                return
+            
+            # Prepare table data
+            timestamps = []
+            time_strs = []
+            types = []
+            addresses = []
+            names = []
+            handles = []
+            infos = []
+            
+            for event in events:
+                ts = event.get('timestamp', '')
+                try:
+                    # Parse ISO timestamp
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    timestamps.append(dt)
+                    time_strs.append(dt.strftime('%H:%M:%S.%f')[:-3])  # HH:MM:SS.mmm
+                except Exception:
+                    timestamps.append(datetime.now())
+                    time_strs.append(ts)
+                
+                event_type = event.get('type', 'unknown')
+                types.append(event_type)
+                
+                data = event.get('data', {})
+                addresses.append(data.get('address', ''))
+                names.append(data.get('name', ''))
+                handles.append(data.get('handle', ''))
+                
+                # Build info string from remaining data fields
+                info_parts = []
+                for key, value in data.items():
+                    if key not in ['address', 'name', 'handle'] and value:
+                        info_parts.append(f"{key}={value}")
+                infos.append(', '.join(info_parts[:3]))  # Limit to first 3 fields
+            
+            # Update table
+            doc.ble_source.data = {
+                'timestamp': timestamps,
+                'time_str': time_strs,
+                'type': types,
+                'address': addresses,
+                'name': names,
+                'handle': handles,
+                'info': infos
+            }
+            
+            # Update timeline (scatter plot)
+            # Color by event type
+            event_colors = {
+                'advertisement': '#3498db',  # Blue
+                'connection': '#2ecc71',     # Green
+                'gatt_read': '#f39c12',      # Orange
+                'gatt_write': '#e74c3c',     # Red
+                'pairing': '#9b59b6',        # Purple
+                'error': '#e74c3c',          # Red
+                'info': '#95a5a6'            # Gray
+            }
+            
+            timeline_values = list(range(len(types)))  # Use index as Y value for spread
+            timeline_colors = [event_colors.get(evt_type, '#95a5a6') for evt_type in types]
+            
+            doc.ble_timeline_source.data = {
+                'timestamp': timestamps,
+                'value': timeline_values,
+                'type': types,
+                'color': timeline_colors
+            }
+            
+            logger.debug(f"Updated BLE viewer: scan={scan_status['active']}, capture={capture_status['active']}, viewing={capture_file if selected_capture else 'none'}")
+        
+        except Exception as e:
+            logger.error(f"Error updating BLE viewer: {e}", exc_info=True)
+    
     # ── Register Periodic Callbacks ─────────────────────────────────────────
     
     doc.add_periodic_callback(update_devices, 2000)      # 2 seconds
     doc.add_periodic_callback(update_traffic, 1000)      # 1 second
     doc.add_periodic_callback(update_connections, 3000)  # 3 seconds
-    doc.add_periodic_callback(update_logs, 1000)         # 1 second    doc.add_periodic_callback(update_log_viewer, 2000)   # 2 seconds    doc.add_periodic_callback(update_system_status, 5000)  # 5 seconds
+    # doc.add_periodic_callback(update_logs, 1000)         # 1 second (disabled - replaced by device logs)
+    doc.add_periodic_callback(update_log_viewer, 3000)   # 3 seconds
+    doc.add_periodic_callback(update_ble_viewer, 3000)   # 3 seconds
+    doc.add_periodic_callback(update_system_status, 5000)  # 5 seconds
     
     # ── Button Click Handlers ───────────────────────────────────────────────
     
@@ -347,7 +683,131 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error reloading config: {e}")
     
-    # TODO: Register button callbacks (need widget references)
-    # Currently buttons are not interactive - data updates periodically
+    def on_ble_scan_start():
+        """Handle BLE Scan Start button click."""
+        logger.info("===== BLE Scan Start button clicked =====")
+        try:
+            # Start BLE device discovery scan
+            logger.info("Starting BLE scan...")
+            result = data_manager.start_ble_scan()
+            
+            if result['success']:
+                doc.ble_scan_status.text = f"<p style='color: #2ecc71;'>🟢 Scanning started - discovering devices...</p>"
+                doc.ble_scan_button.disabled = True
+                doc.ble_scan_stop_button.disabled = False
+                logger.info(f"BLE scan started: {result['message']}")
+            else:
+                doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {result['message']}</p>"
+                logger.warning(f"BLE scan failed: {result['message']}")
+                
+        except Exception as e:
+            logger.error(f"Error starting BLE scan: {e}")
+            doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
+    
+    def on_ble_scan_stop():
+        """Handle BLE Scan Stop button click."""
+        try:
+            result = data_manager.stop_ble_scan()
+            
+            if result['success']:
+                doc.ble_scan_status.text = f"<p style='color: #7f8c8d;'>⚪ {result['message']}</p>"
+                doc.ble_scan_button.disabled = False
+                doc.ble_scan_stop_button.disabled = True
+                logger.info("BLE scan stopped")
+            else:
+                doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {result['message']}</p>"
+                logger.warning(f"BLE scan stop failed: {result['message']}")
+                
+        except Exception as e:
+            logger.error(f"Error stopping BLE scan: {e}")
+            doc.ble_scan_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
+    
+    def on_ble_capture_start():
+        """Handle BLE Capture Start button click."""
+        try:
+            # Get selected device from scan table
+            selected_indices = doc.ble_scan_source.selected.indices if hasattr(doc.ble_scan_source.selected, 'indices') else []
+            
+            if not selected_indices or len(selected_indices) == 0:
+                doc.ble_capture_status.text = "<p style='color: #e74c3c;'>⚠️ Error: Please select a device from scan results first</p>"
+                return
+            
+            # Get device info
+            idx = selected_indices[0]
+            devices = data_manager.get_ble_scan_devices()
+            if idx >= len(devices):
+                doc.ble_capture_status.text = "<p style='color: #e74c3c;'>⚠️ Error: Invalid device selection</p>"
+                return
+            
+            selected_device = devices[idx]
+            target_mac = selected_device['mac']
+            target_name = selected_device['name']
+            
+            # Start capture (no duration = runs until stopped)
+            result = data_manager.start_ble_capture(
+                target_name=None,  # Use MAC for more reliable targeting
+                target_mac=target_mac,
+                duration=None  # Indefinite
+            )
+            
+            if result['success']:
+                doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>🔴 Capturing {target_name} - Running until stopped</p>"
+                doc.ble_capture_button.disabled = True
+                doc.ble_capture_stop_button.disabled = False
+                logger.info(f"BLE capture started: {target_name} ({target_mac})")
+            else:
+                doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {result['message']}</p>"
+                logger.warning(f"BLE capture failed: {result['message']}")
+                
+        except Exception as e:
+            logger.error(f"Error starting BLE capture: {e}")
+            doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
+    
+    def on_ble_capture_stop():
+        """Handle BLE Capture Stop button click."""
+        try:
+            result = data_manager.stop_ble_capture()
+            
+            if result['success']:
+                doc.ble_capture_status.text = f"<p style='color: #7f8c8d;'>⚪ {result['message']}</p>"
+                doc.ble_capture_button.disabled = False
+                doc.ble_capture_stop_button.disabled = True
+                logger.info("BLE capture stopped")
+            else:
+                doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {result['message']}</p>"
+                logger.warning(f"BLE capture stop failed: {result['message']}")
+                
+        except Exception as e:
+            logger.error(f"Error stopping BLE capture: {e}")
+            doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
+    
+    # Register button handlers
+    logger.info("Registering BLE button handlers...")
+    if hasattr(doc, 'ble_scan_button'):
+        logger.info("  - Registering ble_scan_button callback")
+        doc.ble_scan_button.on_click(on_ble_scan_start)
+    else:
+        logger.warning("  - ble_scan_button NOT FOUND in doc")
+    
+    if hasattr(doc, 'ble_scan_stop_button'):
+        logger.info("  - Registering ble_scan_stop_button callback")
+        doc.ble_scan_stop_button.on_click(on_ble_scan_stop)
+    else:
+        logger.warning("  - ble_scan_stop_button NOT FOUND in doc")
+    
+    if hasattr(doc, 'ble_capture_button'):
+        logger.info("  - Registering ble_capture_button callback")
+        doc.ble_capture_button.on_click(on_ble_capture_start)
+    else:
+        logger.warning("  - ble_capture_button NOT FOUND in doc")
+    
+    if hasattr(doc, 'ble_capture_stop_button'):
+        logger.info("  - Registering ble_capture_stop_button callback")
+        doc.ble_capture_stop_button.on_click(on_ble_capture_stop)
+    else:
+        logger.warning("  - ble_capture_stop_button NOT FOUND in doc")
+    
+    # TODO: Register other button callbacks (need widget references)
+    # Currently other buttons are not interactive - data updates periodically
     
     logger.info("All callbacks registered successfully")
