@@ -1,0 +1,33 @@
+[Unit]
+Description=Bridge Mode - Connect to Target Device AP
+Documentation=https://github.com/your-repo/NetworkIsolator
+After=network.target
+Conflicts=isolator.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Stop hostapd (we're connecting, not serving)
+ExecStartPre=/usr/bin/systemctl stop hostapd
+
+# Connect wlan1 (USB adapter) to target device AP
+# Note: Configure target SSID and password in /etc/wpa_supplicant/wpa_supplicant-wlan1.conf
+ExecStart=/usr/sbin/wpa_supplicant -B -i wlan1 -c /etc/wpa_supplicant/wpa_supplicant-wlan1.conf
+ExecStart=/usr/sbin/dhclient wlan1
+
+# Start packet capture on wlan1
+ExecStart=/usr/bin/tcpdump -i wlan1 -w /mnt/isolator/captures/bridge/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root
+
+# Cleanup
+ExecStop=/usr/bin/pkill -f "tcpdump.*wlan1"
+ExecStop=/usr/sbin/dhclient -r wlan1
+ExecStop=/usr/bin/pkill -f "wpa_supplicant.*wlan1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=isolator-bridge
+
+[Install]
+WantedBy=multi-user.target

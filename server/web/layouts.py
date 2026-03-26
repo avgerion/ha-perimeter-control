@@ -85,15 +85,17 @@ def create_dashboard_layout(data_manager):
     
     layout = row(main_content, sidebar, sizing_mode="stretch_both")
     
-    # Store references for callbacks
-    layout.data_manager = data_manager
-    layout.device_grid = device_grid
-    layout.bandwidth_plot = bandwidth_plot
-    layout.connections_table = connections_table
-    layout.events_log = events_log
-    layout.system_status = system_status
+    # Return layout and widget references for callbacks
+    widgets = {
+        'data_manager': data_manager,
+        'device_grid': device_grid,
+        'bandwidth_plot': bandwidth_plot,
+        'connections_table': connections_table,
+        'events_log': events_log,
+        'system_status': system_status
+    }
     
-    return layout
+    return layout, widgets
 
 
 def create_system_status_panel(data_manager):
@@ -172,9 +174,6 @@ def create_bandwidth_plot():
     p.legend.location = "top_left"
     p.legend.click_policy = "hide"
     
-    # Store source reference
-    p.data_source = source
-    
     return p
 
 
@@ -199,7 +198,6 @@ def create_protocol_distribution():
     p.xaxis.major_label_orientation = 0.8
     p.yaxis.axis_label = "Packet Count"
     
-    p.data_source = source
     return p
 
 
@@ -233,7 +231,6 @@ def create_connections_table():
         index_position=None
     )
     
-    table.data_source = source
     return table
 
 
@@ -309,14 +306,6 @@ def create_config_panel(data_manager):
         Div(text="<hr>"),
         sizing_mode="stretch_width"
     )
-    
-    # Store widget references
-    panel.device_select = device_select
-    panel.internet_toggle = internet_toggle
-    panel.capture_toggle = capture_toggle
-    panel.logging_select = logging_select
-    panel.apply_button = apply_button
-    panel.reload_button = reload_button
     
     return panel
 

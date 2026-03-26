@@ -1,0 +1,39 @@
+[Unit]
+Description=Network Isolator - WiFi AP with Traffic Isolation
+Documentation=https://github.com/your-repo/NetworkIsolator
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Configure static IP on wlan0
+ExecStartPre=/usr/sbin/ip addr flush dev wlan0
+ExecStartPre=/usr/sbin/ip addr add 192.168.111.1/24 dev wlan0
+ExecStartPre=/usr/sbin/ip link set wlan0 up
+
+# Generate and apply configurations
+ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml --output-dir /etc/isolator
+
+# Reload configurations on changes
+ExecReload=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml --output-dir /etc/isolator
+
+# Cleanup on stop
+ExecStop=/usr/sbin/nft flush ruleset
+ExecStop=/usr/sbin/ip addr flush dev wlan0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=isolator
+
+# Security
+ProtectSystem=strict
+ReadWritePaths=/etc/isolator /etc/hostapd /etc/dnsmasq.d
+ProtectHome=yes
+NoNewPrivileges=false
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

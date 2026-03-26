@@ -1,0 +1,25 @@
+[Unit]
+Description=Network Isolator Device Monitor
+Documentation=https://github.com/your-repo/NetworkIsolator
+After=isolator.service dnsmasq.service
+Requires=isolator.service
+
+[Service]
+Type=simple
+ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/monitor-devices.py --config /mnt/isolator/conf/isolator.conf.yaml
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=isolator-monitor
+
+# Security
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=true
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

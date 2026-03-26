@@ -1,0 +1,30 @@
+[Unit]
+Description=Packet Capture for Device %i
+Documentation=https://github.com/your-repo/NetworkIsolator
+After=isolator.service
+PartOf=isolator.service
+
+[Service]
+Type=simple
+# %i is the device ID (MAC address with colons replaced by dashes)
+ExecStart=/usr/bin/tcpdump -i wlan0 -w /mnt/isolator/captures/%i/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root ether host %i
+Restart=always
+RestartSec=5
+
+# Create capture directory
+ExecStartPre=/usr/bin/mkdir -p /mnt/isolator/captures/%i
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=capture-%i
+
+# Security
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=true
+PrivateTmp=yes
+ReadWritePaths=/mnt/isolator/captures
+
+[Install]
+WantedBy=multi-user.target

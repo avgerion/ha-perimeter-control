@@ -57,12 +57,16 @@ class IsolatorDashboard:
         """
         logger.info(f"New client connected: {doc.session_context.id}")
         
-        # Create the main layout
-        layout = create_dashboard_layout(self.data_manager)
+        # Create the main layout and get widget references
+        layout, widgets = create_dashboard_layout(self.data_manager)
         doc.add_root(layout)
         
+        # Store widget references on document for callbacks
+        for key, value in widgets.items():
+            setattr(doc, key, value)
+        
         # Set up periodic callbacks for live updates
-        setup_callbacks(doc, self.data_manager, layout)
+        setup_callbacks(doc, self.data_manager)
         
         doc.title = "Network Isolator Quick View"
 

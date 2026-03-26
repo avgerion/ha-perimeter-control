@@ -5,11 +5,11 @@ Requires=isolator.service
 
 [Service]
 Type=simple
-User=pi
-Group=pi
+User=root
+Group=root
 WorkingDirectory=/opt/isolator/web
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/usr/bin/python3 /opt/isolator/web/dashboard.py
+ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/web/dashboard.py
 Restart=on-failure
 RestartSec=10
 

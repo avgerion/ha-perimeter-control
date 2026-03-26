@@ -1,5 +1,14 @@
 # isolator.conf.yaml — Single source of truth for the Pi Network Isolator.
 #
+# Network Topology:
+#   192.168.50.x  = Protected network (trusted devices, NAS, etc.)
+#   192.168.69.x  = Less secure network (isolated from 50.x)
+#   192.168.111.x = Network Isolator AP (guests, IoT, analysis targets)
+#
+# The Network Isolator's eth0 can plug into EITHER the 50.x or 69.x upstream router.
+# Devices connecting to the AP (111.x) are isolated from BOTH upstream networks
+# unless explicitly allowed via per-device lan_access rules.
+#
 # How it works:
 #   - ap:         Configures the WiFi access point (hostapd).
 #   - wan:        Identifies the WAN-side interface (ethernet).
@@ -13,23 +22,25 @@
 
 # ── Access Point ─────────────────────────────────────────────────────────────
 ap:
-  ssid: "ChangeMe_SSID"
-  password: "ChangeMe_Passphrase1!"   # min 8 chars, WPA2 enforced
+  ssid: "3682-Birds"                 # Change this to your desired WiFi name
+  password: "fuckTheFuckingDogH^T3rS"   # min 8 chars, WPA2 enforced
   band: "2.4GHz"                      # "2.4GHz" or "5GHz" (Pi 3 supports 2.4 only)
   channel: 6                          # 1/6/11 recommended for 2.4 GHz
   interface: wlan0
 
-# ── WAN ──────────────────────────────────────────────────────────────────────
+# ── WAN (Upstream Network) ──────────────────────────────────────────────────
 wan:
   interface: eth0
-  # The upstream network is assumed to be whatever is on eth0 (DHCP by default).
-  # Devices on the AP side are isolated from the WAN unless explicitly allowed.
+  # The Pi gets its IP via DHCP from whatever network eth0 is plugged into.
+  # This can be 192.168.50.x (protected) or 192.168.69.x (less secure).
+  # The firewall rules work regardless of which upstream network is in use.
+  # Devices on the AP are isolated from ALL upstream networks by default.
 
-# ── AP Subnet ────────────────────────────────────────────────────────────────
+# ── AP Subnet (Network Isolator WiFi) ───────────────────────────────────────
 lan:
-  subnet: "192.168.50.0/24"
-  gateway: "192.168.50.1"             # Pi's own IP on the AP side
-  dhcp_range: "192.168.50.100-192.168.50.200"
+  subnet: "192.168.111.0/24"
+  gateway: "192.168.111.1"            # Pi's own IP on the AP side (wlan0)
+  dhcp_range: "192.168.111.100-192.168.111.200"
   lease_hours: 24
 
 # ── Devices ──────────────────────────────────────────────────────────────────
@@ -54,13 +65,13 @@ devices:
   - id: "trusted-laptop"
     mac: "aa:bb:cc:dd:ee:ff"          # replace with actual MAC
     name: "Trusted Laptop"            # optional, informational
-    static_ip: "192.168.50.10"        # optional; assign fixed IP via DHCP reservation
+    static_ip: "192.168.111.10"       # optional; assign fixed IP via DHCP reservation
     internet: allow
     lan_access:
-      - host: "192.168.1.10"          # NAS on upstream LAN
-        ports: [445, 22, 80]
-      - host: "192.168.1.20"          # Printer
-        ports: [9100, 631]
+      - host: "192.168.50.10"         # Example: NAS on protected network (50.x)
+        ports: [445, 22, 80]           # SMB, SSH, HTTP
+      - host: "192.168.69.20"         # Example: Device on less-secure network (69.x)
+        ports: [8080]                 # Web interface only
     logging: metadata
 
   - id: "iot-sensor-01"
@@ -79,9 +90,9 @@ devices:
   - id: "target-device"
     mac: "de:ad:be:ef:00:01"          # replace with target device MAC
     name: "Unknown IoT Target"
-    static_ip: "192.168.50.200"       # fixed IP makes Wireshark filters easy
+    static_ip: "192.168.111.200"      # fixed IP makes Wireshark filters easy
     internet: log-only                # allow internet but log every packet
-    lan_access: []                    # no access to your LAN
+    lan_access: []                    # no access to upstream networks (50.x OR 69.x)
     logging: full
     capture:
       enabled: true
@@ -93,7 +104,7 @@ devices:
   - id: "guest-phone"
     mac: "aa:11:bb:22:cc:33"
     internet: allow
-    lan_access: []                    # internet only, no LAN access
+    lan_access: []                    # internet only, no access to 50.x or 69.x networks
     logging: metadata
 
 # ── Default Policy ───────────────────────────────────────────────────────────
@@ -101,13 +112,13 @@ devices:
 # NEW: Unknown devices automatically enter MAX SNIFF MODE for reverse engineering!
 default_policy:
   internet: log-only                  # allow internet but log EVERYTHING
-  lan_access: []                      # no LAN access for security
+  lan_access: []                      # BLOCKS access to BOTH 50.x AND 69.x upstream networks
   logging: full                       # full packet metadata logging
   capture:
     enabled: true                     # auto-capture ALL unknown devices
     filter: ""                        # capture everything
     output: /mnt/isolator/captures/unknown  # stored in unknown/ subdirectory
-    rotate_mb: 100                    # rotate at 100MB to prevent disk fill
+    rotate_mb: 1000                    # rotate at 100MB to prevent disk fill
     live: true                        # enable live Wireshark streaming
 
 # ── Logging ──────────────────────────────────────────────────────────────────

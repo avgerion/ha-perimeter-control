@@ -37,18 +37,31 @@ A Raspberry Pi 3 configured as a WiFi access point with per-device, policy-drive
 
 ### Initial Setup (First Time)
 
-See [docs/INITIAL-SETUP.md](docs/INITIAL-SETUP.md) for complete Pi setup from scratch.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment guide, or [docs/INITIAL-SETUP.md](docs/INITIAL-SETUP.md) for Pi setup from scratch.
 
-**TL;DR:**
+**Quick Deploy from Windows:**
+```powershell
+# Edit config first
+notepad config\isolator.conf.yaml
+
+# Run one-command deployment
+.\deploy.ps1
+```
+
+**Manual Setup:**
 1. Use **Raspberry Pi Imager** with advanced settings (⚙️):
    - ✅ Enable SSH
    - ✅ Set hostname: `isolator`
    - ✅ Set username/password
 2. Boot Pi with ethernet connected
-3. SSH in: `ssh pi@isolator.local`
-4. Run setup script:
+3. Copy files and run setup:
    ```bash
-   cd ~/NetworkIsolator
+   # On Windows: copy project to Pi
+   scp -r . pi@isolator.local:/tmp/isolator-deploy/
+   
+   # SSH in and install
+   ssh pi@isolator.local
+   cd /tmp/isolator-deploy
    sudo bash server/setup-isolator.sh --config config/isolator.conf.yaml
    ```
 
@@ -121,6 +134,7 @@ sudo systemctl reload isolator
 
 ## Docs
 
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Complete deployment guide with step-by-step instructions, troubleshooting, and service management.
 - [docs/INITIAL-SETUP.md](docs/INITIAL-SETUP.md) — **START HERE:** complete setup from Raspberry Pi Imager to first SSH connection.
 - [docs/DEVICE-ACCESS-MODEL.md](docs/DEVICE-ACCESS-MODEL.md) — how access rules work, rule semantics, nftables flow.
 - [docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md) — capturing and analysing unknown IoT device traffic with tcpdump, tshark, and Wireshark.
@@ -161,8 +175,8 @@ sudo systemctl start isolator-dashboard
 | Phase | Goal | Status |
 |---|---|---|
 | 1 | Config schema + device access model | ✅ Complete |
-| 2 | Setup script: hostapd + dnsmasq + nftables on Pi OS | 🔄 In Progress |
-| 3 | `apply-rules.py` — config → live nftables rules | 🔄 In Progress |
-| 4 | Web dashboard with Bokeh (live traffic, device mgmt) | ✅ **Implemented!** |
-| 4b | Bridge mode for target device AP analysis | ✅ **Documented!** |
+| 2 | Setup script: hostapd + dnsmasq + nftables on Pi OS | ✅ **Complete!** |
+| 3 | `apply-rules.py` — config → live nftables rules | ✅ **Complete!** |
+| 4 | Web dashboard with Bokeh (live traffic, device mgmt) | ✅ Complete |
+| 4b | Bridge mode for target device AP analysis | ✅ Complete |
 | 5 | Yocto image for true appliance deploy | 📋 Planned |
