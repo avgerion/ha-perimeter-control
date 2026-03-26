@@ -84,6 +84,15 @@ class DataManager:
         # Merge with config to get device IDs and rules
         df = pd.DataFrame(devices)
         if not df.empty:
+            # Auto-add unknown devices to config
+            for _, device in pd.DataFrame(devices).iterrows():
+                mac = device['mac'].lower()
+                if not self._device_exists_in_config(mac):
+                    self._auto_add_device(mac, device['ip'], device['hostname'])
+            
+            # Reload config after auto-adding devices
+            self.config = self._load_config()
+            
             df['device_id'] = df['mac'].apply(self._get_device_id_from_mac)
             df['internet'] = df['device_id'].apply(self._get_device_rule, args=('internet',))
             df['capture_enabled'] = df['device_id'].apply(self._get_capture_status)
@@ -93,6 +102,59 @@ class DataManager:
                                       'device_id', 'internet', 'capture_enabled'])
         
         return df
+    
+    def _device_exists_in_config(self, mac: str) -> bool:
+        """Check if device with this MAC already exists in config."""
+        for device in self.config.get('devices', []):
+            if device.get('mac', '').lower() == mac.lower():
+                return True
+        return False
+    
+    def _auto_add_device(self, mac: str, ip: str, hostname: str):
+        """
+        Auto-add a newly discovered device to the config file.
+        Uses default_policy settings for the new device.
+        """
+        try:
+            # Generate device ID from hostname or MAC
+            device_id = hostname.replace(' ', '-').replace('_', '-').lower()
+            if device_id == '*' or not device_id:
+                device_id = f"device-{mac.replace(':', '')[-6:]}"
+            
+            # Get default policy
+            default_policy = self.config.get('default_policy', {})
+            
+            # Create new device entry
+            new_device = {
+                'id': device_id,
+                'mac': mac,
+                'name': hostname if hostname != '*' else f'Device {mac[-8:]}',
+                'internet': default_policy.get('internet', 'deny'),
+                'lan_access': [],
+                'logging': default_policy.get('logging', 'metadata')
+            }
+            
+            # Add capture settings if enabled in default policy
+            if default_policy.get('capture', {}).get('enabled', False):
+                new_device['capture'] = {
+                    'enabled': True,
+                    'filter': '',
+                    'output': f'/mnt/isolator/captures/{device_id}'
+                }
+            
+            # Add to config
+            if 'devices' not in self.config:
+                self.config['devices'] = []
+            self.config['devices'].append(new_device)
+            
+            # Write updated config
+            with open(self.config_path, 'w') as f:
+                yaml.dump(self.config, f, default_flow_style=False, sort_keys=False)
+            
+            logger.info(f"Auto-added device: {device_id} (MAC: {mac}, IP: {ip})")
+            
+        except Exception as e:
+            logger.error(f"Failed to auto-add device {mac}: {e}")
     
     def _get_device_id_from_mac(self, mac: str) -> str:
         """Look up device ID from MAC address in config."""
@@ -206,6 +268,7 @@ class DataManager:
     def get_recent_logs(self, max_lines: int = 50) -> List[Dict[str, Any]]:
         """
         Tail recent log events from /var/log/isolator/traffic.log.
+        Falls back to dashboard.log if traffic.log doesn't exist yet.
         
         Returns list of log entries (newest first), each with:
           - timestamp: Event time
@@ -214,8 +277,12 @@ class DataManager:
           - event_type: connection_blocked / new_device / capture_started / etc.
           - message: Human-readable description
         """
-        log_file = Path('/var/log/isolator/traffic.log')
+        traffic_log = Path('/var/log/isolator/traffic.log')
+        dashboard_log = Path('/var/log/isolator/dashboard.log')
         logs = []
+        
+        # Prefer traffic.log, fall back to dashboard.log
+        log_file = traffic_log if traffic_log.exists() else dashboard_log
         
         try:
             if log_file.exists():
@@ -227,14 +294,43 @@ class DataManager:
                     timeout=2
                 )
                 
-                # Parse JSON log entries
+                # Parse log entries
                 for line in result.stdout.strip().split('\n'):
-                    if line:
+                    if not line:
+                        continue
+                    
+                    # Try JSON format first (traffic.log)
+                    try:
+                        entry = json.loads(line)
+                        logs.append(entry)
+                    except json.JSONDecodeError:
+                        # Parse Python logging format (dashboard.log)
+                        # Format: "2026-03-26 14:32:09,348 [INFO] logger.name: message"
                         try:
-                            entry = json.loads(line)
-                            logs.append(entry)
-                        except json.JSONDecodeError:
-                            # Plain text log line
+                            parts = line.split(' ', 2)
+                            if len(parts) >= 3:
+                                timestamp = f"{parts[0]}T{parts[1].replace(',', '.')}"
+                                rest = parts[2]
+                                
+                                # Extract level
+                                level_match = rest.split('[', 1)[1].split(']', 1)[0] if '[' in rest else 'INFO'
+                                level = level_match.lower()
+                                
+                                # Extract message (everything after ": ")
+                                message = rest.split(': ', 1)[1] if ': ' in rest else rest
+                                
+                                # Extract module name
+                                module = rest.split(']', 1)[1].split(':', 1)[0].strip() if ']' in rest else 'system'
+                                
+                                logs.append({
+                                    'timestamp': timestamp,
+                                    'level': level,
+                                    'device_id': module,
+                                    'event_type': 'log',
+                                    'message': message
+                                })
+                        except Exception:
+                            # If parsing fails, just use the raw line
                             logs.append({
                                 'timestamp': datetime.now().isoformat(),
                                 'level': 'info',
@@ -242,8 +338,25 @@ class DataManager:
                                 'event_type': 'log',
                                 'message': line
                             })
+            else:
+                # No logs available yet
+                logs.append({
+                    'timestamp': datetime.now().isoformat(),
+                    'level': 'info',
+                    'device_id': 'system',
+                    'event_type': 'log',
+                    'message': 'Log files not available yet. Traffic logging will start when packets are captured.'
+                })
+                
         except Exception as e:
             logger.error(f"Failed to read logs: {e}")
+            logs.append({
+                'timestamp': datetime.now().isoformat(),
+                'level': 'error',
+                'device_id': 'system',
+                'event_type': 'error',
+                'message': f'Error reading logs: {e}'
+            })
         
         return logs[::-1]  # Reverse to get newest first
     
@@ -325,3 +438,172 @@ class DataManager:
         except Exception as e:
             logger.error(f"Failed to update device rule: {e}")
             return False
+    
+    def get_interface_status(self, interface: str) -> Dict[str, Any]:
+        """
+        Get status for a network interface.
+        
+        Args:
+            interface: Interface name (e.g., 'wlan0', 'eth0')
+            
+        Returns:
+            Dict with keys: up, ip, mac, rx_bytes, tx_bytes, rx_packets, tx_packets
+        """
+        status = {
+            'up': False,
+            'ip': None,
+            'mac': None,
+            'rx_bytes': 0,
+            'tx_bytes': 0,
+            'rx_packets': 0,
+            'tx_packets': 0
+        }
+        
+        try:
+            # Check if interface exists and is up
+            result = subprocess.run(
+                ['ip', 'link', 'show', interface],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                # Parse state and MAC
+                for line in result.stdout.split('\n'):
+                    if 'state UP' in line or 'state UNKNOWN' in line:
+                        status['up'] = True
+                    if 'link/ether' in line:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            status['mac'] = parts[1]
+            
+            # Get IP address
+            result = subprocess.run(
+                ['ip', '-4', 'addr', 'show', interface],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'inet ' in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            status['ip'] = parts[1].split('/')[0]
+                            break
+            
+            # Get statistics
+            stats_path = Path(f'/sys/class/net/{interface}/statistics')
+            if stats_path.exists():
+                try:
+                    status['rx_bytes'] = int((stats_path / 'rx_bytes').read_text().strip())
+                    status['tx_bytes'] = int((stats_path / 'tx_bytes').read_text().strip())
+                    status['rx_packets'] = int((stats_path / 'rx_packets').read_text().strip())
+                    status['tx_packets'] = int((stats_path / 'tx_packets').read_text().strip())
+                except Exception:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Failed to get interface status for {interface}: {e}")
+        
+        return status
+    
+    def get_wifi_ap_status(self) -> Dict[str, Any]:
+        """
+        Get WiFi AP status from hostapd.
+        
+        Returns:
+            Dict with keys: running, ssid, channel, clients, interface
+        """
+        status = {
+            'running': False,
+            'ssid': None,
+            'channel': None,
+            'clients': 0,
+            'interface': 'wlan0'
+        }
+        
+        try:
+            # Check if hostapd service is running
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'hostapd'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            status['running'] = (result.returncode == 0 and 'active' in result.stdout)
+            
+            # Read hostapd config for SSID and channel
+            hostapd_conf = Path('/etc/hostapd/hostapd.conf')
+            if hostapd_conf.exists():
+                with open(hostapd_conf, 'r') as f:
+                    for line in f:
+                        if line.startswith('ssid='):
+                            status['ssid'] = line.split('=', 1)[1].strip()
+                        elif line.startswith('channel='):
+                            status['channel'] = line.split('=', 1)[1].strip()
+                        elif line.startswith('interface='):
+                            status['interface'] = line.split('=', 1)[1].strip()
+            
+            # Count connected clients from dnsmasq leases
+            leases = self.get_connected_devices()
+            status['clients'] = len(leases[leases['connected']])
+            
+        except Exception as e:
+            logger.error(f"Failed to get WiFi AP status: {e}")
+        
+        return status
+    
+    def get_system_stats(self) -> Dict[str, Any]:
+        """
+        Get system statistics: CPU, memory, disk usage, uptime.
+        
+        Returns:
+            Dict with keys: cpu_percent, mem_used_mb, mem_total_mb, disk_free_gb, uptime_hours
+        """
+        stats = {
+            'cpu_percent': 0,
+            'mem_used_mb': 0,
+            'mem_total_mb': 0,
+            'disk_free_gb': 0,
+            'uptime_hours': 0
+        }
+        
+        try:
+            # Get disk usage for /mnt/isolator
+            result = subprocess.run(
+                ['df', '-BG', '/mnt/isolator'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                if len(lines) >= 2:
+                    parts = lines[1].split()
+                    if len(parts) >= 4:
+                        stats['disk_free_gb'] = int(parts[3].rstrip('G'))
+            
+            # Get memory info
+            meminfo = Path('/proc/meminfo')
+            if meminfo.exists():
+                mem_total = mem_available = 0
+                with open(meminfo, 'r') as f:
+                    for line in f:
+                        if line.startswith('MemTotal:'):
+                            mem_total = int(line.split()[1]) // 1024  # Convert KB to MB
+                        elif line.startswith('MemAvailable:'):
+                            mem_available = int(line.split()[1]) // 1024
+                stats['mem_total_mb'] = mem_total
+                stats['mem_used_mb'] = mem_total - mem_available
+            
+            # Get uptime
+            uptime_file = Path('/proc/uptime')
+            if uptime_file.exists():
+                uptime_sec = float(uptime_file.read_text().split()[0])
+                stats['uptime_hours'] = round(uptime_sec / 3600, 1)
+                
+        except Exception as e:
+            logger.error(f"Failed to get system stats: {e}")
+        
+        return stats

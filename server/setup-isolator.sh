@@ -109,7 +109,7 @@ step_install_packages() {
     apt update
     
     # Network services
-    apt install -y hostapd dnsmasq
+    apt install -y hostapd dnsmasq iw
     
     # Firewall and networking
     apt install -y nftables iptables iproute2 bridge-utils

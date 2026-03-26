@@ -1,157 +1,94 @@
-# isolator.conf.yaml — Single source of truth for the Pi Network Isolator.
-#
-# Network Topology:
-#   192.168.50.x  = Protected network (trusted devices, NAS, etc.)
-#   192.168.69.x  = Less secure network (isolated from 50.x)
-#   192.168.111.x = Network Isolator AP (guests, IoT, analysis targets)
-#
-# The Network Isolator's eth0 can plug into EITHER the 50.x or 69.x upstream router.
-# Devices connecting to the AP (111.x) are isolated from BOTH upstream networks
-# unless explicitly allowed via per-device lan_access rules.
-#
-# How it works:
-#   - ap:         Configures the WiFi access point (hostapd).
-#   - wan:        Identifies the WAN-side interface (ethernet).
-#   - devices:    Known devices with per-device access rules.
-#   - default_policy: Applied to any device NOT listed in devices[].
-#   - logging:    Controls traffic log output.
-#
-# Live reload:
-#   sudo systemctl reload isolator   (or via web UI)
-#   Rules are regenerated from this file without dropping existing connections.
-
-# ── Access Point ─────────────────────────────────────────────────────────────
 ap:
-  ssid: "3682-Birds"                 # Change this to your desired WiFi name
-  password: "fuckTheFuckingDogH^T3rS"   # min 8 chars, WPA2 enforced
-  band: "2.4GHz"                      # "2.4GHz" or "5GHz" (Pi 3 supports 2.4 only)
-  channel: 6                          # 1/6/11 recommended for 2.4 GHz
+  ssid: 3682-Birds
+  password: fuckTheFuckingDogH^T3rS
+  band: 2.4GHz
+  channel: 6
   interface: wlan0
-
-# ── WAN (Upstream Network) ──────────────────────────────────────────────────
 wan:
   interface: eth0
-  # The Pi gets its IP via DHCP from whatever network eth0 is plugged into.
-  # This can be 192.168.50.x (protected) or 192.168.69.x (less secure).
-  # The firewall rules work regardless of which upstream network is in use.
-  # Devices on the AP are isolated from ALL upstream networks by default.
-
-# ── AP Subnet (Network Isolator WiFi) ───────────────────────────────────────
 lan:
-  subnet: "192.168.111.0/24"
-  gateway: "192.168.111.1"            # Pi's own IP on the AP side (wlan0)
-  dhcp_range: "192.168.111.100-192.168.111.200"
+  subnet: 192.168.111.0/24
+  gateway: 192.168.111.1
+  dhcp_range: 192.168.111.100-192.168.111.200
   lease_hours: 24
-
-# ── Devices ──────────────────────────────────────────────────────────────────
-# Each entry identifies one device that connects over WiFi.
-# Identification can be any combination of: mac, name (mDNS/NetBIOS), static_ip.
-# mac is the most reliable identifier; others are supplementary.
-#
-# internet:   allow | deny | log-only
-# lan_access: list of upstream LAN host/port rules, or []
-# logging:    none | metadata | full
-#   - none:     no logging for this device
-#   - metadata: log connection tuples (src, dst, port, timestamp) only
-#   - full:     log connection tuples + payload (use for debugging only)#
-# capture:    Controls pcap file capture for Wireshark / tshark analysis.
-#   enabled:  true | false
-#   filter:   tcpdump BPF filter string (default: all traffic from this device)
-#   output:   directory for .pcap files (default: capture.output_dir/<device-id>/)
-#   rotate_mb: start new pcap file after this many MB (0 = no rotation)
-#   live:     true = also stream to named pipe for live Wireshark attach
 devices:
-
-  - id: "trusted-laptop"
-    mac: "aa:bb:cc:dd:ee:ff"          # replace with actual MAC
-    name: "Trusted Laptop"            # optional, informational
-    static_ip: "192.168.111.10"       # optional; assign fixed IP via DHCP reservation
-    internet: allow
-    lan_access:
-      - host: "192.168.50.10"         # Example: NAS on protected network (50.x)
-        ports: [445, 22, 80]           # SMB, SSH, HTTP
-      - host: "192.168.69.20"         # Example: Device on less-secure network (69.x)
-        ports: [8080]                 # Web interface only
-    logging: metadata
-
-  - id: "iot-sensor-01"
-    mac: "11:22:33:44:55:66"
-    name: "IoT Sensor"
-    internet: deny
-    lan_access: []                    # no access to anything upstream
-    logging: full
-
-  # ── Reverse Engineering Example ───────────────────────────────────────────
-  # Use this profile when analysing an unknown IoT device (WiFi plug, camera,
-  # drone controller app, etc.).
-  # The device gets internet access (so the app works normally) but ALL
-  # traffic is captured to pcap and streamed to a named pipe for live
-  # Wireshark inspection from your Windows machine over SSH.
-  - id: "target-device"
-    mac: "de:ad:be:ef:00:01"          # replace with target device MAC
-    name: "Unknown IoT Target"
-    static_ip: "192.168.111.200"      # fixed IP makes Wireshark filters easy
-    internet: log-only                # allow internet but log every packet
-    lan_access: []                    # no access to upstream networks (50.x OR 69.x)
-    logging: full
-    capture:
-      enabled: true
-      filter: ""                      # empty = capture all traffic for this host
-      output: "/mnt/isolator/captures/target-device"
-      rotate_mb: 100
-      live: true                      # enables named pipe at /run/isolator/target-device.pipe
-
-  - id: "guest-phone"
-    mac: "aa:11:bb:22:cc:33"
-    internet: allow
-    lan_access: []                    # internet only, no access to 50.x or 69.x networks
-    logging: metadata
-
-# ── Default Policy ───────────────────────────────────────────────────────────
-# Applied to any device connecting via WiFi that is NOT listed in devices[].
-# NEW: Unknown devices automatically enter MAX SNIFF MODE for reverse engineering!
-default_policy:
-  internet: log-only                  # allow internet but log EVERYTHING
-  lan_access: []                      # BLOCKS access to BOTH 50.x AND 69.x upstream networks
-  logging: full                       # full packet metadata logging
+- id: trusted-laptop
+  mac: aa:bb:cc:dd:ee:ff
+  name: Trusted Laptop
+  static_ip: 192.168.111.10
+  internet: allow
+  lan_access:
+  - host: 192.168.50.10
+    ports:
+    - 445
+    - 22
+    - 80
+  - host: 192.168.69.20
+    ports:
+    - 8080
+  logging: metadata
+- id: iot-sensor-01
+  mac: 11:22:33:44:55:66
+  name: IoT Sensor
+  internet: deny
+  lan_access: []
+  logging: full
+- id: target-device
+  mac: de:ad:be:ef:00:01
+  name: Unknown IoT Target
+  static_ip: 192.168.111.200
+  internet: log-only
+  lan_access: []
+  logging: full
   capture:
-    enabled: true                     # auto-capture ALL unknown devices
-    filter: ""                        # capture everything
-    output: /mnt/isolator/captures/unknown  # stored in unknown/ subdirectory
-    rotate_mb: 1000                    # rotate at 100MB to prevent disk fill
-    live: true                        # enable live Wireshark streaming
-
-# ── Logging ──────────────────────────────────────────────────────────────────
+    enabled: true
+    filter: ''
+    output: /mnt/isolator/captures/target-device
+    rotate_mb: 100
+    live: true
+- id: guest-phone
+  mac: aa:11:bb:22:cc:33
+  internet: allow
+  lan_access: []
+  logging: metadata
+- id: moto-g-2025
+  mac: b2:06:cc:49:37:67
+  name: moto-g-2025
+  internet: log-only
+  lan_access: []
+  logging: full
+  capture:
+    enabled: true
+    filter: ''
+    output: /mnt/isolator/captures/moto-g-2025
+default_policy:
+  internet: log-only
+  lan_access: []
+  logging: full
+  capture:
+    enabled: true
+    filter: ''
+    output: /mnt/isolator/captures/unknown
+    rotate_mb: 1000
+    live: true
 logging:
   output: /var/log/isolator/traffic.log
   rotate_mb: 50
   retain_days: 30
-  format: json                        # json | plain
-# ── Capture (global defaults) ────────────────────────────────────────────────
-# Per-device capture settings override these defaults.
+  format: json
 capture:
-  output_dir: /mnt/isolator/captures  # root dir; per-device subdirs created automatically
-  interface: wlan0                    # interface tcpdump binds to (AP-side)
-  snaplen: 65535                      # bytes per packet (65535 = full packet)
-  # live_pipe_dir: /run/isolator      # named pipes live here; one per device with live: true
-
-# ── Bridge Mode ──────────────────────────────────────────────────────────────
-# ADVANCED: Connect to a target device's AP (drones, cameras, etc.) for reverse engineering.
-# Requires a second WiFi adapter (USB recommended).
-# See docs/BRIDGE-MODE.md for full setup guide.
+  output_dir: /mnt/isolator/captures
+  interface: wlan0
+  snaplen: 65535
 bridge:
-  enabled: false                      # set to true to activate bridge mode
-  client_interface: wlan1             # second WiFi adapter (USB)
+  enabled: false
+  client_interface: wlan1
   target_ap:
-    ssid: "TargetDevice_AP"           # the device's WiFi AP name
-    password: ""                      # leave empty for open networks
-  
-  # Traffic routing options
-  route_to_internet: false            # true = target gets internet; false = fully isolated (safer)
-  
-  # Capture all bridge traffic
+    ssid: TargetDevice_AP
+    password: ''
+  route_to_internet: false
   capture:
     enabled: true
     output: /mnt/isolator/captures/bridge
     rotate_mb: 200
-    live: true                        # stream to /run/isolator/bridge.pipe
+    live: true

@@ -60,10 +60,13 @@ def create_dashboard_layout(data_manager):
     )
     
     # ── Configuration Sidebar ───────────────────────────────────────────────
-    config_panel = create_config_panel(data_manager)
+    config_panel, config_widgets = create_config_panel(data_manager)
     
     # ── SSH Helper Panel ────────────────────────────────────────────────────
     ssh_panel = create_ssh_helper_panel()
+    
+    # ── Log Viewer Panel ────────────────────────────────────────────────────
+    log_panel, log_viewer = create_log_viewer_panel()
     
     # ── Main Layout ─────────────────────────────────────────────────────────
     main_content = column(
@@ -74,6 +77,7 @@ def create_dashboard_layout(data_manager):
         Div(text="<h2>Live Traffic</h2>"),
         traffic_row,
         bottom_row,
+        log_panel,
         sizing_mode="stretch_width"
     )
     
@@ -92,32 +96,96 @@ def create_dashboard_layout(data_manager):
         'bandwidth_plot': bandwidth_plot,
         'connections_table': connections_table,
         'events_log': events_log,
-        'system_status': system_status
+        'system_status': system_status,
+        'log_viewer': log_viewer,
+        **config_widgets  # Include device_select, internet_toggle, etc.
     }
     
     return layout, widgets
 
 
 def create_system_status_panel(data_manager):
-    """System health indicators."""
-    status_html = """
-    <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; 
-                display: flex; justify-content: space-around; margin-bottom: 20px;">
-        <div style="text-align: center;">
-            <div id="hostapd-status" style="font-size: 24px;">🟢</div>
-            <div style="font-size: 12px;">hostapd</div>
-        </div>
-        <div style="text-align: center;">
-            <div id="nftables-status" style="font-size: 24px;">🟢</div>
-            <div style="font-size: 12px;">nftables</div>
-        </div>
-        <div style="text-align: center;">
-            <div id="capture-count" style="font-size: 20px; font-weight: bold;">0</div>
-            <div style="font-size: 12px;">Active Captures</div>
-        </div>
-        <div style="text-align: center;">
-            <div id="disk-usage" style="font-size: 20px; font-weight: bold;">--</div>
-            <div style="font-size: 12px;">Disk Free</div>
+    """System health indicators and network status."""
+    # Get initial network status
+    wifi_status = data_manager.get_wifi_ap_status()
+    eth_status = data_manager.get_interface_status('eth0')
+    wlan_status = data_manager.get_interface_status(wifi_status.get('interface', 'wlan0'))
+    sys_stats = data_manager.get_system_stats()
+    
+    wifi_icon = '🟢' if wifi_status.get('running') else '🔴'
+    eth_icon = '🟢' if eth_status.get('up') else '🔴'
+    wlan_icon = '🟢' if wlan_status.get('up') else '🔴'
+    
+    status_html = f"""
+    <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+            
+            <!-- WiFi AP Status -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div id="wifi-icon" style="font-size: 24px;">{wifi_icon}</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">WiFi AP</div>
+                <div id="wifi-ssid" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                    {wifi_status.get('ssid', 'Not configured')}
+                </div>
+                <div id="wifi-clients" style="font-size: 12px; color: #3498db; margin-top: 3px;">
+                    {wifi_status.get('clients', 0)} clients
+                </div>
+            </div>
+            
+            <!-- Ethernet Status -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div id="eth-icon" style="font-size: 24px;">{eth_icon}</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Ethernet</div>
+                <div id="eth-ip" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                    {eth_status.get('ip', 'No IP')}
+                </div>
+                <div id="eth-traffic" style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                    ↓{eth_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{eth_status.get('tx_bytes', 0) // (1024*1024)}MB
+                </div>
+            </div>
+            
+            <!-- WLAN Interface -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div id="wlan-icon" style="font-size: 24px;">{wlan_icon}</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">wlan0</div>
+                <div id="wlan-ip" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                    {wlan_status.get('ip', 'No IP')}
+                </div>
+                <div id="wlan-traffic" style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                    ↓{wlan_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{wlan_status.get('tx_bytes', 0) // (1024*1024)}MB
+                </div>
+            </div>
+            
+            <!-- System Resources -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div style="font-size: 20px;">💾</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Storage</div>
+                <div id="disk-free" style="font-size: 16px; color: #2ecc71; margin-top: 3px;">
+                    {sys_stats.get('disk_free_gb', 0)}GB free
+                </div>
+                <div id="mem-usage" style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                    RAM: {sys_stats.get('mem_used_mb', 0)}/{sys_stats.get('mem_total_mb', 0)}MB
+                </div>
+            </div>
+            
+            <!-- Uptime -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div style="font-size: 20px;">⏱️</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Uptime</div>
+                <div id="uptime" style="font-size: 16px; color: #f39c12; margin-top: 3px;">
+                    {sys_stats.get('uptime_hours', 0)}h
+                </div>
+            </div>
+            
+            <!-- Active Captures -->
+            <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                <div style="font-size: 20px;">🔴</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Captures</div>
+                <div id="capture-count" style="font-size: 16px; color: #e74c3c; margin-top: 3px;">
+                    0 active
+                </div>
+            </div>
+            
         </div>
     </div>
     """
@@ -307,7 +375,17 @@ def create_config_panel(data_manager):
         sizing_mode="stretch_width"
     )
     
-    return panel
+    # Return both panel and widget references
+    config_widgets = {
+        'device_select': device_select,
+        'internet_toggle': internet_toggle,
+        'capture_toggle': capture_toggle,
+        'logging_select': logging_select,
+        'apply_button': apply_button,
+        'reload_button': reload_button
+    }
+    
+    return panel, config_widgets
 
 
 def create_ssh_helper_panel():
@@ -357,3 +435,30 @@ def create_ssh_helper_panel():
     """
     
     return Div(text=ssh_commands, sizing_mode="stretch_width")
+
+
+def create_log_viewer_panel():
+    """Live log viewer showing recent events and alerts."""
+    
+    log_viewer = PreText(
+        text="Loading logs...",
+        width=800,
+        height=400,
+        styles={
+            'background-color': '#1e1e1e',
+            'color': '#d4d4d4',
+            'font-family': 'Consolas, Monaco, monospace',
+            'font-size': '11px',
+            'padding': '10px',
+            'border-radius': '5px',
+            'overflow': 'auto'
+        }
+    )
+    
+    panel = column(
+        Div(text="<h2>📋 Live Logs</h2>"),
+        log_viewer,
+        sizing_mode="stretch_width"
+    )
+    
+    return panel, log_viewer

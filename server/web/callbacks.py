@@ -68,8 +68,15 @@ def setup_callbacks(doc, data_manager):
             # Update device grid
             doc.device_grid.text = cards_html
             
-            # TODO: Update config panel device dropdown dynamically
-            # (requires storing reference to device_select widget)
+            # Update config panel device dropdown dynamically
+            if hasattr(doc, 'device_select'):
+                current_options = [f"{d['device_id']} ({d['hostname']})" for _, d in devices_df.iterrows()]
+                if doc.device_select.options != current_options:
+                    current_value = doc.device_select.value
+                    doc.device_select.options = current_options
+                    # Keep current selection if still valid
+                    if current_value not in current_options and current_options:
+                        doc.device_select.value = current_options[0]
             
             logger.debug(f"Updated {len(devices_df)} devices")
         
@@ -166,33 +173,121 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error updating logs: {e}")
     
+    def update_log_viewer():
+        """Update log viewer panel (every 2 seconds)."""
+        try:
+            if hasattr(doc, 'log_viewer'):
+                logs = data_manager.get_recent_logs(max_lines=100)
+                
+                # Format log entries for terminal-style display
+                log_lines = []
+                for entry in logs:
+                    ts = entry.get('timestamp', '')
+                    level = entry.get('level', 'info').upper()
+                    device_id = entry.get('device_id', 'system')
+                    message = entry.get('message', '')
+                    
+                    # Color codes based on level
+                    level_color = {
+                        'ERROR': '\x1b[31m',   # Red
+                        'WARNING': '\x1b[33m',  # Yellow
+                        'INFO': '\x1b[32m',     # Green
+                    }.get(level, '')
+                    reset = '\x1b[0m' if level_color else ''
+                    
+                    log_lines.append(f"{ts} [{level_color}{level:8s}{reset}] {device_id:20s} {message}")
+                
+                doc.log_viewer.text = '\n'.join(log_lines[-100:])
+        
+        except Exception as e:
+            logger.error(f"Error updating log viewer: {e}")
+    
     def update_system_status():
         """Update system status indicators (every 5 seconds)."""
         try:
+            # Get all status information
+            wifi_status = data_manager.get_wifi_ap_status()
+            eth_status = data_manager.get_interface_status('eth0')
+            wlan_status = data_manager.get_interface_status(wifi_status.get('interface', 'wlan0'))
+            sys_stats = data_manager.get_system_stats()
             capture_status = data_manager.get_capture_status_all()
+            
             active_captures = sum(1 for s in capture_status.values() if s['active'])
             
-            # TODO: Check hostapd, nftables status, disk usage
-            # For now, placeholder values
+            wifi_icon = '🟢' if wifi_status.get('running') else '🔴'
+            eth_icon = '🟢' if eth_status.get('up') else '🔴'
+            wlan_icon = '🟢' if wlan_status.get('up') else '🔴'
             
             status_html = f"""
-            <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; 
-                        display: flex; justify-content: space-around; margin-bottom: 20px;">
-                <div style="text-align: center;">
-                    <div style="font-size: 24px;">🟢</div>
-                    <div style="font-size: 12px;">hostapd</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 24px;">🟢</div>
-                    <div style="font-size: 12px;">nftables</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 20px; font-weight: bold;">{active_captures}</div>
-                    <div style="font-size: 12px;">Active Captures</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 20px; font-weight: bold;">--</div>
-                    <div style="font-size: 12px;">Disk Free</div>
+            <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    
+                    <!-- WiFi AP Status -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 24px;">{wifi_icon}</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">WiFi AP</div>
+                        <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                            {wifi_status.get('ssid', 'Not configured')}
+                        </div>
+                        <div style="font-size: 12px; color: #3498db; margin-top: 3px;">
+                            {wifi_status.get('clients', 0)} clients
+                        </div>
+                    </div>
+                    
+                    <!-- Ethernet Status -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 24px;">{eth_icon}</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Ethernet</div>
+                        <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                            {eth_status.get('ip', 'No IP')}
+                        </div>
+                        <div style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                            ↓{eth_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{eth_status.get('tx_bytes', 0) // (1024*1024)}MB
+                        </div>
+                    </div>
+                    
+                    <!-- WLAN Interface -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 24px;">{wlan_icon}</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">wlan0</div>
+                        <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
+                            {wlan_status.get('ip', 'No IP')}
+                        </div>
+                        <div style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                            ↓{wlan_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{wlan_status.get('tx_bytes', 0) // (1024*1024)}MB
+                        </div>
+                    </div>
+                    
+                    <!-- System Resources -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 20px;">💾</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Storage</div>
+                        <div style="font-size: 16px; color: #2ecc71; margin-top: 3px;">
+                            {sys_stats.get('disk_free_gb', 0)}GB free
+                        </div>
+                        <div style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
+                            RAM: {sys_stats.get('mem_used_mb', 0)}/{sys_stats.get('mem_total_mb', 0)}MB
+                        </div>
+                    </div>
+                    
+                    <!-- Uptime -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 20px;">⏱️</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Uptime</div>
+                        <div style="font-size: 16px; color: #f39c12; margin-top: 3px;">
+                            {sys_stats.get('uptime_hours', 0)}h
+                        </div>
+                    </div>
+                    
+                    <!-- Active Captures -->
+                    <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
+                        <div style="font-size: 20px;">🔴</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Captures</div>
+                        <div style="font-size: 16px; color: #e74c3c; margin-top: 3px;">
+                            {active_captures} active
+                        </div>
+                    </div>
+                    
                 </div>
             </div>
             """
@@ -207,8 +302,7 @@ def setup_callbacks(doc, data_manager):
     doc.add_periodic_callback(update_devices, 2000)      # 2 seconds
     doc.add_periodic_callback(update_traffic, 1000)      # 1 second
     doc.add_periodic_callback(update_connections, 3000)  # 3 seconds
-    doc.add_periodic_callback(update_logs, 1000)         # 1 second
-    doc.add_periodic_callback(update_system_status, 5000)  # 5 seconds
+    doc.add_periodic_callback(update_logs, 1000)         # 1 second    doc.add_periodic_callback(update_log_viewer, 2000)   # 2 seconds    doc.add_periodic_callback(update_system_status, 5000)  # 5 seconds
     
     # ── Button Click Handlers ───────────────────────────────────────────────
     
