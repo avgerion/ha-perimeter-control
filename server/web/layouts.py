@@ -9,10 +9,12 @@ from datetime import datetime
 
 from bokeh.layouts import column, row
 from bokeh.models import (
-    Div, Button, Select, Toggle, DataTable, TableColumn, 
-    ColumnDataSource, DateFormatter, PreText, HoverTool, RangeTool, CustomJS, Range1d
+    Div, Button, Select, Toggle, DataTable, TableColumn,
+    ColumnDataSource, DateFormatter, NumberFormatter, PreText,
+    HoverTool, RangeTool, CustomJS, Range1d, FactorRange, LinearColorMapper
 )
 from bokeh.plotting import figure
+from bokeh.transform import linear_cmap
 
 logger = logging.getLogger('isolator.layouts')
 
@@ -573,14 +575,16 @@ def create_ble_viewer_panel():
     
     # DEBUG TEST BUTTON
     ble_test_button = Button(
-        label="TEST",
-        button_type="success",
-        width=80
+        label="🗑️ Clear Scan",
+        button_type="default",
+        width=110
     )
-    
+
     ble_test_status = Div(
-        text="<p>Test button not clicked</p>",
-        width=300
+        text="",
+        width=0,
+        height=0,
+        visible=False
     )
     
     ble_scan_stop_button = Button(
@@ -601,26 +605,62 @@ def create_ble_viewer_panel():
         'name': [],
         'last_seen': [],
         'count': [],
+        'rssi': [],
+        'tx_power': [],
+        'phy': [],
         'selected': []
     })
-    
+
     ble_scan_columns = [
-        TableColumn(field='name', title='Device Name', width=200),
-        TableColumn(field='mac', title='MAC Address', width=150),
-        TableColumn(field='last_seen', title='Last Seen', width=150),
-        TableColumn(field='count', title='Count', width=80)
+        TableColumn(field='name', title='Device Name', width=175),
+        TableColumn(field='mac', title='MAC Address', width=135),
+        TableColumn(field='rssi', title='RSSI (dBm)', width=85,
+                    formatter=NumberFormatter(format='0')),
+        TableColumn(field='phy', title='PHY', width=65),
+        TableColumn(field='last_seen', title='Last Seen', width=90),
+        TableColumn(field='count', title='Pkts', width=50),
     ]
-    
+
     ble_scan_table = DataTable(
         source=ble_scan_source,
         columns=ble_scan_columns,
         width=900,
-        height=250,
+        height=220,
         sizing_mode="stretch_width",
         reorderable=False,
         selectable='checkbox',
         index_position=None
     )
+
+    # ── RSSI bar chart ──────────────────────────────────────────────
+    # Palette: red (weak) → green (strong)
+    _rssi_palette = ["#e74c3c", "#e67e22", "#f1c40f", "#27ae60"]
+
+    ble_rssi_plot = figure(
+        title="Signal Strength per Device",
+        y_range=FactorRange(factors=[]),
+        x_range=(-105, -20),
+        height=220,
+        toolbar_location=None,
+        sizing_mode="stretch_width",
+    )
+    ble_rssi_plot.hbar(
+        y='name',
+        right='rssi',
+        left=-105,
+        height=0.6,
+        source=ble_scan_source,
+        fill_color=linear_cmap('rssi', _rssi_palette, low=-100, high=-40),
+        line_color=None,
+    )
+    ble_rssi_plot.xaxis.axis_label = "RSSI (dBm)"
+    ble_rssi_plot.ygrid.grid_line_color = None
+    ble_rssi_plot.add_tools(HoverTool(tooltips=[
+        ("Device", "@name"),
+        ("MAC",    "@mac"),
+        ("RSSI",   "@rssi dBm"),
+        ("PHY",    "@phy"),
+    ]))
     
     ble_scan_info = Div(
         text="""<p style='color: #7f8c8d; font-size: 12px;'>
@@ -634,10 +674,9 @@ def create_ble_viewer_panel():
     
     scan_controls = row(
         ble_scan_button,
-        ble_test_button,
         ble_scan_stop_button,
+        ble_test_button,
         ble_scan_status,
-        ble_test_status,
         sizing_mode="stretch_width"
     )
     
@@ -817,6 +856,7 @@ def create_ble_viewer_panel():
         ble_scan_info,
         scan_controls,
         ble_scan_table,
+        ble_rssi_plot,
         
         # Stage 2: Capture
         Div(text="<h3 style='margin-top: 30px;'>Step 2: Targeted Capture</h3>"),
@@ -844,7 +884,8 @@ def create_ble_viewer_panel():
         'ble_scan_status': ble_scan_status,
         'ble_scan_table': ble_scan_table,
         'ble_scan_source': ble_scan_source,
-        
+        'ble_rssi_plot': ble_rssi_plot,
+
         # Stage 2: Capture widgets
         'ble_selected_device': ble_selected_device,
         'ble_capture_button': ble_capture_button,

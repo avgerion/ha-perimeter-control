@@ -10,6 +10,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $localDashboard = Join-Path $root "server/web/dashboard.py"
 $localLayouts = Join-Path $root "server/web/layouts.py"
 $localCallbacks = Join-Path $root "server/web/callbacks.py"
+$localDataSources = Join-Path $root "server/web/data_sources.py"
+$localBleScanner = Join-Path $root "scripts/ble-scanner-v2.py"
+$localBleSniffer = Join-Path $root "scripts/ble-sniffer.py"
+$localBleDebug = Join-Path $root "scripts/ble-debug.sh"
 
 function Assert-LastExitCode([string]$step) {
     if ($LASTEXITCODE -ne 0) {
@@ -17,14 +21,8 @@ function Assert-LastExitCode([string]$step) {
     }
 }
 
-if (-not (Test-Path $localDashboard)) {
-    throw "Missing local file: $localDashboard"
-}
-if (-not (Test-Path $localLayouts)) {
-    throw "Missing local file: $localLayouts"
-}
-if (-not (Test-Path $localCallbacks)) {
-    throw "Missing local file: $localCallbacks"
+foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer)) {
+    if (-not (Test-Path $f)) { throw "Missing local file: $f" }
 }
 
 Write-Host "Resolving active service code path from systemd ExecStart..."
@@ -47,23 +45,23 @@ ssh -i $key $remote $pyCheckCmd
 Assert-LastExitCode "Preflight interpreter check"
 
 Write-Host "Uploading local files to /tmp on remote..."
-scp -i $key $localDashboard "${remote}:/tmp/dashboard.py" | Out-Null
-Assert-LastExitCode "Upload dashboard.py"
-scp -i $key $localLayouts "${remote}:/tmp/layouts.py" | Out-Null
-Assert-LastExitCode "Upload layouts.py"
-scp -i $key $localCallbacks "${remote}:/tmp/callbacks.py" | Out-Null
-Assert-LastExitCode "Upload callbacks.py"
+scp -i $key $localDashboard    "${remote}:/tmp/dashboard.py"    | Out-Null; Assert-LastExitCode "Upload dashboard.py"
+scp -i $key $localLayouts     "${remote}:/tmp/layouts.py"     | Out-Null; Assert-LastExitCode "Upload layouts.py"
+scp -i $key $localCallbacks   "${remote}:/tmp/callbacks.py"   | Out-Null; Assert-LastExitCode "Upload callbacks.py"
+scp -i $key $localDataSources "${remote}:/tmp/data_sources.py" | Out-Null; Assert-LastExitCode "Upload data_sources.py"
+scp -i $key $localBleScanner  "${remote}:/tmp/ble-scanner-v2.py" | Out-Null; Assert-LastExitCode "Upload ble-scanner-v2.py"
+scp -i $key $localBleSniffer  "${remote}:/tmp/ble-sniffer.py"   | Out-Null; Assert-LastExitCode "Upload ble-sniffer.py"
+scp -i $key $localBleDebug    "${remote}:/tmp/ble-debug.sh"     | Out-Null; Assert-LastExitCode "Upload ble-debug.sh"
 
 $backupTag = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupDir = "/tmp/isolator-dashboard-backup-$backupTag"
 Write-Host "Creating remote backup in $backupDir ..."
-$backupCmd = "set -e; sudo mkdir -p $backupDir; if [ -f $activeDir/dashboard.py ]; then sudo cp -a $activeDir/dashboard.py $backupDir/dashboard.py; fi; if [ -f $activeDir/layouts.py ]; then sudo cp -a $activeDir/layouts.py $backupDir/layouts.py; fi; if [ -f $activeDir/callbacks.py ]; then sudo cp -a $activeDir/callbacks.py $backupDir/callbacks.py; fi; sudo ls -l --time-style=long-iso $backupDir || true"
+$backupCmd = "set -e; sudo mkdir -p $backupDir; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $activeDir/\$f ] && sudo cp -a $activeDir/\$f $backupDir/\$f || true; done; [ -f /opt/isolator/scripts/ble-scanner-v2.py ] && sudo cp -a /opt/isolator/scripts/ble-scanner-v2.py $backupDir/ble-scanner-v2.py || true; [ -f /opt/isolator/scripts/ble-sniffer.py ] && sudo cp -a /opt/isolator/scripts/ble-sniffer.py $backupDir/ble-sniffer.py || true; sudo ls -l --time-style=long-iso $backupDir || true"
 ssh -i $key $remote $backupCmd
 Assert-LastExitCode "Create remote backup"
 
 Write-Host "Installing files into active directory..."
-$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo ls -l --time-style=long-iso $activeDir/layouts.py $activeDir/callbacks.py"
-$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py"
+$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo install -o root -g root -m 0644 /tmp/data_sources.py $activeDir/data_sources.py; sudo install -o root -g root -m 0755 /tmp/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py; sudo install -o root -g root -m 0755 /tmp/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py; sudo install -o root -g root -m 0755 /tmp/ble-debug.sh /opt/isolator/scripts/ble-debug.sh; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py $activeDir/data_sources.py /opt/isolator/scripts/ble-scanner-v2.py /opt/isolator/scripts/ble-sniffer.py"
 ssh -i $key $remote $installCmd
 Assert-LastExitCode "Install files"
 
@@ -85,7 +83,7 @@ if (-not $NoRestart) {
 
     if (-not $serviceHealthy) {
         Write-Host "Service failed health check. Rolling back previous files..."
-        $rollbackCmd = "set -e; if [ -f $backupDir/dashboard.py ]; then sudo install -o root -g root -m 0644 $backupDir/dashboard.py $activeDir/dashboard.py; fi; if [ -f $backupDir/layouts.py ]; then sudo install -o root -g root -m 0644 $backupDir/layouts.py $activeDir/layouts.py; fi; if [ -f $backupDir/callbacks.py ]; then sudo install -o root -g root -m 0644 $backupDir/callbacks.py $activeDir/callbacks.py; fi; sudo systemctl restart isolator-dashboard"
+        $rollbackCmd = "set -e; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $backupDir/\$f ] && sudo install -o root -g root -m 0644 $backupDir/\$f $activeDir/\$f || true; done; [ -f $backupDir/ble-scanner-v2.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py || true; [ -f $backupDir/ble-sniffer.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py || true; sudo systemctl restart isolator-dashboard"
         ssh -i $key $remote $rollbackCmd
         Assert-LastExitCode "Rollback and restart isolator-dashboard"
 
@@ -95,7 +93,8 @@ if (-not $NoRestart) {
 
         throw "Deploy failed health check; rollback was applied successfully."
     }
-} else {
+}
+else {
     Write-Host "Skipping restart (-NoRestart)."
 }
 

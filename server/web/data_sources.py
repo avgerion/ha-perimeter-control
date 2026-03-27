@@ -30,6 +30,7 @@ class DataManager:
         self.device_cache = {}
         self.traffic_buffer = defaultdict(list)  # device_id -> [(timestamp, bytes_in, bytes_out)]
         self.connection_cache = []
+        self._ble_scanner_process = None  # Popen handle for the running scanner
         
     def _load_config(self) -> Dict[str, Any]:
         """Load isolator.conf.yaml."""
@@ -755,15 +756,17 @@ class DataManager:
         # Return newest first, limited to max_events
         return events[-max_events:][::-1]
     
-    def start_ble_capture(self, target_name: str = None, target_mac: str = None, duration: int = 300) -> Dict[str, Any]:
+    def start_ble_capture(self, target_name: str = None, target_mac: str = None,
+                           duration: int = None, debug: bool = False) -> Dict[str, Any]:
         """
         Start a new BLE capture session.
-        
+
         Args:
             target_name: Target device name to filter (optional)
-            target_mac: Target device MAC address to filter (optional)
-            duration: Capture duration in seconds (default: 300 = 5 minutes)
-        
+            target_mac:  Target device MAC address to filter (optional)
+            duration:    Capture duration in seconds (None = run until stopped)
+            debug:       Pass --debug to ble-sniffer.py for verbose raw-line logging
+
         Returns:
             Dict with 'success' (bool), 'message' (str), 'pid' (int if success)
         """
@@ -775,10 +778,11 @@ class DataManager:
                     'success': False,
                     'message': f'BLE capture already running (PID {status["pid"]}). Stop it first.'
                 }
-            
-            # Build command
-            cmd = ['sudo', 'python3', '/opt/isolator/scripts/ble-sniffer.py']
-            
+
+            # Use the venv Python so all deps are available
+            py = '/opt/isolator/venv/bin/python3'
+            cmd = ['sudo', py, '/opt/isolator/scripts/ble-sniffer.py']
+
             if target_name:
                 cmd.extend(['--target', target_name])
             elif target_mac:
@@ -788,44 +792,84 @@ class DataManager:
                     'success': False,
                     'message': 'Either target_name or target_mac must be specified'
                 }
-            
+
             if duration:
                 cmd.extend(['--duration', str(duration)])
-            
-            # Start capture in background
+
+            # Always run in debug mode so .raw.log gets everything
+            cmd.append('--debug')
+
+            logger.info(f"Starting BLE capture: {' '.join(cmd)}")
+
+            # Redirect stdout/stderr to /dev/null for the launcher process;
+            # ble-sniffer.py writes its own log files and handles its own output.
             result = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 start_new_session=True
             )
-            
-            # Give it a moment to start
+
+            # Give it a moment to start (btmon + scan activation takes ~1-2s)
             import time
-            time.sleep(1)
-            
-            # Check if still running
+            time.sleep(2)
+
             if result.poll() is None:
                 target = target_name or target_mac
-                logger.info(f"Started BLE capture for {target} (PID {result.pid})")
+                logger.info(f"BLE capture running for {target} (PID {result.pid})")
                 return {
                     'success': True,
-                    'message': f'BLE capture started for {target} (duration: {duration}s)',
+                    'message': (
+                        f'BLE capture started for {target}. '
+                        'Raw output: /var/log/isolator/ble/*.raw.log'
+                    ),
                     'pid': result.pid
                 }
             else:
-                stderr = result.stderr.read().decode('utf-8', errors='ignore')
+                rc = result.returncode
+                # Try to get a clue from the sniffer's own log
+                log_tail = self.get_ble_sniffer_log_tail(n=10)
+                hint = '  |  '.join(log_tail) if log_tail else 'no log output yet'
                 return {
                     'success': False,
-                    'message': f'BLE capture failed to start: {stderr[:200]}'
+                    'message': f'BLE capture exited immediately (rc={rc}). Log tail: {hint[:300]}'
                 }
-                
+
         except Exception as e:
             logger.error(f"Failed to start BLE capture: {e}")
             return {
                 'success': False,
                 'message': f'Error starting BLE capture: {e}'
             }
+
+    def get_ble_sniffer_log_tail(self, n: int = 20) -> List[str]:
+        """
+        Return the last N lines from the most recent BLE sniffer log file.
+        Checks both .raw.log (all btmon output) and .log (human-readable).
+        Useful for surfacing errors to the dashboard when capture produces no events.
+        """
+        ble_log_dir = Path('/var/log/isolator/ble')
+        try:
+            if not ble_log_dir.exists():
+                return []
+            # Prefer the raw log (most diagnostic detail)
+            for pattern in ('*.raw.log', '*.log'):
+                files = sorted(
+                    ble_log_dir.glob(pattern),
+                    key=lambda f: f.stat().st_mtime,
+                    reverse=True
+                )
+                if files:
+                    result = subprocess.run(
+                        ['tail', '-n', str(n), str(files[0])],
+                        capture_output=True, text=True, timeout=2
+                    )
+                    lines = [l for l in result.stdout.splitlines() if l.strip()]
+                    if lines:
+                        return lines
+        except Exception as e:
+            logger.debug(f"get_ble_sniffer_log_tail: {e}")
+        return []
     
     def stop_ble_capture(self) -> Dict[str, Any]:
         """
@@ -893,27 +937,33 @@ class DataManager:
                     
                     # Parse target from command line
                     target = None
-                    if '--target ' in cmdline:
-                        target = cmdline.split('--target ')[1].split()[0]
-                    elif '--target-mac ' in cmdline:
+                    if '--target-mac ' in cmdline:
                         target = cmdline.split('--target-mac ')[1].split()[0]
-                    
+                    elif '--target ' in cmdline:
+                        target = cmdline.split('--target ')[1].split()[0]
+
+                    # Include a small log tail for dashboard debugging
+                    log_tail = self.get_ble_sniffer_log_tail(n=5)
+
                     return {
                         'active': True,
                         'pid': pid,
-                        'target': target
+                        'target': target,
+                        'log_tail': log_tail,
                     }
-                except:
+                except Exception:
                     return {
                         'active': True,
                         'pid': pid,
-                        'target': None
+                        'target': None,
+                        'log_tail': [],
                     }
             else:
                 return {
                     'active': False,
                     'pid': None,
-                    'target': None
+                    'target': None,
+                    'log_tail': [],
                 }
                 
         except Exception as e:
@@ -921,7 +971,8 @@ class DataManager:
             return {
                 'active': False,
                 'pid': None,
-                'target': None
+                'target': None,
+                'log_tail': [],
             }
     
     def start_ble_scan(self) -> Dict[str, Any]:
@@ -940,13 +991,15 @@ class DataManager:
                     'message': f'BLE scan already running (PID {status["pid"]}). Stop it first.'
                 }
             
-            # Start scanner v2 in background (uses bluetoothctl instead of hcitool)
+            # Start scanner v2 in background using venv python (bleak is venv-only)
             result = subprocess.Popen(
-                ['sudo', 'python3', '/opt/isolator/scripts/ble-scanner-v2.py'],
+                ['sudo', '/opt/isolator/venv/bin/python3',
+                 '/opt/isolator/scripts/ble-scanner-v2.py', '--duration', '600'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True
             )
+            self._ble_scanner_process = result
             
             # Give it a moment to start
             import time
@@ -979,7 +1032,7 @@ class DataManager:
     def stop_ble_scan(self) -> Dict[str, Any]:
         """
         Stop active BLE device scan.
-        
+
         Returns:
             Dict with 'success' (bool) and 'message' (str)
         """
@@ -990,21 +1043,35 @@ class DataManager:
                     'success': False,
                     'message': 'No active BLE scan to stop'
                 }
-            
-            # Kill the ble-scanner-v2 process
-            result = subprocess.run(
-                ['sudo', 'pkill', '-f', 'ble-scanner-v2.py'],
-                capture_output=True,
-                text=True,
-                timeout=5
+
+            # 1) Terminate via stored handle (kills the sudo parent)
+            if self._ble_scanner_process is not None:
+                try:
+                    self._ble_scanner_process.terminate()
+                except Exception:
+                    pass
+
+            # 2) SIGTERM the python child process by name
+            subprocess.run(
+                ['sudo', 'pkill', '-TERM', '-f', 'ble-scanner-v2.py'],
+                capture_output=True, timeout=3
             )
-            
+
+            # 3) Give it a moment to exit cleanly, then SIGKILL anything left
+            import time as _time
+            _time.sleep(1)
+            subprocess.run(
+                ['sudo', 'pkill', '-KILL', '-f', 'ble-scanner-v2.py'],
+                capture_output=True, timeout=3
+            )
+
+            self._ble_scanner_process = None
             logger.info("Stopped BLE scan")
             return {
                 'success': True,
                 'message': 'BLE scan stopped'
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to stop BLE scan: {e}")
             return {

@@ -455,20 +455,22 @@ def setup_callbacks(doc, data_manager):
                             pass
                     
                     doc.ble_scan_source.data = {
-                        'mac': [d['mac'] for d in devices],
-                        'name': [d['name'] for d in devices],
-                        'last_seen': [d['last_seen'] for d in devices],
-                        'count': [str(d['count']) for d in devices],
+                        'mac':      [d['mac'] for d in devices],
+                        'name':     [d['name'] for d in devices],
+                        'last_seen':[d['last_seen'] for d in devices],
+                        'count':    [str(d['count']) for d in devices],
+                        'rssi':     [d.get('rssi') or 0 for d in devices],
+                        'tx_power': [d.get('tx_power') for d in devices],
+                        'phy':      [d.get('phy', 'LE 1M') for d in devices],
                         'selected': [False] * len(devices)
                     }
+                    doc.ble_rssi_plot.y_range.factors = [d['name'] for d in devices]
                 else:
                     doc.ble_scan_source.data = {
-                        'mac': [],
-                        'name': [],
-                        'last_seen': [],
-                        'count': [],
-                        'selected': []
+                        'mac': [], 'name': [], 'last_seen': [], 'count': [],
+                        'rssi': [], 'tx_power': [], 'phy': [], 'selected': []
                     }
+                    doc.ble_rssi_plot.y_range.factors = []
             else:
                 doc.ble_scan_status.text = "<p style='color: #7f8c8d;'>⚪ Not scanning - Click 'Start Scan' to discover devices</p>"
                 doc.ble_scan_button.disabled = False
@@ -500,11 +502,24 @@ def setup_callbacks(doc, data_manager):
             capture_status = data_manager.get_ble_capture_status()
             if capture_status['active']:
                 target = capture_status['target'] or 'Unknown'
-                doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>🔴 Capturing {target} (PID {capture_status['pid']}) - Running until stopped</p>"
+                log_tail = capture_status.get('log_tail', [])
+                tail_html = ''
+                if log_tail:
+                    # Show last 3 lines of sniffer log as a debug hint
+                    tail_lines = '<br>'.join(
+                        f"<code style='font-size:10px;'>{l[-120:]}</code>"
+                        for l in log_tail[-3:]
+                    )
+                    tail_html = f"<div style='margin-top:4px;color:#aaa;'>{tail_lines}</div>"
+                doc.ble_capture_status.text = (
+                    f"<p style='color: #e74c3c;'>🔴 Capturing {target} "
+                    f"(PID {capture_status['pid']}) — running until stopped</p>"
+                    f"{tail_html}"
+                )
                 doc.ble_capture_button.disabled = True
                 doc.ble_capture_stop_button.disabled = False
             else:
-                doc.ble_capture_status.text = "<p style='color: #7f8c8d;'>⚪ Not capturing - Select a device and click 'Start Capture'</p>"
+                doc.ble_capture_status.text = "<p style='color: #7f8c8d;'>⚪ Not capturing — select a device and click 'Start Capture'</p>"
                 doc.ble_capture_stop_button.disabled = True
             
             # ═══════════════════════════════════════════════════════════════
@@ -557,14 +572,20 @@ def setup_callbacks(doc, data_manager):
                 events = [evt for evt in events if evt.get('type') == event_filter]
             
             if not events:
+                # Show a diagnostic hint from the sniffer log
+                log_tail = data_manager.get_ble_sniffer_log_tail(n=5)
+                hint = ' | '.join(log_tail[-3:]) if log_tail else 'No log output yet — check /var/log/isolator/ble/*.raw.log on the Pi'
                 doc.ble_source.data = {
                     'timestamp': [0],
-                    'time_str': [f'No {event_filter} events found in {capture_file}'],
+                    'time_str': [
+                        f'No {event_filter} events in {capture_file}  '
+                        f'(raw lines in sniffer log: run ble-debug.sh on Pi)'
+                    ],
                     'type': [''],
                     'address': [''],
                     'name': [''],
                     'handle': [''],
-                    'info': ['']
+                    'info': [hint[:200]]
                 }
                 now_ms = datetime.now().timestamp() * 1000
                 doc.ble_timeline_source.data = {
@@ -800,16 +821,25 @@ def setup_callbacks(doc, data_manager):
             logger.error(f"Error stopping BLE capture: {e}")
             doc.ble_capture_status.text = f"<p style='color: #e74c3c;'>⚠️ Error: {e}</p>"
     
-    # TEST BUTTON - Simple callback to verify buttons work
-    test_click_count = [0]  # Mutable to allow modification in closure
-    
-    def on_test_button_click(event=None):
-        """Minimal test callback."""
-        test_click_count[0] += 1
-        import sys
-        print(f"===== TEST BUTTON CLICKED {test_click_count[0]} =====", file=sys.stderr, flush=True)
-        logger.info(f"===== TEST button clicked {test_click_count[0]} times =====")
-        doc.ble_test_status.text = f"<p style='color: green;'>✓ Test button clicked {test_click_count[0]} times at {datetime.now().strftime('%H:%M:%S')}</p>"
+    def on_ble_scan_clear(event=None):
+        """Clear displayed scan results without stopping an active scan."""
+        empty = {
+            'mac': [], 'name': [], 'last_seen': [], 'count': [],
+            'rssi': [], 'tx_power': [], 'phy': [], 'selected': []
+        }
+        doc.ble_scan_source.data = empty
+        doc.ble_rssi_plot.y_range.factors = []
+        # Also delete all existing scan JSON files so get_ble_scan_devices
+        # doesn't reload stale results on the next poll tick.
+        try:
+            import glob as _glob
+            for f in _glob.glob('/var/log/isolator/ble/scan_*.json'):
+                import os as _os
+                _os.remove(f)
+        except Exception as _e:
+            logger.warning(f"Clear scan: could not remove scan files: {_e}")
+        doc.ble_scan_status.text = "<p style='color: #7f8c8d;'>🗑️ Scan results cleared</p>"
+        logger.info("BLE scan results cleared")
     
     # Register button handlers
     session_id = None
@@ -819,19 +849,11 @@ def setup_callbacks(doc, data_manager):
     
     event_logger_refs = []
 
-    # Test button first
+    # Clear Scan button (repurposed from TEST)
     if hasattr(doc, 'ble_test_button'):
-        logger.info(f"  - Registering ble_test_button callback model_id={doc.ble_test_button.id}")
-        doc.ble_test_button.on_click(on_test_button_click)
+        logger.info(f"  - Registering ble_test_button (Clear Scan) callback model_id={doc.ble_test_button.id}")
+        doc.ble_test_button.on_click(on_ble_scan_clear)
         doc.ble_test_button._update_event_callbacks()
-        logger.info(f"  - ble_test_button subscribed_events={list(doc.ble_test_button.subscribed_events)}")
-
-        def _log_test_event(event):
-            logger.info(f"ButtonClick event received: ble_test_button session={session_id} model_id={doc.ble_test_button.id}")
-
-        doc.ble_test_button.on_event(ButtonClick, _log_test_event)
-        doc.ble_test_button._update_event_callbacks()
-        event_logger_refs.append(_log_test_event)
     else:
         logger.warning("  - ble_test_button NOT FOUND in doc")
     
@@ -914,7 +936,7 @@ def setup_callbacks(doc, data_manager):
     # Keep strong references to callback closures for the life of this session.
     # Some callback registries can hold weak refs, which can drop local closures.
     callback_refs = [
-        on_test_button_click,
+        on_ble_scan_clear,
         on_ble_scan_start,
         on_ble_scan_stop,
         on_ble_capture_start,

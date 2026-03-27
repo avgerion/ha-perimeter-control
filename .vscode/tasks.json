@@ -1,0 +1,96 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Deploy Dashboard",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/deploy-dashboard-web.ps1"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "tab": "Deploy"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy Dashboard (No Restart)",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/deploy-dashboard-web.ps1", "-NoRestart"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "tab": "Deploy"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Open SSH Tunnel (port ${config:isolator.dashboard.port})",
+      "type": "shell",
+      "command": "ssh",
+      "args": [
+        "-i", "${config:isolator.remote.sshKey}",
+        "-N",
+        "-L", "${config:isolator.dashboard.port}:localhost:${config:isolator.dashboard.port}",
+        "${config:isolator.remote.user}@${config:isolator.remote.host}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "tab": "SSH Tunnel"
+      },
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^$",
+          "endsPattern": "^$"
+        }
+      }
+    },
+    {
+      "label": "Open Dashboard in Browser",
+      "type": "shell",
+      "command": "Start-Process",
+      "args": ["http://localhost:${config:isolator.dashboard.port}"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tunnel + Open Browser",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Open SSH Tunnel (port ${config:isolator.dashboard.port})",
+        "Open Dashboard in Browser"
+      ],
+      "group": "none",
+      "problemMatcher": []
+    }
+  ]
+}

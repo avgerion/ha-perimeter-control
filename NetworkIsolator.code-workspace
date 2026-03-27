@@ -5,6 +5,10 @@
     }
   ],
   "settings": {
+    "isolator.remote.user": "paul",
+    "isolator.remote.host": "192.168.69.11",
+    "isolator.remote.sshKey": "./y",
+    "isolator.dashboard.port": "5006",
     "files.associations": {
       "*.conf.yaml": "yaml",
       "*.nft": "plaintext"

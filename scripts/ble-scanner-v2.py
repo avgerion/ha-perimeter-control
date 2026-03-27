@@ -60,9 +60,14 @@ class BLEScannerV2:
         mac = device.address.upper()
         name = device.name or f"Unknown_{mac.replace(':', '')[-6:]}"
         rssi = adv.rssi
+        tx_power = adv.tx_power  # None if not advertised by the device
+
+        # PHY is not exposed through standard BlueZ D-Bus discovery properties;
+        # default to LE 1M (correct for advertising PHY on BCM43xx and most peripherals).
+        phy = "LE 1M"
 
         if mac not in self.devices:
-            logger.info(f"Discovered: {name} ({mac})  RSSI={rssi}")
+            logger.info(f"Discovered: {name} ({mac})  RSSI={rssi}  PHY={phy}")
             self.devices[mac] = {
                 'mac': mac,
                 'name': name,
@@ -70,14 +75,21 @@ class BLEScannerV2:
                 'last_seen': datetime.now().isoformat(),
                 'count': 1,
                 'rssi': rssi,
+                'tx_power': tx_power,
+                'phy': phy,
             }
+            # Write immediately so the dashboard can see new devices in real time
+            self._write_devices()
         else:
             self.devices[mac]['last_seen'] = datetime.now().isoformat()
             self.devices[mac]['count'] += 1
             self.devices[mac]['rssi'] = rssi
+            if tx_power is not None:
+                self.devices[mac]['tx_power'] = tx_power
             # Prefer a real name over Unknown_ placeholder
             if device.name and self.devices[mac]['name'].startswith('Unknown_'):
                 self.devices[mac]['name'] = device.name
+                self._write_devices()
 
     def _write_devices(self):
         data = {
