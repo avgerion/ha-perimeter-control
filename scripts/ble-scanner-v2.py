@@ -56,15 +56,25 @@ class BLEScannerV2:
         logger.info("BLE Scanner v2 (bleak) initialized")
         logger.info(f"Output: {self.scan_file}")
 
+    @staticmethod
+    def _serialize_adv(adv: AdvertisementData) -> dict:
+        mfr = {str(k): v.hex() for k, v in adv.manufacturer_data.items()} if adv.manufacturer_data else {}
+        svc = {k: v.hex() for k, v in adv.service_data.items()} if adv.service_data else {}
+        return {
+            'manufacturer_data': mfr,
+            'service_data':      svc,
+            'service_uuids':     list(adv.service_uuids or []),
+            'local_name':        adv.local_name,
+            'tx_power':          adv.tx_power,
+        }
+
     def _detection_callback(self, device: BLEDevice, adv: AdvertisementData):
         mac = device.address.upper()
-        name = device.name or f"Unknown_{mac.replace(':', '')[-6:]}"
+        name = device.name or adv.local_name or f"Unknown_{mac.replace(':', '')[-6:]}"
         rssi = adv.rssi
-        tx_power = adv.tx_power  # None if not advertised by the device
-
-        # PHY is not exposed through standard BlueZ D-Bus discovery properties;
-        # default to LE 1M (correct for advertising PHY on BCM43xx and most peripherals).
+        tx_power = adv.tx_power
         phy = "LE 1M"
+        adv_fields = self._serialize_adv(adv)
 
         if mac not in self.devices:
             logger.info(f"Discovered: {name} ({mac})  RSSI={rssi}  PHY={phy}")
@@ -77,19 +87,17 @@ class BLEScannerV2:
                 'rssi': rssi,
                 'tx_power': tx_power,
                 'phy': phy,
+                'adv_data': adv_fields,
             }
-            # Write immediately so the dashboard can see new devices in real time
-            self._write_devices()
         else:
             self.devices[mac]['last_seen'] = datetime.now().isoformat()
             self.devices[mac]['count'] += 1
             self.devices[mac]['rssi'] = rssi
+            self.devices[mac]['adv_data'] = adv_fields
             if tx_power is not None:
                 self.devices[mac]['tx_power'] = tx_power
-            # Prefer a real name over Unknown_ placeholder
             if device.name and self.devices[mac]['name'].startswith('Unknown_'):
                 self.devices[mac]['name'] = device.name
-                self._write_devices()
 
     def _write_devices(self):
         data = {
@@ -103,6 +111,11 @@ class BLEScannerV2:
         logger.info(f"Wrote {len(self.devices)} devices to {self.scan_file}")
 
     async def _run_async(self, duration: float):
+        # BlueZ caches discovered devices and stops emitting callbacks for
+        # already-known devices.  Restarting the scanner every CYCLE seconds
+        # forces BlueZ to flush its cache and re-report all advertisements.
+        CYCLE = 25.0
+
         stop_event = asyncio.Event()
 
         def _sig(*_):
@@ -112,16 +125,39 @@ class BLEScannerV2:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, _sig)
 
-        async with BleakScanner(
-            detection_callback=self._detection_callback,
-            scanning_mode="active",   # LE active scan (requests scan-response packets)
-        ):
-            logger.info(f"Scanning BLE for {duration}s ...")
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=duration)
-                logger.info("Scan stopped by signal.")
-            except asyncio.TimeoutError:
-                logger.info(f"Scan duration ({duration}s) elapsed.")
+        async def _periodic_write_loop():
+            while not stop_event.is_set():
+                await asyncio.sleep(5)
+                if not stop_event.is_set() and self.devices:
+                    self._write_devices()
+
+        writer_task = asyncio.create_task(_periodic_write_loop())
+
+        start = time.monotonic()
+        cycle_num = 0
+        while not stop_event.is_set():
+            elapsed = time.monotonic() - start
+            if elapsed >= duration:
+                break
+            segment = min(CYCLE, duration - elapsed)
+            cycle_num += 1
+            logger.info(f"BLE scan cycle {cycle_num} starting ({elapsed:.0f}s elapsed, {segment:.0f}s segment)")
+            async with BleakScanner(
+                detection_callback=self._detection_callback,
+                scanning_mode="active",
+            ):
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=segment)
+                    break  # stop signal
+                except asyncio.TimeoutError:
+                    pass  # segment done; restart scanner on next iteration
+
+        stop_event.set()
+        writer_task.cancel()
+        try:
+            await writer_task
+        except asyncio.CancelledError:
+            pass
 
         self._write_devices()
         logger.info(f"Scan complete: {len(self.devices)} device(s) found.")

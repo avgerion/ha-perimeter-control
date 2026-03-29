@@ -154,6 +154,9 @@ class DataManager:
             
             logger.info(f"Auto-added device: {device_id} (MAC: {mac}, IP: {ip})")
             
+            # Regenerate nftables rules so the new device gets its own log prefix chain
+            subprocess.run(['sudo', 'systemctl', 'reload', 'isolator'], timeout=10)
+            
         except Exception as e:
             logger.error(f"Failed to auto-add device {mac}: {e}")
     
@@ -1154,3 +1157,235 @@ class DataManager:
             logger.error(f"Failed to read BLE scan devices: {e}")
         
         return devices
+
+    # ──────────────────────────────────────────────────────────────────────
+    # BLE GATT Proxy (mirror server)
+    # ──────────────────────────────────────────────────────────────────────
+
+    def get_ble_profiles(self) -> List[Dict[str, Any]]:
+        """Return list of available proxy profiles (latest per slug only)."""
+        profiles_dir = Path('/var/log/isolator/ble/profiles')
+        results = []
+        try:
+            if not profiles_dir.exists():
+                return []
+            for p in sorted(profiles_dir.glob('profile_*_latest.json')):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        doc = json.load(f)
+                    target = doc.get('target', {})
+                    gatt   = doc.get('gatt', {})
+                    svc_count = len(gatt.get('services', []))
+                    results.append({
+                        'path':      str(p),
+                        'filename':  p.name,
+                        'mac':       target.get('mac', ''),
+                        'name':      target.get('name') or target.get('mac') or p.stem,
+                        'svc_count': svc_count,
+                    })
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"get_ble_profiles: {e}")
+        return results
+
+    def start_ble_profiler(
+        self,
+        target_mac: str = None,
+        target_name: str = None,
+        scan_duration: float = 15.0,
+        connect_timeout: float = 20.0,
+        no_read_values: bool = False,
+    ) -> Dict[str, Any]:
+        """Start the BLE GATT profiler to build a profile JSON for a target device."""
+        try:
+            status = self.get_ble_profiler_status()
+            if status['active']:
+                return {
+                    'success': False,
+                    'message': f'Profiler already running (PID {status["pid"]}). Stop it first.',
+                }
+            if not target_mac and not target_name:
+                return {'success': False, 'message': 'target_mac or target_name required'}
+
+            py  = '/opt/isolator/venv/bin/python3'
+            cmd = ['sudo', py, '/opt/isolator/scripts/ble-proxy-profiler.py']
+            if target_mac:
+                cmd.extend(['--target-mac', target_mac])
+            if target_name:
+                cmd.extend(['--target-name', target_name])
+            cmd.extend(['--scan-duration', str(scan_duration),
+                        '--connect-timeout', str(connect_timeout)])
+            if no_read_values:
+                cmd.append('--no-read-values')
+
+            logger.info(f'Starting BLE profiler: {" ".join(cmd)}')
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+            import time
+            time.sleep(1)
+
+            if proc.poll() is None:
+                target = target_mac or target_name
+                return {'success': True, 'message': f'Profiling {target}…', 'pid': proc.pid}
+            else:
+                return {'success': False, 'message': 'Profiler exited immediately — check Pi logs'}
+
+        except Exception as e:
+            logger.error(f'start_ble_profiler: {e}')
+            return {'success': False, 'message': f'Error: {e}'}
+
+    def stop_ble_profiler(self) -> Dict[str, Any]:
+        """Kill a running BLE profiler."""
+        try:
+            subprocess.run(
+                ['sudo', 'pkill', '-f', 'ble-proxy-profiler.py'],
+                capture_output=True, text=True, timeout=5,
+            )
+            return {'success': True, 'message': 'Profiler stopped'}
+        except Exception as e:
+            return {'success': False, 'message': f'Error: {e}'}
+
+    def get_ble_profiler_status(self) -> Dict[str, Any]:
+        """Check whether the BLE profiler is running."""
+        try:
+            r = subprocess.run(
+                ['pgrep', '-f', 'ble-proxy-profiler.py'],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                pid = int(r.stdout.strip().split()[0])
+                ps  = subprocess.run(
+                    ['ps', '-p', str(pid), '-o', 'args='],
+                    capture_output=True, text=True, timeout=2,
+                )
+                cmdline = ps.stdout.strip()
+                target = None
+                for flag in ('--target-mac ', '--target-name '):
+                    if flag in cmdline:
+                        target = cmdline.split(flag)[1].split()[0]
+                        break
+                return {'active': True, 'pid': pid, 'target': target}
+            return {'active': False, 'pid': None, 'target': None}
+        except Exception as e:
+            logger.error(f'get_ble_profiler_status: {e}')
+            return {'active': False, 'pid': None, 'target': None}
+
+    def start_ble_proxy(
+        self,
+        profile_path: str,
+        local_name: str = None,
+        reconnect_target: bool = True,
+        disconnect_on_target_loss: bool = False,
+        disconnect_on_client_loss: bool = False,
+    ) -> Dict[str, Any]:
+        """Start the BLE GATT mirror server for the given profile."""
+        try:
+            status = self.get_ble_proxy_status()
+            if status['active']:
+                return {
+                    'success': False,
+                    'message': f'Proxy already running (PID {status["pid"]}). Stop it first.',
+                }
+
+            py  = '/opt/isolator/venv/bin/python3'
+            cmd = ['sudo', py, '/opt/isolator/scripts/ble-gatt-mirror.py',
+                   '--profile', profile_path]
+            if local_name:
+                cmd.extend(['--name', local_name])
+            if not reconnect_target:
+                cmd.append('--no-reconnect-target')
+            if disconnect_on_target_loss:
+                cmd.append('--disconnect-on-target-loss')
+            if disconnect_on_client_loss:
+                cmd.append('--disconnect-on-client-loss')
+
+            logger.info(f"Starting BLE proxy: {' '.join(cmd)}")
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+            import time
+            time.sleep(2)
+
+            if proc.poll() is None:
+                logger.info(f"BLE proxy running on PID {proc.pid}")
+                return {'success': True, 'message': 'BLE proxy started', 'pid': proc.pid}
+            else:
+                tail = self.get_proxy_ops_tail(n=10)
+                hint = '  |  '.join(tail) if tail else 'no log output yet'
+                return {'success': False, 'message': f'Proxy exited immediately. Log: {hint[:300]}'}
+
+        except Exception as e:
+            logger.error(f"start_ble_proxy: {e}")
+            return {'success': False, 'message': f'Error starting proxy: {e}'}
+
+    def stop_ble_proxy(self) -> Dict[str, Any]:
+        """Stop the running BLE GATT mirror server."""
+        try:
+            status = self.get_ble_proxy_status()
+            if not status['active']:
+                return {'success': False, 'message': 'No active proxy to stop'}
+            subprocess.run(
+                ['sudo', 'pkill', '-f', 'ble-gatt-mirror.py'],
+                capture_output=True, text=True, timeout=5,
+            )
+            logger.info("Stopped BLE proxy")
+            return {'success': True, 'message': 'BLE proxy stopped'}
+        except Exception as e:
+            logger.error(f"stop_ble_proxy: {e}")
+            return {'success': False, 'message': f'Error stopping proxy: {e}'}
+
+    def get_ble_proxy_status(self) -> Dict[str, Any]:
+        """Check if the BLE GATT mirror server is running."""
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'ble-gatt-mirror.py'],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pid = int(result.stdout.strip().split()[0])
+                try:
+                    ps = subprocess.run(
+                        ['ps', '-p', str(pid), '-o', 'args='],
+                        capture_output=True, text=True, timeout=2,
+                    )
+                    cmdline = ps.stdout.strip()
+                    profile = None
+                    if '--profile ' in cmdline:
+                        profile = cmdline.split('--profile ')[1].split()[0]
+                except Exception:
+                    cmdline = ''
+                    profile = None
+                return {'active': True, 'pid': pid, 'profile': profile}
+            return {'active': False, 'pid': None, 'profile': None}
+        except Exception as e:
+            logger.error(f"get_ble_proxy_status: {e}")
+            return {'active': False, 'pid': None, 'profile': None}
+
+    def get_proxy_ops_tail(self, n: int = 20) -> List[str]:
+        """Return the last N lines from the most recent proxy ops JSONL log."""
+        proxy_dir = Path('/var/log/isolator/ble/proxy')
+        try:
+            if not proxy_dir.exists():
+                return []
+            files = sorted(proxy_dir.glob('mirror_ops_*.jsonl'),
+                           key=lambda f: f.stat().st_mtime, reverse=True)
+            if not files:
+                return []
+            result = subprocess.run(
+                ['tail', '-n', str(n), str(files[0])],
+                capture_output=True, text=True, timeout=2,
+            )
+            return [l for l in result.stdout.splitlines() if l.strip()]
+        except Exception as e:
+            logger.debug(f"get_proxy_ops_tail: {e}")
+        return []

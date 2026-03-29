@@ -672,6 +672,12 @@ def create_ble_viewer_panel():
         sizing_mode="stretch_width"
     )
     
+    ble_adv_detail = Div(
+        text="<p style='color:#7f8c8d;font-style:italic;margin:4px 0;'>"
+             "&#x2191; Select a device above to view its advertisement data</p>",
+        sizing_mode="stretch_width",
+    )
+
     scan_controls = row(
         ble_scan_button,
         ble_scan_stop_button,
@@ -753,7 +759,23 @@ def create_ble_viewer_panel():
     ble_event_filter = Select(
         title="Filter by Event Type:",
         value="ALL",
-        options=["ALL", "advertisement", "connection", "gatt_read", "gatt_write"],
+        options=[
+            "ALL",
+            "advertisement",
+            "connection",
+            "disconnection",
+            "gatt_read",
+            "gatt_read_by_type",
+            "gatt_write",
+            "gatt_notify",
+            "att_error",
+            "hci_event",
+            "hci_command",
+            "mgmt_event",
+            "mgmt_command",
+            "error",
+            "info",
+        ],
         width=200
     )
     
@@ -765,15 +787,17 @@ def create_ble_viewer_panel():
         'address': [],
         'name': [],
         'handle': [],
+        'raw_bytes': [],
         'info': []
     })
     
     ble_columns = [
-        TableColumn(field='time_str', title='Time', width=150),
+        TableColumn(field='time_str', title='Time', width=115),
         TableColumn(field='type', title='Event Type', width=120),
         TableColumn(field='address', title='Address', width=130),
-        TableColumn(field='name', title='Device Name', width=150),
-        TableColumn(field='handle', title='Handle', width=80),
+        TableColumn(field='name', title='Device Name', width=130),
+        TableColumn(field='handle', title='Handle', width=65),
+        TableColumn(field='raw_bytes', title='Payload / Decoded', width=300),
         TableColumn(field='info', title='Additional Info', width=200)
     ]
     
@@ -843,6 +867,107 @@ def create_ble_viewer_panel():
         </p>""",
         sizing_mode="stretch_width"
     )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # STAGE 3b: BLE GATT PROFILER
+    # ═══════════════════════════════════════════════════════════════════
+
+    ble_profiler_button = Button(
+        label="🔬 Profile Selected Device",
+        button_type="primary",
+        width=210,
+        disabled=True,
+    )
+    ble_profiler_button.js_on_click(CustomJS(code="console.log('DBG ble_profiler_button fired')"))
+
+    ble_profiler_stop_button = Button(
+        label="⏹ Stop Profiler",
+        button_type="warning",
+        width=140,
+        disabled=True,
+    )
+    ble_profiler_stop_button.js_on_click(CustomJS(code="console.log('DBG ble_profiler_stop_button fired')"))
+
+    ble_profiler_status = Div(
+        text="<p style='color:#7f8c8d;'>⚪ Not profiling — select a device from Step 1 and click Profile</p>",
+        sizing_mode="stretch_width",
+    )
+
+    profiler_info = Div(
+        text="""<p style='color: #7f8c8d; font-size: 12px;'>
+        <b>Step 3b: Device Profiler</b><br>
+        Select a device discovered in Step 1 then click <b>Profile Selected Device</b>.
+        The Pi connects to it, enumerates all GATT services and characteristics, and saves
+        a profile JSON that the GATT Proxy (Step 4) can load. Takes ~30–60 s per device.
+        </p>""",
+        sizing_mode="stretch_width",
+    )
+
+    profiler_controls = row(
+        ble_profiler_button,
+        ble_profiler_stop_button,
+        ble_profiler_status,
+        sizing_mode="stretch_width",
+    )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # STAGE 4: GATT PROXY (mirror selected device)
+    # ═══════════════════════════════════════════════════════════════════
+
+    ble_proxy_profile_select = Select(
+        title="Target Profile:",
+        value="",
+        options=[("", "— select profile —")],
+        width=380,
+    )
+
+    ble_proxy_start_button = Button(
+        label="▶ Start Proxy",
+        button_type="success",
+        width=130,
+        disabled=True,
+    )
+    ble_proxy_start_button.js_on_click(CustomJS(code="console.log('DBG ble_proxy_start_button fired')"))
+
+    ble_proxy_stop_button = Button(
+        label="⏹ Stop Proxy",
+        button_type="danger",
+        width=130,
+        disabled=True,
+    )
+    ble_proxy_stop_button.js_on_click(CustomJS(code="console.log('DBG ble_proxy_stop_button fired')"))
+
+    ble_proxy_status = Div(
+        text="<p style='color:#7f8c8d;'>⚪ Proxy not running</p>",
+        sizing_mode="stretch_width",
+    )
+
+    ble_proxy_ops_log = PreText(
+        text="",
+        width=900,
+        height=140,
+        sizing_mode="stretch_width",
+        styles={"font-size": "11px", "background": "#1e1e1e", "color": "#d4d4d4",
+                "padding": "8px", "border-radius": "4px", "overflow-y": "auto"},
+    )
+
+    proxy_info = Div(
+        text="""<p style='color: #7f8c8d; font-size: 12px;'>
+        <b>Step 4: GATT Proxy</b><br>
+        Select a profile generated by the BLE profiler, then click <b>Start Proxy</b>.
+        The Pi will connect to the real device, re-advertise its GATT services locally,
+        and log every read/write operation in the ops log below.
+        Flags: auto-reconnects to target if it drops; use Stop to terminate.
+        </p>""",
+        sizing_mode="stretch_width",
+    )
+
+    proxy_controls = row(
+        ble_proxy_start_button,
+        ble_proxy_stop_button,
+        ble_proxy_status,
+        sizing_mode="stretch_width",
+    )
     
     # ═══════════════════════════════════════════════════════════════════
     # ASSEMBLE PANEL
@@ -857,7 +982,8 @@ def create_ble_viewer_panel():
         scan_controls,
         ble_scan_table,
         ble_rssi_plot,
-        
+        ble_adv_detail,
+
         # Stage 2: Capture
         Div(text="<h3 style='margin-top: 30px;'>Step 2: Targeted Capture</h3>"),
         ble_capture_info,
@@ -870,6 +996,18 @@ def create_ble_viewer_panel():
         view_controls,
         ble_timeline_plot,
         ble_table,
+
+        # Stage 3b: Profiler
+        Div(text="<h3 style='margin-top: 30px;'>Step 3b: GATT Device Profiler</h3>"),
+        profiler_info,
+        profiler_controls,
+
+        # Stage 4: Proxy
+        Div(text="<h3 style='margin-top: 30px;'>Step 4: GATT Proxy (Mirror Device)</h3>"),
+        proxy_info,
+        ble_proxy_profile_select,
+        proxy_controls,
+        ble_proxy_ops_log,
         
         sizing_mode="stretch_width"
     )
@@ -885,6 +1023,7 @@ def create_ble_viewer_panel():
         'ble_scan_table': ble_scan_table,
         'ble_scan_source': ble_scan_source,
         'ble_rssi_plot': ble_rssi_plot,
+        'ble_adv_detail': ble_adv_detail,
 
         # Stage 2: Capture widgets
         'ble_selected_device': ble_selected_device,
@@ -898,7 +1037,19 @@ def create_ble_viewer_panel():
         'ble_table': ble_table,
         'ble_source': ble_source,
         'ble_timeline_plot': ble_timeline_plot,
-        'ble_timeline_source': ble_timeline_source
+        'ble_timeline_source': ble_timeline_source,
+
+        # Stage 4: Proxy widgets
+        'ble_proxy_profile_select': ble_proxy_profile_select,
+        'ble_proxy_start_button': ble_proxy_start_button,
+        'ble_proxy_stop_button': ble_proxy_stop_button,
+        'ble_proxy_status': ble_proxy_status,
+        'ble_proxy_ops_log': ble_proxy_ops_log,
+
+        # Stage 3b: Profiler widgets
+        'ble_profiler_button': ble_profiler_button,
+        'ble_profiler_stop_button': ble_profiler_stop_button,
+        'ble_profiler_status': ble_profiler_status,
     }
     
     return panel, ble_widgets

@@ -351,7 +351,51 @@ class BLESniffer:
                 # ── Human-readable log (mirrors old .log behaviour) ───
                 log_handle.write(raw_line)
 
+                # Keep compact raw line context for the current packet.
+                if current_packet:
+                    rl = current_packet.setdefault('raw_lines', [])
+                    if len(rl) < 80:
+                        rl.append(line)
+
                 # ── Event boundary detection ─────────────────────────
+
+                hci_boundary = re.match(r'^[<>]\s+HCI\s+(Event|Command):', line)
+                mgmt_boundary = re.match(r'^[@]\s+MGMT\s+(Event|Command):', line)
+                if hci_boundary or mgmt_boundary:
+                    self._flush_packet(json_handle, current_packet)
+
+                    if hci_boundary:
+                        pkt_type = 'hci_event' if line.startswith('>') else 'hci_command'
+                    else:
+                        pkt_type = 'mgmt_event' if 'Event' in line else 'mgmt_command'
+
+                    lower = line.lower()
+                    if 'le advertising report' in lower or 'adv_' in lower or 'scan_rsp' in lower:
+                        pkt_type = 'advertisement'
+                    elif 'le enhanced connection complete' in lower or 'le connection complete' in lower:
+                        pkt_type = 'connection'
+                    elif 'disconnection complete' in lower:
+                        pkt_type = 'disconnection'
+                    elif 'att read by type' in lower:
+                        pkt_type = 'gatt_read_by_type'
+                    elif 'att read request' in lower or 'read request' in lower:
+                        pkt_type = 'gatt_read'
+                    elif 'att write request' in lower or 'att write command' in lower or 'write request' in lower:
+                        pkt_type = 'gatt_write'
+                    elif 'att handle value notification' in lower or 'handle value notification' in lower:
+                        pkt_type = 'gatt_notify'
+                    elif 'att error response' in lower:
+                        pkt_type = 'att_error'
+
+                    current_packet = {
+                        'timestamp': datetime.now().isoformat(),
+                        'type': pkt_type,
+                        'raw': line,
+                        'raw_lines': [line],
+                        'data': {}
+                    }
+                    if active_mac:
+                        current_packet['data']['address'] = active_mac
 
                 # LE Advertising Report
                 if 'LE Advertising Report' in line or 'ADV_IND' in line or 'ADV_NONCONN_IND' in line or 'SCAN_RSP' in line:
@@ -360,6 +404,7 @@ class BLESniffer:
                         'timestamp': datetime.now().isoformat(),
                         'type': 'advertisement',
                         'raw': line,
+                        'raw_lines': [line],
                         'data': {}
                     }
                     active_mac = None
@@ -371,6 +416,7 @@ class BLESniffer:
                         'timestamp': datetime.now().isoformat(),
                         'type': 'connection',
                         'raw': line,
+                        'raw_lines': [line],
                         'data': {}
                     }
                     active_mac = None
@@ -383,29 +429,42 @@ class BLESniffer:
                         'timestamp': datetime.now().isoformat(),
                         'type': 'disconnection',
                         'raw': line,
+                        'raw_lines': [line],
                         'data': {}
                     }
                     active_mac = None
 
                 # GATT operations
+                elif 'ATT Read By Type Request' in line or 'ATT Read By Type Response' in line:
+                    if not current_packet:
+                        current_packet = {'timestamp': datetime.now().isoformat(),
+                                          'type': 'gatt_read_by_type', 'raw_lines': [line], 'data': {}}
+                    else:
+                        current_packet['type'] = 'gatt_read_by_type'
                 elif 'ATT Read Request' in line or 'Read Request' in line:
                     if not current_packet:
                         current_packet = {'timestamp': datetime.now().isoformat(),
-                                          'type': 'gatt_read', 'data': {}}
+                                          'type': 'gatt_read', 'raw_lines': [line], 'data': {}}
                     else:
                         current_packet['type'] = 'gatt_read'
                 elif 'ATT Write Request' in line or 'Write Request' in line or 'ATT Write Command' in line:
                     if not current_packet:
                         current_packet = {'timestamp': datetime.now().isoformat(),
-                                          'type': 'gatt_write', 'data': {}}
+                                          'type': 'gatt_write', 'raw_lines': [line], 'data': {}}
                     else:
                         current_packet['type'] = 'gatt_write'
                 elif 'ATT Handle Value Notification' in line or 'Handle Value Notification' in line:
                     if not current_packet:
                         current_packet = {'timestamp': datetime.now().isoformat(),
-                                          'type': 'gatt_notify', 'data': {}}
+                                          'type': 'gatt_notify', 'raw_lines': [line], 'data': {}}
                     else:
                         current_packet.setdefault('type', 'gatt_notify')
+                elif 'ATT Error Response' in line:
+                    if not current_packet:
+                        current_packet = {'timestamp': datetime.now().isoformat(),
+                                          'type': 'att_error', 'raw_lines': [line], 'data': {}}
+                    else:
+                        current_packet['type'] = 'att_error'
 
                 # ── Field extraction ──────────────────────────────────
 
@@ -461,6 +520,37 @@ class BLESniffer:
                 if value_match and current_packet:
                     current_packet['data']['value'] = value_match.group(1).strip()
 
+                # ACL/HCI plen/dlen field captures the declared payload length,
+                # useful for framing even when btmon doesn't decode body bytes.
+                plen_match = re.search(r'(?:plen|dlen)\s+(\d+)', line)
+                if plen_match and current_packet:
+                    current_packet['data'].setdefault('plen', int(plen_match.group(1)))
+
+                # Capture common status/error fields for debugging and filtering.
+                status_match = re.search(r'^Status:\s+(.+)$', line)
+                if status_match and current_packet:
+                    current_packet['data']['status'] = status_match.group(1).strip()
+
+                reason_match = re.search(r'^Reason:\s+(.+)$', line)
+                if reason_match and current_packet:
+                    current_packet['data']['reason'] = reason_match.group(1).strip()
+
+                error_match = re.search(r'^Error:\s+(.+)$', line)
+                if error_match and current_packet:
+                    current_packet['data']['error'] = error_match.group(1).strip()
+
+                opcode_match = re.search(r'^Opcode:\s+(.+)$', line)
+                if opcode_match and current_packet:
+                    current_packet['data']['opcode'] = opcode_match.group(1).strip()
+
+                # Generic key/value extraction keeps useful lines without bespoke parser code.
+                kv_match = re.match(r'^([A-Za-z][A-Za-z0-9 _()/.-]{1,40}):\s+(.+)$', line)
+                if kv_match and current_packet:
+                    key = re.sub(r'[^a-z0-9_]+', '_', kv_match.group(1).strip().lower()).strip('_')
+                    value = kv_match.group(2).strip()
+                    if key and key not in current_packet['data']:
+                        current_packet['data'][key] = value
+
         except OSError as e:
             # PTY master fd closed (btmon exited)
             logger.info(f"btmon PTY stream closed ({e}) — parser thread ending")
@@ -495,8 +585,14 @@ class BLESniffer:
             if packet.get('type') == 'advertisement':
                 return   # no address means we can't associate it yet
         try:
-            # Remove 'raw' field from JSON (it's in .raw.log already)
-            out = {k: v for k, v in packet.items() if k != 'raw'}
+            out = dict(packet)
+            data = out.setdefault('data', {})
+            raw = out.pop('raw', None)
+            raw_lines = out.pop('raw_lines', None)
+            if raw and 'summary' not in data:
+                data['summary'] = raw
+            if raw_lines:
+                data['raw_lines'] = raw_lines[-25:]
             handle.write(json.dumps(out) + '\n')
             handle.flush()
             self._events_written += 1

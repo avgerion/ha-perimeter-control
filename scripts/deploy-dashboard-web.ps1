@@ -14,6 +14,8 @@ $localDataSources = Join-Path $root "server/web/data_sources.py"
 $localBleScanner = Join-Path $root "scripts/ble-scanner-v2.py"
 $localBleSniffer = Join-Path $root "scripts/ble-sniffer.py"
 $localBleDebug = Join-Path $root "scripts/ble-debug.sh"
+$localBleProfiler = Join-Path $root "scripts/ble-proxy-profiler.py"
+$localBleMirror = Join-Path $root "scripts/ble-gatt-mirror.py"
 
 function Assert-LastExitCode([string]$step) {
     if ($LASTEXITCODE -ne 0) {
@@ -21,7 +23,7 @@ function Assert-LastExitCode([string]$step) {
     }
 }
 
-foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer)) {
+foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer, $localBleProfiler, $localBleMirror)) {
     if (-not (Test-Path $f)) { throw "Missing local file: $f" }
 }
 
@@ -52,16 +54,18 @@ scp -i $key $localDataSources "${remote}:/tmp/data_sources.py" | Out-Null; Asser
 scp -i $key $localBleScanner  "${remote}:/tmp/ble-scanner-v2.py" | Out-Null; Assert-LastExitCode "Upload ble-scanner-v2.py"
 scp -i $key $localBleSniffer  "${remote}:/tmp/ble-sniffer.py"   | Out-Null; Assert-LastExitCode "Upload ble-sniffer.py"
 scp -i $key $localBleDebug    "${remote}:/tmp/ble-debug.sh"     | Out-Null; Assert-LastExitCode "Upload ble-debug.sh"
+scp -i $key $localBleProfiler "${remote}:/tmp/ble-proxy-profiler.py" | Out-Null; Assert-LastExitCode "Upload ble-proxy-profiler.py"
+scp -i $key $localBleMirror   "${remote}:/tmp/ble-gatt-mirror.py" | Out-Null; Assert-LastExitCode "Upload ble-gatt-mirror.py"
 
 $backupTag = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupDir = "/tmp/isolator-dashboard-backup-$backupTag"
 Write-Host "Creating remote backup in $backupDir ..."
-$backupCmd = "set -e; sudo mkdir -p $backupDir; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $activeDir/\$f ] && sudo cp -a $activeDir/\$f $backupDir/\$f || true; done; [ -f /opt/isolator/scripts/ble-scanner-v2.py ] && sudo cp -a /opt/isolator/scripts/ble-scanner-v2.py $backupDir/ble-scanner-v2.py || true; [ -f /opt/isolator/scripts/ble-sniffer.py ] && sudo cp -a /opt/isolator/scripts/ble-sniffer.py $backupDir/ble-sniffer.py || true; sudo ls -l --time-style=long-iso $backupDir || true"
+$backupCmd = "set -e; sudo mkdir -p $backupDir; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $activeDir/\$f ] && sudo cp -a $activeDir/\$f $backupDir/\$f || true; done; [ -f /opt/isolator/scripts/ble-scanner-v2.py ] && sudo cp -a /opt/isolator/scripts/ble-scanner-v2.py $backupDir/ble-scanner-v2.py || true; [ -f /opt/isolator/scripts/ble-sniffer.py ] && sudo cp -a /opt/isolator/scripts/ble-sniffer.py $backupDir/ble-sniffer.py || true; [ -f /opt/isolator/scripts/ble-proxy-profiler.py ] && sudo cp -a /opt/isolator/scripts/ble-proxy-profiler.py $backupDir/ble-proxy-profiler.py || true; [ -f /opt/isolator/scripts/ble-gatt-mirror.py ] && sudo cp -a /opt/isolator/scripts/ble-gatt-mirror.py $backupDir/ble-gatt-mirror.py || true; sudo ls -l --time-style=long-iso $backupDir || true"
 ssh -i $key $remote $backupCmd
 Assert-LastExitCode "Create remote backup"
 
 Write-Host "Installing files into active directory..."
-$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo install -o root -g root -m 0644 /tmp/data_sources.py $activeDir/data_sources.py; sudo install -o root -g root -m 0755 /tmp/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py; sudo install -o root -g root -m 0755 /tmp/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py; sudo install -o root -g root -m 0755 /tmp/ble-debug.sh /opt/isolator/scripts/ble-debug.sh; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py $activeDir/data_sources.py /opt/isolator/scripts/ble-scanner-v2.py /opt/isolator/scripts/ble-sniffer.py"
+$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo install -o root -g root -m 0644 /tmp/data_sources.py $activeDir/data_sources.py; sudo install -o root -g root -m 0755 /tmp/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py; sudo install -o root -g root -m 0755 /tmp/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py; sudo install -o root -g root -m 0755 /tmp/ble-debug.sh /opt/isolator/scripts/ble-debug.sh; sudo install -o root -g root -m 0755 /tmp/ble-proxy-profiler.py /opt/isolator/scripts/ble-proxy-profiler.py; sudo install -o root -g root -m 0755 /tmp/ble-gatt-mirror.py /opt/isolator/scripts/ble-gatt-mirror.py; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py $activeDir/data_sources.py /opt/isolator/scripts/ble-scanner-v2.py /opt/isolator/scripts/ble-sniffer.py /opt/isolator/scripts/ble-proxy-profiler.py /opt/isolator/scripts/ble-gatt-mirror.py"
 ssh -i $key $remote $installCmd
 Assert-LastExitCode "Install files"
 
@@ -83,7 +87,7 @@ if (-not $NoRestart) {
 
     if (-not $serviceHealthy) {
         Write-Host "Service failed health check. Rolling back previous files..."
-        $rollbackCmd = "set -e; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $backupDir/\$f ] && sudo install -o root -g root -m 0644 $backupDir/\$f $activeDir/\$f || true; done; [ -f $backupDir/ble-scanner-v2.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py || true; [ -f $backupDir/ble-sniffer.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py || true; sudo systemctl restart isolator-dashboard"
+        $rollbackCmd = "set -e; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $backupDir/\$f ] && sudo install -o root -g root -m 0644 $backupDir/\$f $activeDir/\$f || true; done; [ -f $backupDir/ble-scanner-v2.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py || true; [ -f $backupDir/ble-sniffer.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py || true; [ -f $backupDir/ble-proxy-profiler.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-proxy-profiler.py /opt/isolator/scripts/ble-proxy-profiler.py || true; [ -f $backupDir/ble-gatt-mirror.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-gatt-mirror.py /opt/isolator/scripts/ble-gatt-mirror.py || true; sudo systemctl restart isolator-dashboard"
         ssh -i $key $remote $rollbackCmd
         Assert-LastExitCode "Rollback and restart isolator-dashboard"
 

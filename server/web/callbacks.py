@@ -7,11 +7,185 @@ Manages periodic data updates and user interaction events.
 import logging
 from datetime import datetime, timedelta
 from functools import partial
+from typing import Any, Dict, Optional
 
 from bokeh.models import ColumnDataSource
 from bokeh.events import ButtonClick
 
 logger = logging.getLogger('isolator.callbacks')
+
+# ─── BLE Advertisement decode helpers ────────────────────────────────────────
+
+_COMPANY_IDS = {
+    0x004C: "Apple",
+    0x0006: "Microsoft",
+    0x0171: "Amazon",
+    0x0075: "Samsung Electronics",
+    0x0059: "Nordic Semiconductor",
+    0x0499: "Ruuvi Innovations",
+    0x02E5: "Espressif Systems",
+    0x0ABE: "Silicon Labs",
+    0x00E0: "Google",
+    0x0087: "Garmin",
+    0x00D7: "Bose",
+    0x0157: "FITBIT",
+    0x04F7: "Tile",
+    0x008C: "Texas Instruments",
+}
+
+_FLAGS_BITS = {
+    0: "LE Limited Discoverable",
+    1: "LE General Discoverable",
+    2: "BR/EDR Not Supported",
+    3: "LE+BR/EDR Controller",
+    4: "LE+BR/EDR Host",
+}
+
+
+def _reconstruct_ad_bytes(adv: dict) -> bytes:
+    """Reconstruct BLE AD payload bytes from bleak structured adv fields."""
+    out = bytearray()
+
+    local_name = adv.get('local_name')
+    if local_name:
+        name_b = local_name.encode('utf-8', errors='replace')
+        out += bytes([len(name_b) + 1, 0x09]) + name_b
+
+    tx_power = adv.get('tx_power')
+    if tx_power is not None:
+        out += bytes([2, 0x0A, tx_power & 0xFF])
+
+    for uuid_str in (adv.get('service_uuids') or []):
+        try:
+            # 128-bit UUID
+            raw = bytes.fromhex(uuid_str.replace('-', ''))
+            if len(raw) == 16:
+                out += bytes([len(raw) + 1, 0x07]) + raw[::-1]  # little-endian
+        except Exception:
+            pass
+
+    for uuid_str, data_hex in (adv.get('service_data') or {}).items():
+        data = bytes.fromhex(data_hex) if data_hex else b''
+        try:
+            u = uuid_str.replace('-', '')
+            if len(u) == 4:
+                uuid_b = bytes.fromhex(u)[::-1]
+                ad_type = 0x16
+            elif len(u) == 8:
+                uuid_b = bytes.fromhex(u)[::-1]
+                ad_type = 0x20
+            else:
+                uuid_b = bytes.fromhex(u)[::-1]
+                ad_type = 0x21
+            payload = uuid_b + data
+            out += bytes([len(payload) + 1, ad_type]) + payload
+        except Exception:
+            pass
+
+    for cid_str, data_hex in (adv.get('manufacturer_data') or {}).items():
+        data = bytes.fromhex(data_hex) if data_hex else b''
+        try:
+            cid = int(cid_str)
+            cid_b = bytes([cid & 0xFF, (cid >> 8) & 0xFF])
+            payload = cid_b + data
+            out += bytes([len(payload) + 1, 0xFF]) + payload
+        except Exception:
+            pass
+
+    return bytes(out)
+
+
+def _hexdump(b: bytes, width: int = 16) -> str:
+    """Format bytes as annotated hex dump."""
+    if not b:
+        return '(empty)'
+    lines = []
+    for i in range(0, len(b), width):
+        chunk = b[i:i + width]
+        hex_part = ' '.join(f'{x:02X}' for x in chunk)
+        asc_part = ''.join(chr(x) if 32 <= x < 127 else '.' for x in chunk)
+        lines.append(f'{i:04X}  {hex_part:<{width*3}}  {asc_part}')
+    return '\n'.join(lines)
+
+
+def _format_adv_detail_html(device: dict) -> str:
+    """Return HTML showing raw AD bytes (reconstructed) and decoded LTV fields."""
+    adv = device.get('adv_data', {})
+    if not adv:
+        return ("<p style='color:#7f8c8d;font-style:italic;'>"
+                "No advertisement data — rescan after deploying the updated scanner</p>")
+
+    raw_bytes = _reconstruct_ad_bytes(adv)
+    hexdump   = _hexdump(raw_bytes)
+    raw_hex   = ' '.join(f'{b:02X}' for b in raw_bytes) or '(none)'
+
+    # Build decoded rows
+    rows = []
+
+    local_name = adv.get('local_name')
+    if local_name:
+        rows.append(('0x09', 'Complete Local Name', f'<b>{local_name}</b>'))
+
+    tx_power = adv.get('tx_power')
+    if tx_power is not None:
+        rows.append(('0x0A', 'TX Power Level', f'{tx_power} dBm'))
+
+    for uuid in (adv.get('service_uuids') or []):
+        rows.append(('0x06/07', '128-bit Service UUID', f'<code>{uuid}</code>'))
+
+    for uuid_str, data_hex in (adv.get('service_data') or {}).items():
+        if not data_hex:
+            continue
+        spaced = ' '.join(data_hex[i:i+2].upper() for i in range(0, len(data_hex), 2))
+        n_bytes = len(data_hex) // 2
+        rows.append(('0x16/20/21', f'Service Data [{uuid_str}]',
+                     f'<code>{spaced}</code>&nbsp;<span style="color:#888">({n_bytes}B)</span>'))
+
+    for cid_str, data_hex in (adv.get('manufacturer_data') or {}).items():
+        try:
+            cid = int(cid_str)
+            company = _COMPANY_IDS.get(cid, f'Unknown')
+            spaced = ' '.join(data_hex[i:i+2].upper() for i in range(0, len(data_hex), 2)) if data_hex else ''
+            n_bytes = len(data_hex) // 2 if data_hex else 0
+            rows.append(('0xFF', f'Manufacturer Specific',
+                         f'<span style="color:#4ec9b0;">Company 0x{cid:04X} ({company})</span>'
+                         f'&nbsp;&nbsp;<code>{spaced}</code>'
+                         f'&nbsp;<span style="color:#888">({n_bytes}B)</span>'))
+        except Exception:
+            rows.append(('0xFF', 'Manufacturer Specific', f'<code>{data_hex}</code>'))
+
+    name = device.get('name', device.get('mac', '?'))
+    mac  = device.get('mac', '')
+    rssi = device.get('rssi', '')
+
+    tr = ''.join(
+        f"<tr style='border-bottom:1px solid #333;'>"
+        f"<td style='padding:3px 10px;color:#ce9178;font-family:monospace;white-space:nowrap;'>{t}</td>"
+        f"<td style='padding:3px 10px;color:#9cdcfe;white-space:nowrap;'>{n}</td>"
+        f"<td style='padding:3px 10px;'>{v}</td></tr>"
+        for t, n, v in rows
+    )
+    if not tr:
+        tr = "<tr><td colspan='3' style='padding:4px 10px;color:#666;'>No decodable fields in this advertisement</td></tr>"
+
+    return f"""
+    <div style='background:#1e1e1e;color:#d4d4d4;padding:10px 14px;border-radius:4px;
+                font-size:12px;border:1px solid #333;margin-top:6px;'>
+      <span style='color:#9cdcfe;font-weight:bold;'>{name}</span>
+      &nbsp;<span style='color:#888;'>{mac}</span>
+      &nbsp;<span style='color:#4ec9b0;'>{rssi} dBm</span>
+      <br><br>
+      <span style='color:#888;'>Reconstructed AD payload ({len(raw_bytes)} bytes):</span><br>
+      <pre style='color:#ce9178;margin:4px 0 10px 0;font-size:11px;line-height:1.4;'>{hexdump}</pre>
+      <table style='border-collapse:collapse;width:100%;'>
+        <tr style='border-bottom:1px solid #444;'>
+          <th style='color:#4ec9b0;text-align:left;padding:3px 10px;'>AD Type</th>
+          <th style='color:#4ec9b0;text-align:left;padding:3px 10px;'>Field</th>
+          <th style='color:#4ec9b0;text-align:left;padding:3px 10px;'>Value</th>
+        </tr>
+        {tr}
+      </table>
+    </div>"""
 
 
 def setup_callbacks(doc, data_manager):
@@ -425,6 +599,32 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error updating system status: {e}")
     
+    def _get_selected_ble_scan_device() -> Optional[Dict[str, Any]]:
+        """Return selected device from the table source, independent of scanner process state."""
+        try:
+            selected_indices = doc.ble_scan_source.selected.indices if hasattr(doc.ble_scan_source.selected, 'indices') else []
+            if not selected_indices:
+                return None
+
+            idx = selected_indices[0]
+            data = doc.ble_scan_source.data or {}
+            macs = data.get('mac', [])
+            names = data.get('name', [])
+            if idx < 0 or idx >= len(macs):
+                return None
+
+            return {
+                'mac': macs[idx],
+                'name': names[idx] if idx < len(names) else macs[idx],
+                'last_seen': (data.get('last_seen') or [None] * len(macs))[idx] if idx < len((data.get('last_seen') or [])) else None,
+                'count': (data.get('count') or [None] * len(macs))[idx] if idx < len((data.get('count') or [])) else None,
+                'rssi': (data.get('rssi') or [None] * len(macs))[idx] if idx < len((data.get('rssi') or [])) else None,
+                'tx_power': (data.get('tx_power') or [None] * len(macs))[idx] if idx < len((data.get('tx_power') or [])) else None,
+                'phy': (data.get('phy') or [None] * len(macs))[idx] if idx < len((data.get('phy') or [])) else None,
+            }
+        except Exception:
+            return None
+
     def update_ble_viewer():
         """Update BLE viewer with scan results, capture status, and past captures (every 3 seconds)."""
         try:
@@ -480,23 +680,23 @@ def setup_callbacks(doc, data_manager):
             # STAGE 2: Handle device selection and capture controls
             # ═══════════════════════════════════════════════════════════════
             
-            # Check if user selected a device from scan table
-            selected_indices = doc.ble_scan_source.selected.indices if hasattr(doc.ble_scan_source.selected, 'indices') else []
-            
-            if selected_indices and len(selected_indices) > 0:
-                # Get selected device info
-                idx = selected_indices[0]
-                devices = data_manager.get_ble_scan_devices()
-                if idx < len(devices):
-                    selected_device = devices[idx]
-                    doc.ble_selected_device.text = f"<p style='color: #2ecc71;'><b>{selected_device['name']}</b> ({selected_device['mac']})</p>"
-                    doc.ble_capture_button.disabled = False
-                else:
-                    doc.ble_selected_device.text = "<p style='color: #7f8c8d;'>No device selected</p>"
-                    doc.ble_capture_button.disabled = True
+            selected_device = _get_selected_ble_scan_device()
+
+            if selected_device:
+                doc.ble_selected_device.text = f"<p style='color: #2ecc71;'><b>{selected_device['name']}</b> ({selected_device['mac']})</p>"
+                doc.ble_capture_button.disabled = False
+                if hasattr(doc, 'ble_adv_detail'):
+                    doc.ble_adv_detail.text = _format_adv_detail_html(selected_device)
+                if hasattr(doc, 'ble_profiler_button'):
+                    profiler_status = data_manager.get_ble_profiler_status()
+                    doc.ble_profiler_button.disabled = profiler_status['active']
             else:
                 doc.ble_selected_device.text = "<p style='color: #7f8c8d;'>No device selected</p>"
                 doc.ble_capture_button.disabled = True
+                if hasattr(doc, 'ble_adv_detail'):
+                    doc.ble_adv_detail.text = "<p style='color:#7f8c8d;font-style:italic;'>&#x2191; Select a device above to view its advertisement data</p>"
+                if hasattr(doc, 'ble_profiler_button'):
+                    doc.ble_profiler_button.disabled = True
             
             # Update capture status
             capture_status = data_manager.get_ble_capture_status()
@@ -528,14 +728,20 @@ def setup_callbacks(doc, data_manager):
             
             # Update capture session list
             captures = data_manager.get_ble_captures()
-            capture_options = [""] + [f"{c['filename']} ({c['event_count']} events)" for c in captures]
+            # Keep option values stable (filename) while labels can change
+            # as event_count grows during active capture.
+            capture_options = [("", "Select capture session...")] + [
+                (c['filename'], f"{c['filename']} ({c['event_count']} events)")
+                for c in captures
+            ]
             
             if doc.ble_capture_select.options != capture_options:
                 current_value = doc.ble_capture_select.value
                 doc.ble_capture_select.options = capture_options
                 # Keep current selection if still valid
-                if current_value and current_value not in capture_options and capture_options:
-                    doc.ble_capture_select.value = capture_options[0] if len(capture_options) > 1 else ""
+                valid_values = {value for value, _label in capture_options}
+                if current_value and current_value not in valid_values:
+                    doc.ble_capture_select.value = ""
             
             # Get selected capture for viewing
             selected_capture = doc.ble_capture_select.value
@@ -548,6 +754,7 @@ def setup_callbacks(doc, data_manager):
                     'address': [''],
                     'name': [''],
                     'handle': [''],
+                    'raw_bytes': [''],
                     'info': ['']
                 }
                 doc.ble_timeline_source.data = {
@@ -558,8 +765,8 @@ def setup_callbacks(doc, data_manager):
                 }
                 return
             
-            # Extract filename from selection (format: "filename.json (N events)")
-            capture_file = selected_capture.split(' (')[0]
+            # Value is the stable capture filename.
+            capture_file = selected_capture
             
             # Get events for selected capture
             events = data_manager.get_ble_logs(capture_file, max_events=200)
@@ -585,6 +792,7 @@ def setup_callbacks(doc, data_manager):
                     'address': [''],
                     'name': [''],
                     'handle': [''],
+                    'raw_bytes': [''],
                     'info': [hint[:200]]
                 }
                 now_ms = datetime.now().timestamp() * 1000
@@ -603,6 +811,7 @@ def setup_callbacks(doc, data_manager):
             addresses = []
             names = []
             handles = []
+            raw_bytes_col = []
             infos = []
             
             for event in events:
@@ -623,13 +832,40 @@ def setup_callbacks(doc, data_manager):
                 addresses.append(data.get('address', ''))
                 names.append(data.get('name', ''))
                 handles.append(data.get('handle', ''))
-                
-                # Build info string from remaining data fields
+
+                # Payload column: prefer explicit Value bytes, then fall back
+                # to the decoded btmon lines for the event (raw_lines).
+                payload = ''
+                gatt_value = data.get('value', '')
+                if gatt_value:
+                    payload = gatt_value  # already space-separated hex from btmon
+                else:
+                    raw_lines = data.get('raw_lines', [])
+                    if raw_lines:
+                        # Join decoded lines, strip common leading whitespace, cap length
+                        joined = ' | '.join(l.strip() for l in raw_lines if l.strip())
+                        payload = joined[:200] + ('…' if len(joined) > 200 else '')
+                raw_bytes_col.append(payload)
+
+                # Build info string from non-bytes fields
                 info_parts = []
-                for key, value in data.items():
-                    if key not in ['address', 'name', 'handle'] and value:
+                skip_in_info = {'address', 'name', 'handle', 'packet_bytes_hex', 'raw_lines', 'summary'}
+                preferred_keys = ['status', 'reason', 'error', 'opcode', 'value']
+                for key in preferred_keys:
+                    value = data.get(key)
+                    if value:
                         info_parts.append(f"{key}={value}")
-                infos.append(', '.join(info_parts[:3]))  # Limit to first 3 fields
+
+                if len(info_parts) < 4:
+                    for key, value in data.items():
+                        if key in skip_in_info or not value:
+                            continue
+                        if key not in preferred_keys:
+                            info_parts.append(f"{key}={value}")
+                        if len(info_parts) >= 4:
+                            break
+
+                infos.append(', '.join(info_parts[:4]))
             
             # Update table
             doc.ble_source.data = {
@@ -639,6 +875,7 @@ def setup_callbacks(doc, data_manager):
                 'address': addresses,
                 'name': names,
                 'handle': handles,
+                'raw_bytes': raw_bytes_col,
                 'info': infos
             }
             
@@ -647,8 +884,16 @@ def setup_callbacks(doc, data_manager):
             event_colors = {
                 'advertisement': '#3498db',  # Blue
                 'connection': '#2ecc71',     # Green
+                'disconnection': '#7f8c8d',  # Gray
                 'gatt_read': '#f39c12',      # Orange
+                'gatt_read_by_type': '#d35400',  # Dark orange
                 'gatt_write': '#e74c3c',     # Red
+                'gatt_notify': '#1abc9c',    # Teal
+                'hci_event': '#8e44ad',      # Violet
+                'hci_command': '#5e35b1',    # Indigo
+                'mgmt_event': '#34495e',     # Dark blue-gray
+                'mgmt_command': '#2c3e50',   # Midnight blue
+                'att_error': '#c0392b',      # Dark red
                 'pairing': '#9b59b6',        # Purple
                 'error': '#e74c3c',          # Red
                 'info': '#95a5a6'            # Gray
@@ -665,7 +910,63 @@ def setup_callbacks(doc, data_manager):
             }
             
             logger.debug(f"Updated BLE viewer: scan={scan_status['active']}, capture={capture_status['active']}, viewing={capture_file if selected_capture else 'none'}")
-        
+
+            # Profiler status update
+            if hasattr(doc, 'ble_profiler_status') and hasattr(doc, 'ble_profiler_button'):
+                prof_st = data_manager.get_ble_profiler_status()
+                if prof_st['active']:
+                    target = prof_st.get('target') or ''
+                    doc.ble_profiler_status.text = (
+                        f"<p style='color:#f39c12;'>&#x23F3; Profiling {target} "
+                        f"(PID {prof_st['pid']}) &mdash; please wait&hellip;</p>"
+                    )
+                    doc.ble_profiler_stop_button.disabled = False
+                    doc.ble_profiler_button.disabled = True
+                else:
+                    # Only reset to 'not profiling' if status still says running
+                    if 'Profiling' in doc.ble_profiler_status.text and '23F3' in doc.ble_profiler_status.text:
+                        doc.ble_profiler_status.text = "<p style='color:#2ecc71;'>&#x2705; Profiling complete &mdash; profile saved. Reload the proxy profile list.</p>"
+                    doc.ble_profiler_stop_button.disabled = True
+
+            # ═══════════════════════════════════════════════════════════════
+            # STAGE 4: Proxy status and profile list
+            # ═══════════════════════════════════════════════════════════════
+
+            if not hasattr(doc, 'ble_proxy_profile_select'):
+                return
+
+            # Refresh profile dropdown
+            profiles = data_manager.get_ble_profiles()
+            proxy_options = [("", "— select profile —")] + [
+                (p['path'], f"{p['name']}  ({p['mac']})  [{p['svc_count']} svcs]")
+                for p in profiles
+            ]
+            if doc.ble_proxy_profile_select.options != proxy_options:
+                current = doc.ble_proxy_profile_select.value
+                doc.ble_proxy_profile_select.options = proxy_options
+                valid = {v for v, _ in proxy_options}
+                if current and current not in valid:
+                    doc.ble_proxy_profile_select.value = ""
+
+            selected_profile = doc.ble_proxy_profile_select.value
+            proxy_status = data_manager.get_ble_proxy_status()
+
+            if proxy_status['active']:
+                doc.ble_proxy_status.text = (
+                    f"<p style='color:#2ecc71;'>🟢 Proxy running "
+                    f"(PID {proxy_status['pid']})</p>"
+                )
+                doc.ble_proxy_start_button.disabled = True
+                doc.ble_proxy_stop_button.disabled = False
+            else:
+                doc.ble_proxy_status.text = "<p style='color:#7f8c8d;'>⚪ Proxy not running</p>"
+                doc.ble_proxy_start_button.disabled = not bool(selected_profile)
+                doc.ble_proxy_stop_button.disabled = True
+
+            # Live ops log tail
+            ops_lines = data_manager.get_proxy_ops_tail(n=20)
+            doc.ble_proxy_ops_log.text = '\n'.join(ops_lines) if ops_lines else '(no ops logged yet)'
+
         except Exception as e:
             logger.error(f"Error updating BLE viewer: {e}", exc_info=True)
     
@@ -721,6 +1022,82 @@ def setup_callbacks(doc, data_manager):
         except Exception as e:
             logger.error(f"Error reloading config: {e}")
     
+    def on_ble_profiler_start(event=None):
+        """Start the GATT profiler for the currently selected scan device."""
+        try:
+            device = _get_selected_ble_scan_device()
+            if not device:
+                if hasattr(doc, 'ble_profiler_status'):
+                    doc.ble_profiler_status.text = "<p style='color:#e74c3c;'>&#x26A0; Select a device from Step 1 first</p>"
+                return
+            mac  = device.get('mac', '')
+            name = device.get('name', '')
+            if hasattr(doc, 'ble_profiler_status'):
+                doc.ble_profiler_status.text = f"<p style='color:#f39c12;'>&#x23F3; Profiling {name} ({mac})&hellip;</p>"
+            doc.ble_profiler_button.disabled = True
+            result = data_manager.start_ble_profiler(target_mac=mac)
+            if result['success']:
+                doc.ble_profiler_status.text = f"<p style='color:#2ecc71;'>&#x1F7E2; {result['message']} (PID {result.get('pid','')})</p>"
+                doc.ble_profiler_stop_button.disabled = False
+            else:
+                doc.ble_profiler_status.text = f"<p style='color:#e74c3c;'>&#x274C; {result['message']}</p>"
+                doc.ble_profiler_button.disabled = False
+        except Exception as e:
+            logger.error(f'on_ble_profiler_start: {e}')
+
+    def on_ble_profiler_stop(event=None):
+        """Stop the running GATT profiler."""
+        try:
+            result = data_manager.stop_ble_profiler()
+            if hasattr(doc, 'ble_profiler_status'):
+                if result['success']:
+                    doc.ble_profiler_status.text = "<p style='color:#7f8c8d;'>&#x26AA; Profiler stopped</p>"
+                else:
+                    doc.ble_profiler_status.text = f"<p style='color:#e74c3c;'>&#x274C; {result['message']}</p>"
+            doc.ble_profiler_stop_button.disabled = True
+            doc.ble_profiler_button.disabled = False
+        except Exception as e:
+            logger.error(f'on_ble_profiler_stop: {e}')
+
+    def on_ble_proxy_start(event=None):
+        """Start the BLE GATT mirror server for the selected profile."""
+        try:
+            if not hasattr(doc, 'ble_proxy_profile_select'):
+                return
+            profile_path = doc.ble_proxy_profile_select.value
+            if not profile_path:
+                doc.ble_proxy_status.text = "<p style='color:#e74c3c;'>⚠ Select a profile first</p>"
+                return
+            doc.ble_proxy_status.text = "<p style='color:#f39c12;'>⏳ Starting proxy...</p>"
+            doc.ble_proxy_start_button.disabled = True
+            result = data_manager.start_ble_proxy(profile_path)
+            if result['success']:
+                doc.ble_proxy_status.text = f"<p style='color:#2ecc71;'>🟢 {result['message']}</p>"
+                doc.ble_proxy_stop_button.disabled = False
+            else:
+                doc.ble_proxy_status.text = f"<p style='color:#e74c3c;'>❌ {result['message']}</p>"
+                doc.ble_proxy_start_button.disabled = False
+        except Exception as e:
+            logger.error(f"on_ble_proxy_start: {e}")
+            if hasattr(doc, 'ble_proxy_status'):
+                doc.ble_proxy_status.text = f"<p style='color:#e74c3c;'>Error: {e}</p>"
+
+    def on_ble_proxy_stop(event=None):
+        """Stop the running BLE GATT mirror server."""
+        try:
+            if not hasattr(doc, 'ble_proxy_status'):
+                return
+            doc.ble_proxy_status.text = "<p style='color:#f39c12;'>⏳ Stopping proxy...</p>"
+            result = data_manager.stop_ble_proxy()
+            if result['success']:
+                doc.ble_proxy_status.text = "<p style='color:#7f8c8d;'>⚪ Proxy stopped</p>"
+            else:
+                doc.ble_proxy_status.text = f"<p style='color:#e74c3c;'>❌ {result['message']}</p>"
+            doc.ble_proxy_start_button.disabled = False
+            doc.ble_proxy_stop_button.disabled = True
+        except Exception as e:
+            logger.error(f"on_ble_proxy_stop: {e}")
+
     def on_ble_scan_start(event=None):
         """Handle BLE Scan Start button click."""
         import sys
@@ -766,20 +1143,11 @@ def setup_callbacks(doc, data_manager):
         """Handle BLE Capture Start button click."""
         try:
             # Get selected device from scan table
-            selected_indices = doc.ble_scan_source.selected.indices if hasattr(doc.ble_scan_source.selected, 'indices') else []
-            
-            if not selected_indices or len(selected_indices) == 0:
+            selected_device = _get_selected_ble_scan_device()
+            if not selected_device:
                 doc.ble_capture_status.text = "<p style='color: #e74c3c;'>⚠️ Error: Please select a device from scan results first</p>"
                 return
-            
-            # Get device info
-            idx = selected_indices[0]
-            devices = data_manager.get_ble_scan_devices()
-            if idx >= len(devices):
-                doc.ble_capture_status.text = "<p style='color: #e74c3c;'>⚠️ Error: Invalid device selection</p>"
-                return
-            
-            selected_device = devices[idx]
+
             target_mac = selected_device['mac']
             target_name = selected_device['name']
             
@@ -917,6 +1285,34 @@ def setup_callbacks(doc, data_manager):
     else:
         logger.warning("  - ble_capture_stop_button NOT FOUND in doc")
 
+    if hasattr(doc, 'ble_profiler_button'):
+        logger.info("  - Registering ble_profiler_button")
+        doc.ble_profiler_button.on_click(on_ble_profiler_start)
+        doc.ble_profiler_button._update_event_callbacks()
+    else:
+        logger.warning("  - ble_profiler_button NOT FOUND in doc")
+
+    if hasattr(doc, 'ble_profiler_stop_button'):
+        logger.info("  - Registering ble_profiler_stop_button")
+        doc.ble_profiler_stop_button.on_click(on_ble_profiler_stop)
+        doc.ble_profiler_stop_button._update_event_callbacks()
+    else:
+        logger.warning("  - ble_profiler_stop_button NOT FOUND in doc")
+
+    if hasattr(doc, 'ble_proxy_start_button'):
+        logger.info(f"  - Registering ble_proxy_start_button")
+        doc.ble_proxy_start_button.on_click(on_ble_proxy_start)
+        doc.ble_proxy_start_button._update_event_callbacks()
+    else:
+        logger.warning("  - ble_proxy_start_button NOT FOUND in doc")
+
+    if hasattr(doc, 'ble_proxy_stop_button'):
+        logger.info(f"  - Registering ble_proxy_stop_button")
+        doc.ble_proxy_stop_button.on_click(on_ble_proxy_stop)
+        doc.ble_proxy_stop_button._update_event_callbacks()
+    else:
+        logger.warning("  - ble_proxy_stop_button NOT FOUND in doc")
+
     def _register_value_debug(attr_name):
         if hasattr(doc, attr_name):
             model = getattr(doc, attr_name)
@@ -941,6 +1337,10 @@ def setup_callbacks(doc, data_manager):
         on_ble_scan_stop,
         on_ble_capture_start,
         on_ble_capture_stop,
+        on_ble_profiler_start,
+        on_ble_profiler_stop,
+        on_ble_proxy_start,
+        on_ble_proxy_stop,
         *event_logger_refs,
     ]
     if hasattr(doc, '_isolator_callback_refs'):
