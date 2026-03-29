@@ -1,5 +1,6 @@
 param(
-    [switch]$NoRestart
+    [switch]$NoRestart,
+    [switch]$SkipSupervisor
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +17,9 @@ $localBleSniffer = Join-Path $root "scripts/ble-sniffer.py"
 $localBleDebug = Join-Path $root "scripts/ble-debug.sh"
 $localBleProfiler = Join-Path $root "scripts/ble-proxy-profiler.py"
 $localBleMirror = Join-Path $root "scripts/ble-gatt-mirror.py"
+
+$localSupervisorDir = Join-Path $root "supervisor"
+$localSupervisorService = Join-Path $root "server/isolator-supervisor.service"
 
 function Assert-LastExitCode([string]$step) {
     if ($LASTEXITCODE -ne 0) {
@@ -107,3 +111,92 @@ Write-Host "Recent dashboard markers (last 60s):"
 $logCmd = "sudo journalctl -u isolator-dashboard --since '60 seconds ago' --no-pager | grep -E 'Registered JS telemetry|JS telemetry sink|Registering BLE button handlers|CLIENT_JS' || true"
 ssh -i $key $remote $logCmd
 Assert-LastExitCode "Fetch marker logs"
+
+# ---------------------------------------------------------------------------
+# Phase 2: Supervisor package deployment
+# ---------------------------------------------------------------------------
+if ($SkipSupervisor) {
+    Write-Host ""
+    Write-Host "Skipping supervisor deployment (-SkipSupervisor)."
+}
+elseif (-not (Test-Path $localSupervisorDir)) {
+    Write-Host ""
+    Write-Host "supervisor/ directory not found locally - skipping supervisor phase."
+}
+else {
+    Write-Host ""
+    Write-Host "=== Phase 2: Deploying supervisor package ==="
+
+    if (-not (Test-Path $localSupervisorService)) {
+        throw "Missing supervisor service file: $localSupervisorService"
+    }
+
+    # Pack supervisor/ into a tar archive using the built-in Windows tar.exe
+    $tarTmp = Join-Path $env:TEMP "isolator-supervisor.tar.gz"
+    Write-Host "Packing supervisor/ into $tarTmp ..."
+    Push-Location (Split-Path $localSupervisorDir -Parent)
+    try {
+        tar -czf $tarTmp supervisor
+        if ($LASTEXITCODE -ne 0) { throw "tar failed" }
+    }
+    finally {
+        Pop-Location
+    }
+
+    Write-Host "Uploading supervisor.tar.gz and service unit to /tmp on remote..."
+    scp -i $key $tarTmp "${remote}:/tmp/supervisor.tar.gz" | Out-Null
+    Assert-LastExitCode "Upload supervisor.tar.gz"
+    scp -i $key $localSupervisorService "${remote}:/tmp/isolator-supervisor.service" | Out-Null
+    Assert-LastExitCode "Upload isolator-supervisor.service"
+
+    Write-Host "Installing supervisor package to /opt/isolator/supervisor ..."
+    $supBackupCmd = "sudo cp -a /opt/isolator/supervisor /tmp/isolator-supervisor-backup 2>/dev/null; true"
+    $supExtractCmd = "set -e; cd /tmp; rm -rf /tmp/supervisor; tar -xzf /tmp/supervisor.tar.gz; sudo mkdir -p /opt/isolator/supervisor; sudo cp -a /tmp/supervisor/. /opt/isolator/supervisor/; sudo chown -R root:root /opt/isolator/supervisor; sudo find /opt/isolator/supervisor -type f -name '*.py' -exec chmod 644 {} +; echo SUPERVISOR_INSTALLED; sudo ls -l --time-style=long-iso /opt/isolator/supervisor"
+    ssh -i $key $remote $supBackupCmd
+    ssh -i $key $remote $supExtractCmd
+    Assert-LastExitCode "Install supervisor package"
+
+    # Install the systemd service unit
+    Write-Host "Installing isolator-supervisor.service ..."
+    $serviceInstallCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/isolator-supervisor.service /etc/systemd/system/isolator-supervisor.service; sudo systemctl daemon-reload; sudo systemctl enable isolator-supervisor.service; echo SERVICE_UNIT_OK"
+    ssh -i $key $remote $serviceInstallCmd
+    Assert-LastExitCode "Install supervisor service unit"
+
+    # Install new pip dependencies into the shared venv
+    Write-Host "Installing supervisor pip dependencies into venv ..."
+    $pipCmd = "set -e; sudo /opt/isolator/venv/bin/pip install --quiet aiohttp psutil python-json-logger; echo PIP_OK"
+    ssh -i $key $remote $pipCmd
+    Assert-LastExitCode "pip install supervisor deps"
+
+    Write-Host "Ensuring supervisor runtime directories exist ..."
+    $runtimeDirCmd = "set -e; sudo mkdir -p /opt/isolator/state /var/log/isolator /mnt/isolator/conf; echo RUNTIME_DIRS_OK"
+    ssh -i $key $remote $runtimeDirCmd
+    Assert-LastExitCode "Prepare supervisor runtime directories"
+
+    if (-not $NoRestart) {
+        Write-Host "Starting/restarting isolator-supervisor ..."
+        ssh -i $key $remote "sudo systemctl restart isolator-supervisor"
+        Start-Sleep -Seconds 3
+
+        $supervisorHealthy = ($LASTEXITCODE -eq 0)
+
+        Write-Host "Supervisor service status:"
+        ssh -i $key $remote "sudo systemctl status isolator-supervisor --no-pager"
+        if ($LASTEXITCODE -ne 0) { $supervisorHealthy = $false }
+
+        if (-not $supervisorHealthy) {
+            Write-Host "WARNING: isolator-supervisor failed to start. Dashboard was NOT rolled back (it is independent)."
+            Write-Host "Check logs: sudo journalctl -u isolator-supervisor -n 50"
+        }
+        else {
+            Write-Host "Supervisor running. Recent log (last 30s):"
+            ssh -i $key $remote "sudo journalctl -u isolator-supervisor --since '30 seconds ago' --no-pager | tail -20"
+        }
+    }
+    else {
+        Write-Host "Skipping supervisor restart (-NoRestart)."
+    }
+
+    # Clean up local temp tar
+    Remove-Item $tarTmp -ErrorAction SilentlyContinue
+}

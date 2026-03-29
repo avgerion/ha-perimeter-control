@@ -1,9 +1,14 @@
-# Network Isolator Web Dashboard Dependencies
+# Network Isolator Web Dashboard + Supervisor Dependencies
 # Install with: pip3 install -r requirements.txt
 
 bokeh>=3.3.0
 pandas>=2.0.0
 pyyaml>=6.0
 pyinotify>=0.9.6
-tornado>=6.3.0
+tornado>=6.4
 bleak>=0.22.0
+
+# Supervisor extras
+aiohttp>=3.9
+psutil>=5.9
+python-json-logger>=2.0
