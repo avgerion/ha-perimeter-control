@@ -40,3 +40,8 @@ spec:
     wake_sources: [gpio_pir, rtc_timer]
     max_avg_current_ma: 180
     min_battery_percent: 25
+
+  system_deps:
+    apt:
+      - gstreamer # camera capture pipeline, audio trigger detection
+      - i2c # BME280/SHT31 env sensors, RTC module

@@ -170,11 +170,123 @@ class NodeFeaturesHandler(_Base):
             ble_adapters.append({"device": path, "type": "serial"})
         features["ble_adapters"] = ble_adapters
 
-        # ---- GPIO -----------------------------------------------------------
-        gpio_chip = Path("/dev/gpiochip0")
-        features["gpio"] = {
-            "available": gpio_chip.exists(),
-            "chip": str(gpio_chip) if gpio_chip.exists() else None,
+        # ---- GPIO (all chips) ------------------------------------------------
+        gpio_chips = []
+        for chip_path in sorted(glob.glob("/dev/gpiochip*")):
+            chip_name = Path(chip_path).name
+            info: Dict[str, Any] = {"device": chip_path}
+            for attr in ("label", "ngpio"):
+                p = Path(f"/sys/bus/gpio/devices/{chip_name}/{attr}")
+                if p.exists():
+                    val = p.read_text().strip()
+                    info[attr] = int(val) if attr == "ngpio" else val
+            gpio_chips.append(info)
+        features["gpio"] = {"chips": gpio_chips, "available": len(gpio_chips) > 0}
+
+        # ---- I2C buses -------------------------------------------------------
+        i2c_buses = []
+        for path in sorted(glob.glob("/dev/i2c-*")):
+            bus_num = path.rsplit("-", 1)[-1]
+            bus: Dict[str, Any] = {"device": path, "bus": int(bus_num)}
+            # i2cdetect -y -r: read-mode scan, safe for most devices
+            detect_out = self._run(["i2cdetect", "-y", "-r", bus_num])
+            devices = []
+            for row in detect_out.splitlines()[1:]:
+                for token in row.split()[1:]:
+                    if token not in ("--", "UU") and len(token) == 2:
+                        try:
+                            devices.append({"addr": f"0x{token}", "addr_int": int(token, 16)})
+                        except ValueError:
+                            pass
+            bus["detected_devices"] = devices
+            i2c_buses.append(bus)
+        features["i2c"] = {"buses": i2c_buses, "available": len(i2c_buses) > 0}
+
+        # ---- SPI devices ----------------------------------------------------
+        spi_devs = [{"device": p} for p in sorted(glob.glob("/dev/spidev*"))]
+        features["spi"] = {"devices": spi_devs, "available": len(spi_devs) > 0}
+
+        # ---- I2S / Audio (ALSA cards) ----------------------------------------
+        audio_cards = []
+        cards_file = Path("/proc/asound/cards")
+        if cards_file.exists():
+            for line in cards_file.read_text().splitlines():
+                line = line.strip()
+                if line and line[0].isdigit():
+                    parts = line.split(None, 2)
+                    if len(parts) >= 3:
+                        name = parts[1].strip("[]:")
+                        audio_cards.append({"card": int(parts[0]), "name": name, "description": parts[2].strip()})
+        features["audio"] = {"cards": audio_cards, "available": len(audio_cards) > 0}
+
+        # ---- UART / serial ports --------------------------------------------
+        uart_ports = []
+        seen = set()
+        for pattern in ("/dev/serial*", "/dev/ttyAMA*", "/dev/ttyS[0-9]*"):
+            for path in sorted(glob.glob(pattern)):
+                real = str(Path(path).resolve())
+                if real not in seen:
+                    seen.add(real)
+                    uart_ports.append({"device": path, "resolved": real})
+        features["uart"] = {"ports": uart_ports, "available": len(uart_ports) > 0}
+
+        # ---- PWM channels ---------------------------------------------------
+        pwm_chips = []
+        pwm_base = Path("/sys/class/pwm")
+        if pwm_base.exists():
+            for chip in sorted(pwm_base.iterdir()):
+                info_pwm: Dict[str, Any] = {"chip": chip.name}
+                npwm = chip / "npwm"
+                if npwm.exists():
+                    info_pwm["channels"] = int(npwm.read_text().strip())
+                pwm_chips.append(info_pwm)
+        features["pwm"] = {"chips": pwm_chips, "available": len(pwm_chips) > 0}
+
+        # ---- Device tree overlays / params (from /boot/firmware/config.txt) --
+        dt_overlays: List[str] = []
+        dt_params: Dict[str, str] = {}
+        for cfg in ("/boot/firmware/config.txt", "/boot/config.txt"):
+            p = Path(cfg)
+            if p.exists():
+                for raw in p.read_text().splitlines():
+                    line = raw.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("dtoverlay="):
+                        overlay = line.split("=", 1)[1].split(",")[0]
+                        dt_overlays.append(overlay)
+                    elif line.startswith("dtparam="):
+                        kv = line.split("=", 1)[1]
+                        if "=" in kv:
+                            k, v = kv.split("=", 1)
+                            dt_params[k.strip()] = v.strip()
+                break
+        features["hardware_config"] = {"dt_overlays": dt_overlays, "dt_params": dt_params}
+
+        # ---- GStreamer ------------------------------------------------------
+        gst_version = self._run(["gst-inspect-1.0", "--version"]).strip()
+        gst_available = bool(gst_version)
+        gst_elements: List[Dict[str, Any]] = []
+        if gst_available:
+            _INTERESTING = (
+                "v4l2src", "libcamerasrc", "autovideosrc", "videotestsrc",
+                "alsasrc", "alsasink", "autoaudiosrc", "autoaudiosink",
+                "x264enc", "nvh264enc", "v4l2h264enc", "avdec_h264",
+                "jpegenc", "jpegdec", "vp8enc", "vp9enc",
+                "rtspsrc", "rtspclientsink", "udpsrc", "udpsink",
+                "rtph264pay", "rtph264depay",
+                "audioconvert", "audioresample", "volume", "level",
+                "matroskamux", "mp4mux", "oggmux",
+                "pipewiresrc", "pipewiresink", "pulsesrc", "pulsesink",
+            )
+            all_elements = set(self._run(["gst-inspect-1.0", "--print-all"]).split())
+            for elem in _INTERESTING:
+                if elem in all_elements:
+                    gst_elements.append({"element": elem})
+        features["gstreamer"] = {
+            "available": gst_available,
+            "version": gst_version.splitlines()[0] if gst_version else None,
+            "key_elements": gst_elements,
         }
 
         # ---- Storage --------------------------------------------------------

@@ -133,3 +133,19 @@ fields:
             type: integer
             min: 0
             max: 100
+
+      system_deps:
+        type: map
+        description: >-
+          Optional system-level dependencies required by this service.
+          The deploy script reads these from all local descriptors and
+          installs the union of requirements automatically.
+        properties:
+          apt:
+            type: list
+            items: string
+            description: >-
+              Logical dependency tokens (not raw package names).
+              Supported tokens:
+                gstreamer - GStreamer core + plugins + PyGObject bindings
+                i2c       - i2c-tools + python3-smbus2

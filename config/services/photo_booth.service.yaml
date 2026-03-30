@@ -35,3 +35,8 @@ spec:
     cpu_cores: 1.0
     ram_mb: 512
     disk_mb: 1500
+
+  system_deps:
+    apt:
+      - gstreamer # audio/video pipeline (camera capture, RTSP stream, I2S mic)
+      - i2c # optional: I2C sensors (lighting control, env sensors)

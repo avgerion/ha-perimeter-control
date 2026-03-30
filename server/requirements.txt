@@ -1,5 +1,11 @@
 # Network Isolator Web Dashboard + Supervisor Dependencies
 # Install with: pip3 install -r requirements.txt
+#
+# NOTE: PyGObject (gi) and GStreamer Python bindings are NOT pip-installable.
+# Install on the Pi with:
+#   sudo apt install python3-gi python3-gst-1.0 gir1.2-gst-plugins-base-1.0
+# The venv must be created with --system-site-packages so these are visible:
+#   python3 -m venv --system-site-packages venv
 
 bokeh>=3.3.0
 pandas>=2.0.0

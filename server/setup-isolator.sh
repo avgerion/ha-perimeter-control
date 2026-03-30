@@ -40,6 +40,8 @@ ISOLATED_KIND=""
 UPSTREAM_INTERFACE=""
 UPSTREAM_KIND=""
 
+INSTALL_GSTREAMER=false
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -47,8 +49,16 @@ while [[ $# -gt 0 ]]; do
             CONFIG_FILE="$2"
             shift 2
             ;;
+        --with-gstreamer)
+            INSTALL_GSTREAMER=true
+            shift
+            ;;
         --help)
-            echo "Usage: sudo bash setup-isolator.sh --config /path/to/isolator.conf.yaml"
+            echo "Usage: sudo bash setup-isolator.sh --config /path/to/isolator.conf.yaml [--with-gstreamer]"
+            echo ""
+            echo "Options:"
+            echo "  --config PATH          Path to isolator.conf.yaml"
+            echo "  --with-gstreamer       Install GStreamer and PyGObject bindings (photo booth, wildlife monitor, audio capture)"
             exit 0
             ;;
         *)
@@ -140,7 +150,30 @@ step_install_packages() {
     
     # Utilities
     apt install -y git vim nano htop iftop nethogs jq pv
-    
+
+    # Hardware interface detection (used by supervisor node/features API)
+    apt install -y i2c-tools v4l-utils gpiod libgpiod-dev
+
+    if [[ "$INSTALL_GSTREAMER" == "true" ]]; then
+        # GStreamer core + plugins (audio, video, I2S, V4L2, RTSP, HW codec)
+        # Note: V4L2 support is bundled in gstreamer1.0-plugins-good on Pi OS
+        apt install -y \
+            gstreamer1.0-tools \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav \
+            gstreamer1.0-alsa \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
+
+        # Python GStreamer / GObject bindings (must be apt - not pip-installable)
+        apt install -y python3-gi python3-gi-cairo python3-gst-1.0 gir1.2-gst-plugins-base-1.0
+        log_info "GStreamer installed"
+    else
+        log_info "Skipping GStreamer (pass --with-gstreamer to install)"
+    fi
+
     log_success "Packages installed"
 }
 
@@ -190,7 +223,7 @@ step_setup_python_env() {
     log_info "Setting up Python virtual environment for dashboard..."
     
     cd "$INSTALL_DIR"
-    python3 -m venv venv
+    python3 -m venv --system-site-packages venv
     source venv/bin/activate
     
     pip install --upgrade pip
