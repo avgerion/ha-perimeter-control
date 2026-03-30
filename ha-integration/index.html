@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perimeter Control - Dev</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #212121;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 18px;
+            color: #0288d1;
+        }
+
+        .config-input {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 8px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 10px 16px;
+            background: #0288d1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        button:hover {
+            background: #0277bd;
+        }
+
+        .debug {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Perimeter Control - Development</h1>
+
+        <div class="grid">
+            <!-- Configuration Panel -->
+            <div class="card">
+                <h2>Configuration</h2>
+                <div>
+                    <label>API Base URL:</label>
+                    <input type="text" id="apiUrl" class="config-input" value="http://localhost:8080"
+                        placeholder="http://192.168.69.11:8080" />
+                </div>
+                <div>
+                    <label>Service ID:</label>
+                    <input type="text" id="serviceId" class="config-input" value="photo_booth"
+                        placeholder="photo_booth" />
+                </div>
+                <div>
+                    <button onclick="loadComponent()">Load Component</button>
+                    <button onclick="clearComponent()" style="background: #999;">Clear</button>
+                </div>
+                <div class="debug">
+                    <div><strong>Debug Log:</strong></div>
+                    <div id="debug"></div>
+                </div>
+            </div>
+
+            <!-- Component Display -->
+            <div class="card">
+                <h2>Component Preview</h2>
+                <div id="component-container"></div>
+            </div>
+        </div>
+
+        <!-- Full-width Component Demo -->
+        <div class="card" style="margin-top: 20px;">
+            <h2>Live Component (using defaults)</h2>
+            <perimeter-control-service-access-editor id="default-editor" apiBaseUrl="http://localhost:8080"
+                serviceId="photo_booth"></perimeter-control-service-access-editor>
+        </div>
+    </div>
+
+    <script type="module">
+        import './dist/service-access-editor.js';
+
+        window.loadComponent = function () {
+            const apiUrl = document.getElementById('apiUrl').value || 'http://localhost:8080';
+            const serviceId = document.getElementById('serviceId').value || 'photo_booth';
+            const container = document.getElementById('component-container');
+
+            debug(`Loading component with serviceId="${serviceId}", apiBaseUrl="${apiUrl}"`);
+
+            // Clear previous component
+            container.innerHTML = '';
+
+            // Create new component
+            const editor = document.createElement('perimeter-control-service-access-editor');
+            editor.setAttribute('apiBaseUrl', apiUrl);
+            editor.setAttribute('serviceId', serviceId);
+
+            container.appendChild(editor);
+            debug('Component loaded');
+        };
+
+        window.clearComponent = function () {
+            document.getElementById('component-container').innerHTML = '';
+            debug('Component cleared');
+        };
+
+        function debug(msg) {
+            const debugLog = document.getElementById('debug');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.textContent = `[${timestamp}] ${msg}`;
+            debugLog.appendChild(entry);
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+
+        // Log any console errors
+        window.addEventListener('error', (e) => {
+            debug(`ERROR: ${e.message}`);
+            console.error(e);
+        });
+
+        debug('Dev environment ready. Press "Load Component" to begin.');
+    </script>
+</body>
+
+</html>

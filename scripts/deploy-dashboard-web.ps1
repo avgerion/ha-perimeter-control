@@ -212,36 +212,34 @@ else {
     }
 
     if ($needGStreamer) {
-        Write-Host "Service descriptors require GStreamer — installing apt packages ..."
-        $gstCmd = "sudo apt-get install -y -qq gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-alsa python3-gi python3-gi-cairo python3-gst-1.0 gir1.2-gst-plugins-base-1.0 2>&1 | tail -3 ; echo GST_OK"
-        ssh -i $key $remote $gstCmd
+        Write-Host "Service descriptors require GStreamer - installing apt packages ..."
+        ssh -i $key $remote "DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-alsa python3-gi python3-gi-cairo python3-gst-1.0 gir1.2-gst-plugins-base-1.0 2>/dev/null && echo GST_OK"
         Assert-LastExitCode "Install GStreamer packages"
 
         # Ensure venv can see system PyGObject (symlink gi into venv site-packages)
+        # NOTE: Use base64 encoding to avoid PowerShell interpreting $(), >, " in the script value
         Write-Host "Linking PyGObject into venv ..."
         $giScript = @'
-#!/bin/sh
-GI_SRC=$(python3 -c "import gi,os; print(os.path.dirname(gi.__file__))" 2>/dev/null || true)
+GI_SRC=$(python3 -c "import gi,os; print(os.path.dirname(gi.__file__))")
 VENV_SITE=$(sudo /opt/isolator/venv/bin/python3 -c "import site; print(site.getsitepackages()[0])")
-if [ -n "$GI_SRC" ] && [ ! -e "$VENV_SITE/gi" ]; then
-  sudo ln -sf "$GI_SRC" "$VENV_SITE/gi"
-fi
+[ -n "$GI_SRC" ] && [ ! -e "$VENV_SITE/gi" ] && sudo ln -sf "$GI_SRC" "$VENV_SITE/gi"
 echo GI_LINK_OK
 '@
-        $giScript | ssh -i $key $remote "cat > /tmp/link-gi.sh && chmod +x /tmp/link-gi.sh && /tmp/link-gi.sh"
+        $giB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(($giScript -replace "`r`n", "`n")))
+        ssh -i $key $remote "echo '$giB64' | base64 -d | bash"
         if ($LASTEXITCODE -ne 0) { Write-Host "Warning: PyGObject link step non-zero (venv may already have system-site-packages)" }
     }
     else {
-        Write-Host "No service requires GStreamer — skipping."
+        Write-Host "No service requires GStreamer - skipping."
     }
 
     if ($needI2C) {
-        Write-Host "Service descriptors require I2C tools — installing ..."
-        ssh -i $key $remote "sudo apt-get install -y -qq i2c-tools python3-smbus2 2>&1 | tail -2 ; echo I2C_OK"
+        Write-Host "Service descriptors require I2C tools - installing ..."
+        ssh -i $key $remote "DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq i2c-tools python3-smbus2 2>/dev/null && echo I2C_OK"
         Assert-LastExitCode "Install I2C tools"
     }
     else {
-        Write-Host "No service requires I2C tools — skipping."
+        Write-Host "No service requires I2C tools - skipping."
     }
 
     Write-Host "Ensuring supervisor runtime directories exist ..."
@@ -264,6 +262,12 @@ echo GI_LINK_OK
                 Assert-LastExitCode "Install $($sf.Name)"
             }
             Write-Host "Service descriptors installed."
+
+            # Run validator on Pi against the just-deployed descriptors
+            Write-Host "Validating deployed service descriptors ..."
+            $validateCmd = 'sudo /opt/isolator/venv/bin/python3 /opt/isolator/supervisor/resources/validate-service-descriptors.py --dir /mnt/isolator/conf/services ; echo VALIDATE_DONE'
+            ssh -i $key $remote $validateCmd
+            if ($LASTEXITCODE -ne 0) { Write-Host "Warning: descriptor validation returned non-zero (check output above)" }
         }
     }
     else {

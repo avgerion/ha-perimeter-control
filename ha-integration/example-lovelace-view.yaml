@@ -1,0 +1,250 @@
+# Home Assistant Lovelace View - Isolator Fleet Configuration
+#
+# IMPORTANT: Read NETWORK-ARCHITECTURE.md before using this file!
+#
+# Configuration Steps:
+# 1. Find your Supervisor IP:
+#    - SSH to your Pi: ssh pi@<pi-ip>
+#    - Run: hostname -I
+#    - Or use mDNS: isolator-pi.local
+#
+# 2. Verify Supervisor is accessible:
+#    curl http://<SUPERVISOR_IP>:8080/api/v1/services
+#    Should return JSON with list of services
+#
+# 3. Replace SUPERVISOR_IP below with your IP or hostname
+#    - For same network: use IP (192.168.x.x) or mDNS name (pi-name.local)
+#    - For remote access: use public domain with HTTPS
+#
+# 4. Set api_timeout_ms based on your network:
+#    - Local (same router): 10000 ms
+#    - WiFi (slower): 15000-20000 ms
+#    - Remote/VPN: 20000-30000 ms
+
+# CUSTOMIZE THESE VALUES FOR YOUR SETUP:
+# ===== BEGIN CONFIGURATION =====
+# Replace "SUPERVISOR_IP" with your actual IP or hostname:
+# - Option 1: IP address (e.g., 192.168.69.11)
+# - Option 2: mDNS hostname (e.g., isolator-pi.local)
+# - Option 3: Public domain (e.g., isolator.example.com) - requires HTTPS
+#
+# Replace "8080" if Supervisor runs on different port
+# (check with: ssh pi@your-ip "netstat -tlnp | grep python3")
+# ===== END CONFIGURATION =====
+
+title: Isolator Network
+path: isolator
+icon: mdi:shield-network
+type: custom:layout-card
+layout_type: grid
+columns: 2
+
+view:
+  - type: markdown
+    content: |
+      # Isolator Service Fleet Configuration
+
+      **IMPORTANT**: Before using this view, verify your Supervisor is accessible:
+
+      ```bash
+      curl http://SUPERVISOR_IP:8080/api/v1/services
+      ```
+
+      Should return JSON with `["photo_booth", "wildlife_monitor", ...]`
+
+      If you get "Connection refused" or timeout, check:
+      1. Supervisor IP is correct (run `hostname -I` on your Pi)
+      2. Supervisor is running (check: `systemctl status isolator-supervisor`)
+      3. No firewall blocking port 8080 (check: `sudo ufw status`)
+      4. HA has network access to the Pi (try `ping SUPERVISOR_IP` from HA)
+
+      See **NETWORK-ARCHITECTURE.md** for detailed troubleshooting.
+
+      ---
+      Edit access profiles, network settings, and security options for all services.
+
+      **All services connect to single Supervisor endpoint**:
+      - Endpoint: `http://SUPERVISOR_IP:8080`
+      - No separate ports per service (all use /api/v1/services/{service_id})
+
+  - type: custom:layout-card
+    layout_type: vertical
+    columns: 1
+    cards:
+      - type: markdown
+        content: |
+          ## Architecture Note
+
+          ⚠️ **Important Discovery**: All services on a Pi share ONE Supervisor instance (port 8080).
+
+          **Each service is accessed via API endpoint**:
+          - `http://SUPERVISOR_IP:8080/api/v1/services/photo_booth`
+          - `http://SUPERVISOR_IP:8080/api/v1/services/wildlife_monitor`
+          - `http://SUPERVISOR_IP:8080/api/v1/services/ble_gatt_repeater`
+
+          **Multiple Pis use different IPs**:
+          - Pi-1 services on `http://192.168.69.11:8080`
+          - Pi-2 services on `http://192.168.69.12:8080` or `http://pi-2.local:8080`
+          - **NOT different ports on same IP** (that was the confusion 🤔)
+
+  # ===== SINGLE PI CONFIGURATION (MOST COMMON) =====
+  # All services point to the SAME Supervisor endpoint
+  #
+  # HOW TO CUSTOMIZE:
+  # 1. Replace "SUPERVISOR_IP" with your Pi's IP or mDNS name
+  # 2. Change "8080" if Supervisor uses different port
+  # 3. Adjust "api_timeout_ms" for your network speed
+
+  # Photo Booth Service
+  - type: custom:perimeter-control-card
+    title: "📸 Photo Booth"
+    service_id: photo_booth
+    api_base_url: "http://SUPERVISOR_IP:8080" # ← CHANGE THIS
+    api_timeout_ms: 10000
+
+  # Wildlife Monitor Service
+  - type: custom:perimeter-control-card
+    title: "🦁 Wildlife Monitor"
+    service_id: wildlife_monitor
+    api_base_url: "http://SUPERVISOR_IP:8080" # ← SAME IP:PORT (all on this Pi)
+    api_timeout_ms: 10000
+
+  # BLE GATT Repeater Service
+  - type: custom:perimeter-control-card
+    title: "📡 BLE GATT Repeater"
+    service_id: ble_gatt_repeater
+    api_base_url: "http://SUPERVISOR_IP:8080" # ← SAME IP:PORT
+    api_timeout_ms: 10000
+
+  # ESL AP Service
+  - type: custom:perimeter-control-card
+    title: "🏷️ ESL Access Point"
+    service_id: pawr_esl_ap
+    api_base_url: "http://SUPERVISOR_IP:8080" # ← SAME IP:PORT
+    api_timeout_ms: 10000
+
+  # Network Isolator Service
+  - type: custom:perimeter-control-card
+    title: "🔒 Network Isolator"
+    service_id: network_isolator
+    api_base_url: "http://SUPERVISOR_IP:8080" # ← SAME IP:PORT
+    api_timeout_ms: 10000
+
+  # Advanced Configuration Panel
+  - type: custom:layout-card
+    layout_type: vertical
+    columns: 1
+    cards:
+      - type: markdown
+        content: |
+          ## Multi-Node Configuration
+
+          To add services from additional Pi nodes, add more cards with different `api_base_url` values:
+
+          ```yaml
+          - type: custom:perimeter-control-card
+            service_id: photo_booth
+            api_base_url: http://pi-2.local:8080
+          ```
+
+          Supported services on any node:
+          - `photo_booth` — GStreamer-based camera/audio capture
+          - `wildlife_monitor` — BLE + camera monitoring
+          - `ble_gatt_repeater` — Bluetooth Low Energy repeater
+          - `pawr_esl_ap` — Electronic Shelf Label AP
+          - `network_isolator` — Main isolation engine
+
+      - type: custom:layout-card
+        layout_type: grid
+        columns: 2
+        cards:
+          - type: markdown
+            content: |
+              ### Quick Reference: Access Modes
+
+              **isolated** - No upstream connection (stand-alone)
+              **upstream** - Forward requests to origin service
+              **passthrough** - Direct proxy (transparent)
+
+          - type: markdown
+            content: |
+              ### Quick Reference: Exposure Scopes
+
+              **local_only** - Localhost only (127.0.0.1)
+              **lan_only** - Local network (192.168.x.x)
+              **wan_limited** - WAN with rate limiting
+              **wan_full** - Unrestricted internet access
+
+      - type: markdown
+        content: |
+          ## Multi-Pi Fleet Example
+
+          **If you have multiple Pis**, uncomment the examples below and customize IPs/hostnames:
+
+          ⚠️ **Key Rule**: Each PHYSICAL Pi has a different IP/hostname, but services 
+          on the SAME Pi all use the SAME port (8080).
+
+          Example network:
+          - **Pi-1** (garage): `http://garage-pi.local:8080` (photo_booth, wildlife_monitor)
+          - **Pi-2** (shed): `http://shed-pi.local:8080` (ble_gatt_repeater, network_isolator)
+          - **Pi-3** (house): `http://house-pi.local:8080` (pawr_esl_ap)
+
+          NOT:
+          - ❌ Different ports on same IP (that violates architecture)
+          - ❌ Same API_BASE_URL for different Pis (won't discover remote services)
+          - ❌ Hardcoded IPs without fallback (breaks when DHCP lease renews)
+
+# ===== MULTI-PI CONFIGURATION EXAMPLES (OPTIONAL) =====
+# Uncomment and customize these if you have multiple Pis
+#
+# Each Pi gets its own set of service cards with its own api_base_url
+#
+# COMMON CONFIGURATIONS:
+#
+# Option 1: Use mDNS hostnames (RECOMMENDED - most stable)
+#   - api_base_url: "http://primary-pi.local:8080"
+#   - api_base_url: "http://secondary-pi.local:8080"
+#
+# Option 2: Use IP addresses (faster, but DHCP-dependent)
+#   - api_base_url: "http://192.168.69.11:8080"
+#   - api_base_url: "http://192.168.69.12:8080"
+#
+# Option 3: Mix static and mDNS (hybrid)
+#   - api_base_url: "http://192.168.69.11:8080"  # Primary (static IP)
+#   - api_base_url: "http://backup-pi.local:8080"  # Backup (mDNS)
+
+# EXAMPLE: Uncomment to add services from a second Pi
+#
+# - type: markdown
+#   content: |
+#     ## Secondary Pi (pi-2)
+#
+#     Services from second Pi node. Replace `SECONDARY_PI_IP` with actual IP or hostname.
+#
+# - type: custom:perimeter-control-card
+#   title: "📡 BLE GATT Repeater (Pi-2)"
+#   service_id: ble_gatt_repeater
+#   api_base_url: "http://SECONDARY_PI_IP:8080"  # ← CHANGE THIS
+#   api_timeout_ms: 10000
+#
+# - type: custom:perimeter-control-card
+#   title: "🔒 Network Isolator (Pi-2)"
+#   service_id: network_isolator
+#   api_base_url: "http://SECONDARY_PI_IP:8080"  # ← SAME Pi, different IP from Pi-1
+#   api_timeout_ms: 10000
+
+# EXAMPLE: Uncomment to add services from a third Pi
+#
+# - type: markdown
+#   content: |
+#     ## Tertiary Pi (pi-3)
+#
+#     Services from third Pi node. Replace `TERTIARY_PI_IP` with actual IP or hostname.
+#
+# - type: custom:perimeter-control-card
+#   title: "🏷️ ESL Access Point (Pi-3)"
+#   service_id: pawr_esl_ap
+#   api_base_url: "http://TERTIARY_PI_IP:8080"  # ← CHANGE THIS (different from Pi-1 and Pi-2)
+#   api_timeout_ms: 10000
+
+

@@ -1,0 +1,150 @@
+"""
+Home Assistant Custom Card: Fleet View Dashboard
+================================================
+
+IMPORTANT: Read NETWORK-ARCHITECTURE.md before using this!
+
+Configuration Steps:
+1. Find each Pi's IP or mDNS hostname:
+   - SSH: ssh pi@<ip>
+   - Run: hostname -I
+   - Or find in router admin panel
+
+2. Verify each Supervisor is accessible:
+   - curl http://<SUPERVISOR_IP>:8080/api/v1/services
+   - Should return JSON with service list
+
+3. Replace the URL placeholders below with actual IPs/hostnames
+
+4. Set refreshInterval based on network:
+   - Fast local network: 30000 ms (30s)
+   - WiFi or slow: 45000-60000 ms (45-60s)
+
+CONFIGURATION:
+- Replace "PI_1_IP" with first Pi's IP (e.g., 192.168.69.11 or primary-pi.local)
+- Replace "PI_2_IP"/"PI_3_IP" with other Pis (or remove if not using fleet)
+- Each Pi gets ONE entry in the nodes list
+- Each PHYSICAL Pi uses DIFFERENT IP (not different ports)
+
+Installation:
+1. Build: npm run build
+2. Copy dist/fleet-view.js to ~/.homeassistant/www/isolator/
+3. Add to configuration.yaml:
+   
+   frontend:
+     extra_module_url:
+       - /local/isolator/fleet-view.js
+
+Usage:
+Add this card to your HA Lovelace dashboard YAML.
+"""
+
+type: custom:layout-card
+layout_type: vertical
+view:
+  - type: markdown
+    content: |
+      # Isolator Network Fleet Management
+      
+      **Pre-Deployment Verification**:
+      
+      Before adding this card, verify all Supervisors are accessible:
+      
+      ```bash
+      # For each Pi, run from HA machine:
+      curl http://PI_IP:8080/api/v1/services
+      ```
+      
+      Expected response: JSON with service names
+      
+      If you get "Connection refused":
+      1. Check PI_IP is correct (run `hostname -I` on Pi)
+      2. Verify Supervisor running: `systemctl status isolator-supervisor`
+      3. Check firewall: `sudo ufw status` (should allow 8080)
+      4. Verify network access: `ping PI_IP` from HA machine
+      
+      See **NETWORK-ARCHITECTURE.md** for troubleshooting.
+
+  - type: custom:perimeter-control-fleet-view
+    # ===== SINGLE PI CONFIGURATION =====
+    # If you only have one Pi, just keep this node entry
+    # Replace "PI_1_IP" with your Pi's IP or mDNS hostname
+    #
+    # Examples:
+    # - IP: http://192.168.69.11:8080
+    # - mDNS: http://primary-pi.local:8080  (RECOMMENDED - more stable)
+    # - Public: https://isolator.example.com:8443  (requires HTTPS + cert)
+    
+    nodes:
+      - url: "http://PI_1_IP:8080"  # ← CHANGE THIS
+        name: "🏠 Primary Pi"
+      
+      # ===== MULTI-PI CONFIGURATION =====
+      # Uncomment below to add second and third Pi nodes
+      # Replace PI_2_IP and PI_3_IP with actual IPs/hostnames
+      # 
+      # IMPORTANT RULE:
+      # Each PHYSICAL Pi needs DIFFERENT IP (not different ports!)
+      # 
+      # ❌ WRONG: http://192.168.69.11:8080, http://192.168.69.11:8081
+      # ✅ RIGHT: http://192.168.69.11:8080, http://192.168.69.12:8080
+      #
+      # - url: "http://PI_2_IP:8080"  # ← CHANGE THIS
+      #   name: "🏠 Secondary Pi (Backup)"
+      # 
+      # - url: "http://PI_3_IP:8080"  # ← CHANGE THIS
+      #   name: "🏠 Tertiary Pi (Garage)"
+    
+    autoRefresh: true
+    refreshInterval: 30000  # Adjust based on network speed
+
+  - type: markdown
+    content: |
+      # Fleet Dashboard Help
+      
+      ## What You're Seeing
+      
+      This dashboard shows all Isolator Supervisor nodes in your network:
+      - **Left sidebar**: List of Pi nodes
+      - **Main panel**: Selected node's hardware features and services
+      - **Features**: Cameras, BLE adapters, GPIO, I2C, audio, storage, etc.
+      
+      ## How to Use
+      
+      1. **Click a node** in the left sidebar to view its details
+      2. **Hardware Section** shows what's connected to that Pi
+      3. **Services Section** lists all services running on that node
+      4. **Edit Button** (on each service) opens the access profile editor
+      
+      ## Updating Network
+      
+      To add/remove Pi nodes:
+      1. Edit this card's YAML
+      2. Add/remove entries in the `nodes:` section
+      3. Save
+      4. Dashboard will auto-discover services on new nodes
+      
+      ## If a Node is Offline
+      
+      - Red indicator = Supervisor not responding
+      - Check Pi is powered on and connected to network
+      - Verify Supervisor is running: `systemctl status isolator-supervisor`
+      - Check firewall/network isolation on that Pi
+      
+      Dashboard will auto-retry when Pi comes back online.
+      
+      ## Network Architecture Reminder
+      
+      Each PHYSICAL Pi runs ONE Supervisor instance:
+      - Pi-1 all services → `http://pi-1.local:8080` (ONE port per Pi)
+      - Pi-2 all services → `http://pi-2.local:8080` (different IP, same port used)
+      - NOT different ports on same Pi (architecture doesn't work that way)
+      
+      See **NETWORK-ARCHITECTURE.md** for full details.
+
+      - ⚙️ Device tree overlays & parameters
+      
+      **Service Management:**
+      Click a service to edit its access profile (mode, port, TLS, authentication, CORS origins).
+      Changes are saved to the Supervisor API immediately.
+

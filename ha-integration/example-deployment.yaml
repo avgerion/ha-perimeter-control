@@ -1,0 +1,36 @@
+# ============================================================
+# Isolator Deployment Configuration
+# ============================================================
+#
+# Referenced by ha-integration/scripts/deploy.py via --config.
+# Place this file at /config/isolator-repo/deployment.yaml on your HA host.
+#
+# SECURITY: This file references the SSH key path.
+# Ensure the key file is mode 600 and not world-readable.
+# The key itself should stay in secrets.yaml or a restricted path —
+# do NOT paste the key contents here.
+
+# ── Target Pi ────────────────────────────────────────────────
+host: "192.168.69.11" # Pi hostname or IP
+user: "paul" # SSH user
+ssh_key: "/config/.ssh/pi_rsa" # Absolute path to private key on HA host
+
+# ── Services to deploy ───────────────────────────────────────
+# Only apt packages required by these services will be installed.
+# Remove service IDs you're not using on this Pi.
+services:
+  - network_isolator
+  - photo_booth
+  # - ble_gatt_repeater
+  # - pawr_esl_ap
+  # - wildlife_monitor
+
+# ── Repo root ────────────────────────────────────────────────
+# Path to the cloned NetworkIsolator repo on the HA host.
+repo_dir: "/config/isolator-repo"
+
+# ── Options ──────────────────────────────────────────────────
+supervisor_port: 8080
+no_restart: false # set true to deploy without restarting services
+skip_supervisor: false # set true to deploy only dashboard (faster)
+sync_config: false # set true to push config/isolator.conf.yaml to Pi
