@@ -10,9 +10,8 @@
  * - Never blocks HA from loading or functioning
  */
 
-import { html, LitElement, nothing } from 'lit';
+import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { TemplateResult } from 'lit';
 
 export interface SafeLoaderConfig {
     apiUrl: string;
@@ -27,7 +26,6 @@ type LoaderState = 'loading' | 'ready' | 'timeout' | 'error' | 'offline';
 @customElement('perimeter-control-safe-loader')
 export class SafeLoader extends LitElement {
     @property({ attribute: false }) config?: SafeLoaderConfig;
-    @property({ attribute: false }) children?: TemplateResult;
 
     @state() private state: LoaderState = 'loading';
     @state() private isApiHealthy = false;
@@ -131,7 +129,7 @@ export class SafeLoader extends LitElement {
     protected render() {
         switch (this.state) {
             case 'ready':
-                return this.children || nothing;
+                return html`<slot></slot>`;
 
             case 'loading':
                 return this.renderLoading();

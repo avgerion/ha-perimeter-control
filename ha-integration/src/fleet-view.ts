@@ -128,7 +128,7 @@ export class FleetView extends LitElement {
         this.selectedService = null;
     }
 
-    private selectService(service: Service) {
+    private selectService(service: Service | null) {
         this.selectedService = service;
     }
 
