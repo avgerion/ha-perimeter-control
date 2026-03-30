@@ -1,35 +1,42 @@
 /**
- * Isolator Deploy Panel
+ * Perimeter Control Deploy Panel
  *
- * Adds a "Deploy to Pi" section to the HA dashboard card.
- * Triggered via HA `shell_command` (configured in configuration.yaml).
- * Shows current services, deploy target, and status.
+ * Calls the perimeter_control HA custom component REST API to deploy
+ * backend files to the Pi over SSH. No shell_command configuration needed.
  *
  * Card YAML example:
  *   type: custom:perimeter-control-card
  *   api_base_url: "http://192.168.69.11:8080"
  *   service_id: photo_booth
  *   show_deploy_panel: true
- *   deploy_command: isolator_deploy   # matches shell_command name in configuration.yaml
- *   pi_host: "192.168.69.11"
- *   services:
- *     - photo_booth
- *     - wildlife_monitor
+ *   entry_id: abc123   # config entry ID from the perimeter_control integration
  */
 
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 export interface DeployPanelConfig {
-    /** HA shell_command name to call when Deploy is clicked, e.g. "isolator_deploy" */
-    deployCommand?: string;
-    /** Pi hostname/IP shown to the user (not used functionally) */
+    /** Config entry ID from the perimeter_control integration (shown in HA device page) */
+    entryId?: string;
+    /** Pi hostname/IP shown to the user (display only) */
     piHost?: string;
-    /** Service IDs that will be deployed (shown as chips) */
+    /** Service IDs shown as info chips */
     services?: string[];
 }
 
-type DeployStatus = 'idle' | 'queued' | 'error';
+interface ProgressEntry {
+    phase: string;
+    message: string;
+    percent: number;
+    error: string | null;
+}
+
+interface DeployStatus {
+    dashboard_active: boolean;
+    supervisor_active: boolean;
+    deploy_in_progress: boolean;
+    deploy_log: ProgressEntry[];
+}
 
 @customElement('perimeter-control-deploy-panel')
 export class DeployPanel extends LitElement {
@@ -37,61 +44,110 @@ export class DeployPanel extends LitElement {
     @property({ attribute: false }) config?: DeployPanelConfig;
 
     @state() private _deploying = false;
-    @state() private _status: DeployStatus = 'idle';
-    @state() private _message = '';
+    @state() private _error = '';
+    @state() private _log: ProgressEntry[] = [];
+    @state() private _dashboardActive: boolean | null = null;
+    @state() private _supervisorActive: boolean | null = null;
+
+    private _pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    override disconnectedCallback() {
+        super.disconnectedCallback();
+        this._stopPolling();
+    }
+
+    private _apiBase(): string {
+        return '/api/perimeter_control';
+    }
+
+    private async _fetchAuth(path: string, init?: RequestInit): Promise<Response> {
+        const token = this.hass?.auth?.data?.access_token ?? '';
+        return fetch(path, {
+            ...init,
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...(init?.headers ?? {}),
+            },
+        });
+    }
 
     private async _onDeploy() {
+        const entryId = this.config?.entryId;
         if (!this.hass) {
-            this._setStatus('error', 'No Home Assistant context available.');
+            this._error = 'No Home Assistant context available.';
             return;
         }
-        if (!this.config?.deployCommand) {
-            this._setStatus(
-                'error',
-                'No deploy_command configured. Add deploy_command: isolator_deploy to the card YAML, ' +
-                'then add that shell_command to your configuration.yaml.'
-            );
+        if (!entryId) {
+            this._error = 'entry_id not configured. Add entry_id to the card YAML (find it on the device page in Settings → Devices).';
             return;
         }
 
+        this._error = '';
+        this._log = [];
         this._deploying = true;
-        this._setStatus('queued', 'Deploy queued — supervisor will restart momentarily.');
+
         try {
-            await this.hass.callService('shell_command', this.config.deployCommand, {});
-            // HA shell_command doesn't return output here; user sees results in HA logs / notifications.
-            this._setStatus(
-                'queued',
-                'Deploy command sent. The Supervisor will restart. ' +
-                'Check HA logs or the service editor below once it\'s back online.'
+            const res = await this._fetchAuth(
+                `${this._apiBase()}/${entryId}/deploy`,
+                { method: 'POST' }
             );
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                this._error = body.message ?? `Deploy request failed (${res.status})`;
+                this._deploying = false;
+                return;
+            }
+            this._startPolling(entryId);
         } catch (e: any) {
-            this._setStatus(
-                'error',
-                `Failed to call shell_command.${this.config.deployCommand}: ${e?.message ?? String(e)}. ` +
-                'Check that the shell_command is registered in configuration.yaml.'
-            );
-        } finally {
+            this._error = `Network error: ${e?.message ?? String(e)}`;
             this._deploying = false;
         }
     }
 
-    private _setStatus(status: DeployStatus, message: string) {
-        this._status = status;
-        this._message = message;
+    private _startPolling(entryId: string) {
+        this._stopPolling();
+        this._pollTimer = setInterval(() => this._poll(entryId), 1500);
+    }
+
+    private _stopPolling() {
+        if (this._pollTimer !== null) {
+            clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+    }
+
+    private async _poll(entryId: string) {
+        try {
+            const res = await this._fetchAuth(`${this._apiBase()}/${entryId}/status`);
+            if (!res.ok) return;
+            const status: DeployStatus = await res.json();
+            this._log = status.deploy_log;
+            this._dashboardActive = status.dashboard_active;
+            this._supervisorActive = status.supervisor_active;
+            if (!status.deploy_in_progress) {
+                this._deploying = false;
+                this._stopPolling();
+            }
+        } catch {
+            // transient — keep polling
+        }
     }
 
     protected render() {
         const host = this.config?.piHost ?? 'Pi';
         const services = this.config?.services ?? [];
-        const hasCommand = Boolean(this.config?.deployCommand);
+        const hasEntryId = Boolean(this.config?.entryId);
+        const lastEntry = this._log[this._log.length - 1];
+        const percent = lastEntry?.percent ?? 0;
+        const hasError = this._log.some(e => e.error) || Boolean(this._error);
 
         return html`
             <div class="deploy-panel">
                 <div class="panel-header">
                     <span class="panel-title">Deploy to Pi</span>
-                    ${hasCommand
-                ? html`<span class="cmd-tag">${this.config!.deployCommand}</span>`
-                : html`<span class="cmd-tag warn">not configured</span>`}
+                    <span class="status-dot ${this._dashboardActive ? 'dot-ok' : this._dashboardActive === null ? 'dot-unknown' : 'dot-err'}"
+                          title="Dashboard service: ${this._dashboardActive ? 'active' : 'inactive'}"></span>
                 </div>
 
                 <div class="info-row">
@@ -112,39 +168,41 @@ export class DeployPanel extends LitElement {
                     class="deploy-btn"
                     @click=${this._onDeploy}
                     ?disabled=${this._deploying}
-                    title=${hasCommand
-                ? `Call shell_command.${this.config!.deployCommand} via HA`
-                : 'Configure deploy_command in card YAML first'}
                 >
-                    ${this._deploying ? html`<span class="spinner"></span> Deploying…` : 'Deploy to Pi'}
+                    ${this._deploying
+                ? html`<span class="spinner"></span> Deploying…`
+                : 'Deploy to Pi'}
                 </button>
 
-                ${this._message ? html`
-                    <div class="status-msg status-${this._status}">
-                        ${this._message}
+                ${this._deploying ? html`
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar" style="width:${percent}%"></div>
                     </div>
                 ` : ''}
 
-                ${!hasCommand ? html`
+                ${this._error ? html`
+                    <div class="status-msg status-error">${this._error}</div>
+                ` : ''}
+
+                ${this._log.length > 0 ? html`
+                    <div class="log ${hasError ? 'log-error' : ''}">
+                        ${this._log.map(e => html`
+                            <div class="log-row ${e.error ? 'log-row-error' : ''}">
+                                <span class="log-phase">${e.phase}</span>
+                                <span class="log-msg">${e.error ?? e.message}</span>
+                            </div>
+                        `)}
+                    </div>
+                ` : ''}
+
+                ${!hasEntryId ? html`
                     <details class="setup-hint">
                         <summary>Setup instructions</summary>
                         <ol>
-                            <li>Add to <code>configuration.yaml</code>:
-                                <pre>shell_command:
-  isolator_deploy: &gt;-
-    python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-    --config /config/isolator-repo/deployment.yaml
-    2&gt;&amp;1 | tee /config/isolator-repo/deploy.log</pre>
-                            </li>
-                            <li>Create <code>/config/isolator-repo/deployment.yaml</code>:
-                                <pre>host: 192.168.69.11
-user: paul
-ssh_key: /config/.ssh/pi_rsa
-services:
-  - photo_booth</pre>
-                            </li>
-                            <li>Add <code>deploy_command: isolator_deploy</code> to this card's YAML.</li>
-                            <li>Restart Home Assistant and reload the dashboard.</li>
+                            <li>Install the <strong>Perimeter Control</strong> integration via HACS or manually into <code>custom_components/perimeter_control/</code>.</li>
+                            <li>In HA go to <strong>Settings → Devices &amp; Services → Add Integration</strong> and search for <em>Perimeter Control</em>.</li>
+                            <li>Complete the Add Device wizard (host, SSH key, services).</li>
+                            <li>Copy the entry ID from the device page and add <code>entry_id: &lt;id&gt;</code> to this card's YAML.</li>
                         </ol>
                     </details>
                 ` : ''}
@@ -176,19 +234,59 @@ services:
             font-weight: 600;
             font-size: 14px;
             color: var(--primary-text-color);
+            flex: 1;
         }
 
-        .cmd-tag {
-            font-size: 11px;
-            padding: 2px 6px;
-            border-radius: 10px;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .dot-ok      { background: var(--success-color, #43a047); }
+        .dot-err     { background: var(--error-color,   #e53935); }
+        .dot-unknown { background: var(--disabled-color, #bdbdbd); }
+
+        .progress-bar-wrap {
+            height: 3px;
+            background: var(--divider-color, #e0e0e0);
+            border-radius: 2px;
+            margin: 8px 0 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
             background: var(--primary-color, #03a9f4);
-            color: #fff;
-            font-family: monospace;
+            border-radius: 2px;
+            transition: width 0.4s ease;
         }
 
-        .cmd-tag.warn {
-            background: var(--warning-color, #ff9800);
+        .log {
+            margin-top: 8px;
+            font-size: 11px;
+            font-family: monospace;
+            background: var(--code-background-color, #f5f5f5);
+            border-radius: 4px;
+            padding: 6px 8px;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+        .log-error {
+            border-left: 3px solid var(--error-color, #e53935);
+        }
+        .log-row {
+            display: flex;
+            gap: 6px;
+            line-height: 1.6;
+            color: var(--primary-text-color);
+        }
+        .log-row-error {
+            color: var(--error-color, #c62828);
+        }
+        .log-phase {
+            color: var(--secondary-text-color, #888);
+            min-width: 72px;
+            flex-shrink: 0;
         }
 
         .info-row {
@@ -279,12 +377,6 @@ services:
             line-height: 1.5;
         }
 
-        .status-queued {
-            background: #e3f2fd;
-            color: var(--info-color, #0277bd);
-            border-left: 3px solid var(--info-color, #0277bd);
-        }
-
         .status-error {
             background: #ffebee;
             color: var(--error-color, #c62828);
@@ -328,13 +420,6 @@ services:
             font-size: 11px;
         }
     `;
-}
-
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-deploy-panel': DeployPanel;
-        'isolator-deploy-panel': DeployPanel;
-    }
 }
 
 @customElement('isolator-deploy-panel')

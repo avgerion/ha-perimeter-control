@@ -1,0 +1,39 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to Pi Node",
+                "description": "Enter the SSH connection details for your Raspberry Pi.",
+                "data": {
+                    "host": "Hostname or IP address",
+                    "port": "SSH port",
+                    "user": "SSH username",
+                    "ssh_key": "SSH private key (paste full key contents)"
+                },
+                "description_placeholders": {
+                    "ssh_key_hint": "Paste the full contents of your private key (e.g. ~/.ssh/id_rsa)"
+                }
+            },
+            "services": {
+                "title": "Select Services",
+                "description": "Choose which services to install on **{node_summary}**.\n\nRequired dependencies (apt packages, Python libs) will be installed automatically.",
+                "data": {
+                    "network_isolator": "Network Isolator (WiFi AP + firewall gateway)",
+                    "photo_booth": "Photo Booth (camera capture + RTSP stream)",
+                    "wildlife_monitor": "Wildlife Monitor (motion detection + BLE beacons)",
+                    "ble_gatt_repeater": "BLE GATT Repeater (Bluetooth proxy)",
+                    "esl_ap": "ESL Access Point (electronic shelf labels)"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Cannot connect — check host, port, and SSH key",
+            "preflight_failed": "Connected but preflight checks failed — check that Python 3 and systemd are present",
+            "no_services_selected": "Select at least one service to install",
+            "unknown": "Unexpected error — check the Home Assistant logs"
+        },
+        "abort": {
+            "already_configured": "This device is already configured"
+        }
+    }
+}

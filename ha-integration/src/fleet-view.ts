@@ -625,13 +625,6 @@ export class FleetView extends LitElement {
     }
 }
 
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-fleet-view': FleetView;
-        'isolator-fleet-view': FleetView;
-    }
-}
-
 @customElement('isolator-fleet-view')
 export class IsolatorFleetViewAlias extends FleetView {
 }

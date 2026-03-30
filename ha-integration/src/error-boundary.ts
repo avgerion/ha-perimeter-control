@@ -6,7 +6,7 @@
  * 
  * Safety guarantees:
  * - No errors propagate to HA parent (LitElement lifecycle protection)
- * - User can still access HA even if Isolator integration fails
+ * - User can still access HA even if Perimeter Control integration fails
  * - Easy retry mechanism for transient failures
  * - Console warnings for debugging without breaking UI
  */
@@ -192,13 +192,6 @@ ${this.error.stack || 'No stack trace available'}</pre>
         border-radius: 4px;
       }
     `;
-    }
-}
-
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-error-boundary': ErrorBoundary;
-        'isolator-error-boundary': ErrorBoundary;
     }
 }
 

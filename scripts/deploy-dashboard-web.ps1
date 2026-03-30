@@ -32,7 +32,7 @@ function Assert-LastExitCode([string]$step) {
     }
 }
 
-foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer, $localBleProfiler, $localBleMirror, $localApplyRules, $localNetworkTopology, $localTopologyConfig)) {
+foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer, $localBleDebug, $localBleProfiler, $localBleMirror, $localApplyRules, $localNetworkTopology, $localTopologyConfig)) {
     if (-not (Test-Path $f)) { throw "Missing local file: $f" }
 }
 if ($SyncConfig -and -not (Test-Path $localConfig)) {
@@ -41,8 +41,9 @@ if ($SyncConfig -and -not (Test-Path $localConfig)) {
 
 Write-Host "Resolving active service code path from systemd ExecStart..."
 $pathCmd = 'set -e; dashboard=$(systemctl status isolator-dashboard --no-pager | grep -oE ''/opt/isolator/[^ ]*dashboard.py'' | head -n 1); code_dir=$(dirname "$dashboard"); echo $code_dir'
-$activeDir = (ssh -i $key $remote $pathCmd).Trim()
+$pathOutput = ssh -i $key $remote $pathCmd
 Assert-LastExitCode "Resolve active service path"
+$activeDir = ($pathOutput -join "`n").Trim()
 
 if ([string]::IsNullOrWhiteSpace($activeDir)) {
     throw "Could not resolve active code directory from service ExecStart"
@@ -181,10 +182,27 @@ else {
     Assert-LastExitCode "Upload isolator-supervisor.service"
 
     Write-Host "Installing supervisor package to /opt/isolator/supervisor ..."
-    $supBackupCmd = "sudo cp -a /opt/isolator/supervisor /tmp/isolator-supervisor-backup 2>/dev/null; true"
-    $supExtractCmd = "cd /tmp || exit 1; rm -rf /tmp/supervisor; tar -xzf /tmp/supervisor.tar.gz || exit 1; sudo mkdir -p /opt/isolator/supervisor || exit 1; sudo cp -a /tmp/supervisor/. /opt/isolator/supervisor/ || exit 1; sudo chown -R root:root /opt/isolator/supervisor 2>/dev/null; sudo find /opt/isolator/supervisor -type f -name '*.py' -exec chmod 644 {} + 2>/dev/null; sudo find /opt/isolator/supervisor -type d -exec chmod 755 {} + 2>/dev/null; echo SUPERVISOR_INSTALLED; sudo ls -la /opt/isolator/supervisor"
-    ssh -i $key $remote $supBackupCmd
-    ssh -i $key $remote $supExtractCmd
+    # NOTE: Use base64 encoding to avoid PowerShell mangling {}, >, and single-quotes in SSH args.
+    # Using --no-same-permissions/--no-same-owner strips Windows NTFS-style attribute metadata that
+    # causes "chmod: Operation not permitted" even under sudo with cp -a.
+    $supInstallScript = @'
+set -e
+sudo cp -a /opt/isolator/supervisor /tmp/isolator-supervisor-backup 2>/dev/null || true
+cd /tmp
+rm -rf /tmp/supervisor
+tar --no-same-permissions --no-same-owner -xzf /tmp/supervisor.tar.gz
+sudo mkdir -p /opt/isolator/supervisor
+sudo cp -r /tmp/supervisor/. /opt/isolator/supervisor/
+sudo chown -R root:root /opt/isolator/supervisor
+sudo find /opt/isolator/supervisor -type f -exec chmod 644 {} +
+sudo find /opt/isolator/supervisor -type d -exec chmod 755 {} +
+echo SUPERVISOR_INSTALLED
+sudo ls -la /opt/isolator/supervisor
+'@
+    $supInstallB64 = [Convert]::ToBase64String(
+        [System.Text.Encoding]::UTF8.GetBytes(($supInstallScript -replace "`r`n", "`n"))
+    )
+    ssh -i $key $remote "echo '$supInstallB64' | base64 -d | bash"
     Assert-LastExitCode "Install supervisor package"
 
     # Install the systemd service unit

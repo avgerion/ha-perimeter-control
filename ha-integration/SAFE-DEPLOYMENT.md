@@ -2,7 +2,7 @@
 
 **IMPORTANT: This guide protects your single Home Assistant instance from downtime.**
 
-> **User Context**: You have ONE HA instance (production, no failover). We've implemented multiple layers of protection to ensure a broken Isolator integration card won't break your Home Assistant.
+> **User Context**: You have ONE HA instance (production, no failover). We've implemented multiple layers of protection to ensure a broken Perimeter Control card won't break your Home Assistant.
 
 ---
 

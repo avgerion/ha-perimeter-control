@@ -1,0 +1,35 @@
+apiVersion: isolator/v1
+kind: ServiceDescriptor
+metadata:
+  id: pawr_esl_ap
+  name: ESL AP
+  version: "1.0.0"
+
+spec:
+  runtime:
+    type: python_module
+    entrypoint: supervisor.capabilities.pawr_esl_advertiser
+
+  config_file:
+    path: /mnt/isolator/conf/esl-ap.yaml
+    format: yaml
+    schema_ref: schema://services/pawr_esl_ap/v1
+
+  access_profile:
+    mode: isolated
+    bind_address: ""
+    port: 8092
+    tls_mode: off
+    auth_mode: token
+    allowed_origins: []
+    exposure_scope: lan_only
+
+  placement:
+    can_run_with: []
+    cannot_run_with: [ble_gatt_repeater]
+    prefers_node_labels: [feature=pawr]
+
+  resources:
+    cpu_cores: 0.5
+    ram_mb: 256
+    disk_mb: 500

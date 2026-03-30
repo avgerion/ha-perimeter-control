@@ -1,4 +1,4 @@
-# Isolator HA Integration: Network Architecture & Configuration Guide
+# Perimeter Control HA Integration: Network Architecture & Configuration Guide
 
 > **For Your Installation**: Understanding the network topology is critical for correct setup and troubleshooting.
 
@@ -28,7 +28,7 @@ Website → api/v1/services/ble_gatt_repeater on 8080
 
 ```
 ┌─ Home Assistant (192.168.69.X) ─────────────────────────┐
-│  HA Dashboard with Isolator Cards                       │
+│  HA Dashboard with Perimeter Control Cards              │
 │  ├─ Service Access Card for photo_booth               │
 │  ├─ Service Access Card for wildlife_monitor          │
 │  ├─ Service Access Card for ble_gatt_repeater         │

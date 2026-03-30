@@ -122,13 +122,6 @@ export class ServiceAccessCard extends LitElement {
     }
 }
 
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-card': ServiceAccessCard;
-        'isolator-service-access-card': ServiceAccessCard;
-    }
-}
-
 @customElement('isolator-service-access-card')
 export class IsolatorServiceAccessCardAlias extends ServiceAccessCard {
 }

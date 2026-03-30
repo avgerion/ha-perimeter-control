@@ -1,0 +1,12 @@
+{
+    "domain": "perimeter_control",
+    "name": "Perimeter Control",
+    "codeowners": [],
+    "config_flow": true,
+    "documentation": "https://github.com/isolator/isolator",
+    "iot_class": "local_push",
+    "requirements": [
+        "asyncssh==2.14.2"
+    ],
+    "version": "0.1.0"
+}

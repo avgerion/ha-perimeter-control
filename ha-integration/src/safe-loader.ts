@@ -351,13 +351,6 @@ export class SafeLoader extends LitElement {
     }
 }
 
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-safe-loader': SafeLoader;
-        'isolator-safe-loader': SafeLoader;
-    }
-}
-
 @customElement('isolator-safe-loader')
 export class IsolatorSafeLoaderAlias extends SafeLoader {
 }

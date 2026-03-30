@@ -528,13 +528,6 @@ export class ServiceAccessEditor extends LitElement {
     }
 }
 
-declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-service-access-editor': ServiceAccessEditor;
-        'isolator-service-access-editor': ServiceAccessEditor;
-    }
-}
-
 @customElement('isolator-service-access-editor')
 export class IsolatorServiceAccessEditorAlias extends ServiceAccessEditor {
 }

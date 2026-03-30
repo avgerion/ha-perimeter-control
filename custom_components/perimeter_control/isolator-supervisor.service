@@ -1,0 +1,39 @@
+[Unit]
+Description=Isolator Supervisor
+Documentation=https://github.com/isolator/isolator
+After=network.target isolator.service
+Wants=isolator.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/isolator
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=/opt/isolator"
+
+# Supervisor is run as root so it can manage systemd units via subprocess.
+# Future: drop to unprivileged user + sudoers + capability bounding set.
+ExecStart=/opt/isolator/venv/bin/python3 -m supervisor \
+    --config /mnt/isolator/conf \
+    --state  /opt/isolator/state  \
+    --port   8080                 \
+    --log-level INFO
+
+Restart=on-failure
+RestartSec=5
+
+# Give the process time to flush state on shutdown
+TimeoutStopSec=30
+
+# Harden the service
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/opt/isolator/state /mnt/isolator/conf /var/log/isolator
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=isolator-supervisor
+
+[Install]
+WantedBy=multi-user.target

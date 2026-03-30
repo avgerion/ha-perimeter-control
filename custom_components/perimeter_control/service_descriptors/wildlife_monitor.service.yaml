@@ -1,0 +1,47 @@
+apiVersion: isolator/v1
+kind: ServiceDescriptor
+metadata:
+  id: wildlife_monitor
+  name: Wildlife Monitor
+  version: "1.0.0"
+
+spec:
+  runtime:
+    type: python_module
+    entrypoint: supervisor.capabilities.wildlife_monitor
+
+  config_file:
+    path: /mnt/isolator/conf/wildlife-monitor.yaml
+    format: yaml
+    schema_ref: schema://services/wildlife_monitor/v1
+
+  access_profile:
+    mode: localhost
+    bind_address: ""
+    port: 8094
+    tls_mode: off
+    auth_mode: token
+    allowed_origins: []
+    exposure_scope: tunnel_only
+
+  placement:
+    can_run_with: []
+    cannot_run_with: []
+    prefers_node_labels: [feature=camera, role=edge]
+
+  resources:
+    cpu_cores: 0.25
+    ram_mb: 128
+    disk_mb: 300
+
+  low_power_profile:
+    enabled: true
+    duty_cycle_percent: 10
+    wake_sources: [gpio_pir, rtc_timer]
+    max_avg_current_ma: 180
+    min_battery_percent: 25
+
+  system_deps:
+    apt:
+      - gstreamer # camera capture pipeline, audio trigger detection
+      - i2c # BME280/SHT31 env sensors, RTC module

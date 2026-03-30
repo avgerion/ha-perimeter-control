@@ -1,0 +1,42 @@
+apiVersion: isolator/v1
+kind: ServiceDescriptor
+metadata:
+  id: photo_booth
+  name: Photo Booth
+  version: "1.0.0"
+
+spec:
+  runtime:
+    type: python_module
+    entrypoint: supervisor.capabilities.photo_booth
+
+  config_file:
+    path: /mnt/isolator/conf/photo-booth.yaml
+    format: yaml
+    schema_ref: schema://services/photo_booth/v1
+
+  access_profile:
+    mode: upstream
+    bind_address: ""
+    port: 8093
+    tls_mode: self_signed
+    cert_file: /etc/isolator/tls/fullchain.pem
+    key_file: /etc/isolator/tls/privkey.pem
+    auth_mode: token
+    allowed_origins: []
+    exposure_scope: lan_only
+
+  placement:
+    can_run_with: [network_isolator]
+    cannot_run_with: []
+    prefers_node_labels: [feature=camera]
+
+  resources:
+    cpu_cores: 1.0
+    ram_mb: 512
+    disk_mb: 1500
+
+  system_deps:
+    apt:
+      - gstreamer # audio/video pipeline (camera capture, RTSP stream, I2S mic)
+      - i2c # optional: I2C sensors (lighting control, env sensors)

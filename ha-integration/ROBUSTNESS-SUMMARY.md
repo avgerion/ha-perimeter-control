@@ -123,7 +123,7 @@ Explains three-layer protection:
 2. **Safe Loader**: API timeouts won't hang cards, auto-retries
 3. **Graceful Degradation**: Component code has built-in resilience
 
-Outcome: Understand why a broken Isolator card won't break your home automation.
+Outcome: Understand why a broken Perimeter Control card won't break your home automation.
 
 ### 5. DIAGNOSTICS.md
 **Start here if the card doesn't work**
