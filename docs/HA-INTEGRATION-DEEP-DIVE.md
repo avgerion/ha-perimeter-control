@@ -8,15 +8,46 @@ Detailed guide for HA discovery, entity translation, automation examples, and fl
 Home Assistant
 ├── Isolator Integration (custom component)
 │   ├── Config Flow (first-time setup)
+│   ├── Fleet Manager (add 1..N Pis)
 │   ├── Entity Platform Handlers
 │   │   ├── sensor (BLE values, network stats)
 │   │   ├── binary_sensor (connectivity, health)
 │   │   ├── switch (enable/disable capability)
 │   │   └── device_tracker (network devices)
 │   ├── Service Handlers (trigger actions)
+│   ├── Service Config Editor (per-service config file)
+│   ├── Access Profile Editor (shared SSL/network/auth controls)
 │   └── Webhook Listener (Pi → HA push updates)
 └── Pi Entity State (REST API + WebSocket)
 ```
+
+## Generic Fleet UI Model
+
+The HA UI should be generic and reusable across all services.
+
+### Level 1: Fleet View
+- Add one or more Pis.
+- Show hardware/features per Pi (BLE, camera, GPIO lighting, NICs).
+- Show assigned services and current health.
+
+### Level 2: Node Detail
+- Assign or remove services from that Pi.
+- View compatibility warnings (resource conflicts).
+- Open each service editor card.
+
+### Level 3: Service Editor (Reusable Card)
+Each service card has the same sections:
+1. Runtime status (active/degraded/stopped).
+2. Service config file editor (service-specific content).
+3. Shared access profile editor (generic controls):
+  - mode: localhost | upstream | isolated | all | explicit
+  - bind address / port
+  - TLS mode and certificates
+  - auth mode
+  - exposure scope (lan/vpn/tunnel)
+4. Actions: validate, apply, restart, rollback.
+
+This model supports running network isolator + photo booth on one Pi or across different Pis with identical UX patterns.
 
 ## Config Flow (First-Time Setup)
 
@@ -89,6 +120,20 @@ class IsolatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         # Still waiting
         return self.async_abort(reason="pairing_timeout")
+```
+
+### Multi-Pi Onboarding Extension
+
+The flow repeats per node. Each successful pairing creates a separate node record under one integration instance.
+
+```python
+# conceptual state shape in HA
+fleet = {
+  "nodes": {
+    "pi_perimeter": {"host": "192.168.69.11", "labels": ["role=perimeter"]},
+    "pi_media": {"host": "192.168.69.12", "labels": ["role=media", "feature=camera"]},
+  }
+}
 ```
 
 ## Entity Platform Handlers
@@ -310,41 +355,83 @@ Trigger Pi actions from HA automations:
 
 async def async_setup_services(hass, domain, entry):
     """Set up service handlers."""
-    
+
     async def handle_reload_rules(call):
         """Service: reload network isolation rules."""
-        
+
         coordinator = hass.data[DOMAIN][entry.entry_id]
         result = await coordinator.client.trigger_action(
             "network_isolation",
             "reload_rules"
         )
-        
+
         if result["success"]:
             _LOGGER.info("Network isolation rules reloaded")
         else:
             _LOGGER.error(f"Reload failed: {result.get('error')}")
-    
+
     async def handle_trigger_ble_scan(call):
         """Service: start BLE scan."""
-        
+
         coordinator = hass.data[DOMAIN][entry.entry_id]
-        result = await coordinator.client.trigger_action(
+        await coordinator.client.trigger_action(
             "ble_gatt_translator",
             "start_scan"
         )
-    
+
     hass.services.async_register(
         DOMAIN,
         "reload_rules",
         handle_reload_rules
     )
-    
+
     hass.services.async_register(
         DOMAIN,
         "trigger_ble_scan",
         handle_trigger_ble_scan
     )
+```
+
+### New Generic Service APIs Used By HA UI
+
+The integration should call generic endpoints for every service type.
+
+```http
+GET    /api/v1/services
+GET    /api/v1/services/{service_id}
+GET    /api/v1/services/{service_id}/config
+PUT    /api/v1/services/{service_id}/config
+GET    /api/v1/services/{service_id}/access
+PUT    /api/v1/services/{service_id}/access
+POST   /api/v1/services/{service_id}/validate
+POST   /api/v1/services/{service_id}/apply
+POST   /api/v1/services/{service_id}/rollback
+```
+
+Example access payload (shared across all services):
+
+```json
+{
+  "mode": "upstream",
+  "bind_address": "",
+  "port": 5006,
+  "tls_mode": "self_signed",
+  "cert_file": "/etc/isolator/tls/fullchain.pem",
+  "key_file": "/etc/isolator/tls/privkey.pem",
+  "auth_mode": "token",
+  "allowed_origins": ["https://ha.local:8123"],
+  "exposure_scope": "lan_only"
+}
+```
+
+Example service config file payload:
+
+```json
+{
+  "config_file": "/mnt/isolator/conf/photo-booth.yaml",
+  "format": "yaml",
+  "content": "camera:\n  source: picam0\nlighting:\n  backend: ha\n"
+}
 ```
 
 Register services in HA:

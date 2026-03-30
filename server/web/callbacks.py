@@ -508,55 +508,56 @@ def setup_callbacks(doc, data_manager):
         """Update system status indicators (every 5 seconds)."""
         try:
             # Get all status information
+            topology = data_manager.get_network_topology()
             wifi_status = data_manager.get_wifi_ap_status()
-            eth_status = data_manager.get_interface_status('eth0')
-            wlan_status = data_manager.get_interface_status(wifi_status.get('interface', 'wlan0'))
+            upstream_status = data_manager.get_interface_status(topology['upstream']['interface'])
+            isolated_status = data_manager.get_interface_status(topology['isolated']['interface'])
             sys_stats = data_manager.get_system_stats()
             capture_status = data_manager.get_capture_status_all()
             
             active_captures = sum(1 for s in capture_status.values() if s['active'])
             
             wifi_icon = '🟢' if wifi_status.get('running') else '🔴'
-            eth_icon = '🟢' if eth_status.get('up') else '🔴'
-            wlan_icon = '🟢' if wlan_status.get('up') else '🔴'
+            upstream_icon = '🟢' if upstream_status.get('up') else '🔴'
+            isolated_icon = '🟢' if isolated_status.get('up') else '🔴'
             
             status_html = f"""
             <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
                     
-                    <!-- WiFi AP Status -->
+                    <!-- Access Side Status -->
                     <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
                         <div style="font-size: 24px;">{wifi_icon}</div>
-                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">WiFi AP</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{'WiFi AP' if wifi_status.get('enabled') else 'Access Side'}</div>
                         <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                            {wifi_status.get('ssid', 'Not configured')}
+                            {wifi_status.get('ssid') if wifi_status.get('enabled') else topology['isolated']['interface']}
                         </div>
                         <div style="font-size: 12px; color: #3498db; margin-top: 3px;">
-                            {wifi_status.get('clients', 0)} clients
+                            {f"{wifi_status.get('clients', 0)} clients" if wifi_status.get('enabled') else topology['isolated']['kind']}
                         </div>
                     </div>
                     
-                    <!-- Ethernet Status -->
+                    <!-- Upstream Status -->
                     <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
-                        <div style="font-size: 24px;">{eth_icon}</div>
-                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Ethernet</div>
+                        <div style="font-size: 24px;">{upstream_icon}</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{topology['upstream']['label']}</div>
                         <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                            {eth_status.get('ip', 'No IP')}
+                            {topology['upstream']['interface']} · {upstream_status.get('ip', 'No IP')}
                         </div>
                         <div style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
-                            ↓{eth_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{eth_status.get('tx_bytes', 0) // (1024*1024)}MB
+                            ↓{upstream_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{upstream_status.get('tx_bytes', 0) // (1024*1024)}MB
                         </div>
                     </div>
                     
-                    <!-- WLAN Interface -->
+                    <!-- Isolated Interface -->
                     <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
-                        <div style="font-size: 24px;">{wlan_icon}</div>
-                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">wlan0</div>
+                        <div style="font-size: 24px;">{isolated_icon}</div>
+                        <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{topology['isolated']['label']}</div>
                         <div style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                            {wlan_status.get('ip', 'No IP')}
+                            {topology['isolated']['interface']} · {isolated_status.get('ip', 'No IP')}
                         </div>
                         <div style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
-                            ↓{wlan_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{wlan_status.get('tx_bytes', 0) // (1024*1024)}MB
+                            ↓{isolated_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{isolated_status.get('tx_bytes', 0) // (1024*1024)}MB
                         </div>
                     </div>
                     
@@ -982,6 +983,32 @@ def setup_callbacks(doc, data_manager):
     
     # ── Button Click Handlers ───────────────────────────────────────────────
     
+    def refresh_active_config_view():
+        """Refresh the read-only runtime config text panel."""
+        try:
+            if not hasattr(doc, 'active_config_text'):
+                return
+
+            result = data_manager.get_active_config_text()
+            if result.get('success'):
+                doc.active_config_text.text = result.get('text', '')
+                if hasattr(doc, 'active_config_meta'):
+                    suffix = ' (truncated)' if result.get('truncated') else ''
+                    doc.active_config_meta.text = (
+                        f"<p style='color:#7f8c8d;font-size:12px;'>"
+                        f"{result.get('path')} · {result.get('size_bytes', 0)} bytes · "
+                        f"updated {result.get('mtime', 'unknown')}{suffix}</p>"
+                    )
+            else:
+                doc.active_config_text.text = result.get('error', 'Failed to load config')
+                if hasattr(doc, 'active_config_meta'):
+                    doc.active_config_meta.text = (
+                        "<p style='color:#e74c3c;font-size:12px;'>"
+                        f"Unable to read active config: {result.get('path', 'unknown path')}</p>"
+                    )
+        except Exception as e:
+            logger.error(f"Error refreshing active config view: {e}")
+
     def on_apply_changes():
         """Handle Apply Changes button click."""
         try:
@@ -989,7 +1016,8 @@ def setup_callbacks(doc, data_manager):
                 logger.warning("Config widgets not available on document; skipping apply")
                 return
 
-            device_id = doc.device_select.value
+            selected_device = doc.device_select.value
+            device_id = selected_device.split(' ', 1)[0] if selected_device else ''
             internet = doc.internet_toggle.value
             capture_enabled = doc.capture_toggle.active
             logging_level = doc.logging_select.value
@@ -1009,19 +1037,25 @@ def setup_callbacks(doc, data_manager):
                 }
                 data_manager.update_device_rule(device_id, 'capture', capture_config)
 
+                refresh_active_config_view()
                 logger.info(f"Applied configuration changes for {device_id}")
-        
+
         except Exception as e:
             logger.error(f"Error applying changes: {e}")
-    
+
     def on_reload_config():
         """Handle Reload Config button click."""
         try:
             data_manager.reload_config()
+            refresh_active_config_view()
             logger.info("Configuration reloaded")
         except Exception as e:
             logger.error(f"Error reloading config: {e}")
-    
+
+    def on_refresh_active_config(event=None):
+        """Handle manual refresh for the runtime config panel."""
+        refresh_active_config_view()
+
     def on_ble_profiler_start(event=None):
         """Start the GATT profiler for the currently selected scan device."""
         try:
@@ -1213,8 +1247,19 @@ def setup_callbacks(doc, data_manager):
     session_id = None
     if getattr(doc, 'session_context', None) is not None:
         session_id = doc.session_context.id
-    logger.info(f"Registering BLE button handlers for session={session_id}")
-    
+
+    logger.info(f"Registering dashboard button handlers for session={session_id}")
+
+    # Prime active config view on session start.
+    refresh_active_config_view()
+
+    if hasattr(doc, 'apply_button'):
+        doc.apply_button.on_click(on_apply_changes)
+    if hasattr(doc, 'reload_button'):
+        doc.reload_button.on_click(on_reload_config)
+    if hasattr(doc, 'refresh_active_config_button'):
+        doc.refresh_active_config_button.on_click(on_refresh_active_config)
+
     event_logger_refs = []
 
     # Clear Scan button (repurposed from TEST)
@@ -1332,6 +1377,9 @@ def setup_callbacks(doc, data_manager):
     # Keep strong references to callback closures for the life of this session.
     # Some callback registries can hold weak refs, which can drop local closures.
     callback_refs = [
+        on_apply_changes,
+        on_reload_config,
+        on_refresh_active_config,
         on_ble_scan_clear,
         on_ble_scan_start,
         on_ble_scan_stop,
@@ -1347,8 +1395,5 @@ def setup_callbacks(doc, data_manager):
         doc._isolator_callback_refs.extend(callback_refs)
     else:
         doc._isolator_callback_refs = callback_refs
-    
-    # TODO: Register other button callbacks (need widget references)
-    # Currently other buttons are not interactive - data updates periodically
-    
+
     logger.info("All callbacks registered successfully")

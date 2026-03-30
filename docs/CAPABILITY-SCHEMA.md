@@ -2,6 +2,52 @@
 
 This document defines the YAML schema for each capability runtime. Schemas are inspired by ESPHome's simple, declarative style.
 
+## Generic Service Descriptor (Fleet-Wide)
+
+Use this descriptor for every service so Home Assistant can render one reusable editor regardless of service type.
+
+```yaml
+service:
+  service_id: network_isolator              # unique service key
+  display_name: Network Isolator
+  category: networking                      # networking | ble | esl | media | utility
+  runtime_type: systemd                     # systemd | python_module | container
+  entrypoint: isolator.service              # unit name, module, or container image
+
+  # Each service has a dedicated config file
+  config_file:
+    path: /mnt/isolator/conf/isolator.conf.yaml
+    format: yaml                            # yaml | json | toml | ini
+    schema_ref: schema://services/network_isolator/v1
+
+  # Reusable access/security settings shared by all services
+  access_profile:
+    mode: upstream                          # localhost | upstream | isolated | all | explicit
+    bind_address: ""                        # used when mode=explicit
+    port: 5006
+    tls_mode: self_signed                   # off | self_signed | provided_cert
+    cert_file: /etc/isolator/tls/fullchain.pem
+    key_file: /etc/isolator/tls/privkey.pem
+    auth_mode: token                        # none | token | mTLS
+    allowed_origins:
+      - https://ha.local:8123
+    exposure_scope: lan_only                # lan_only | vpn_only | tunnel_only
+
+  # Scheduling and placement hints
+  placement:
+    can_run_with:
+      - photo_booth
+    cannot_run_with:
+      - pawr_esl_advertiser
+    prefers_node_labels:
+      - role=perimeter
+```
+
+Design notes:
+- `config_file.path` is the source of truth for each service instance.
+- `access_profile` is intentionally generic and reused by every service editor card.
+- Service-specific options live in each service config file; shared options stay in `access_profile`.
+
 ## Common Capability Manifest Structure
 
 Every capability is deployed with a manifest that declares requirements, conflicts, and health probes.
@@ -110,6 +156,9 @@ health:
 
 # Capability-specific config
 config:
+  service_access:
+    profile_ref: default-network-ui
+
   # WiFi AP configuration
   wifi:
     ssid: MyNetwork
@@ -260,6 +309,9 @@ health:
 
 # Capability-specific config
 config:
+  service_access:
+    profile_ref: default-ble-ui
+
   # Scanner settings
   scanner:
     duration_sec: 25          # Active scan cycle

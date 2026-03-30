@@ -1,11 +1,11 @@
 # Pi Network Isolator
 
-A Raspberry Pi configured as a WiFi access point with per-device, policy-driven network isolation — and a growing platform for multi-mode BLE/WiFi analysis with a supervisory control plane.
+A Raspberry Pi with per-device, policy-driven network isolation that can run in either direction: WiFi AP isolated from Ethernet, or isolated Ethernet behind a WiFi uplink. It is also a growing platform for multi-mode BLE/WiFi analysis with a supervisory control plane.
 
 ## What It Does
 
-- Creates a secure WiFi AP on `wlan0`.
-- Routes or isolates traffic to/from the upstream network via `eth0`.
+- Resolves interfaces by role (`topology.isolated` and `topology.upstream`) instead of assuming fixed `wlan0`/`eth0` wiring.
+- Supports a secure WiFi AP isolated from Ethernet, or an isolated Ethernet segment behind a WiFi uplink.
 - Applies per-device firewall rules (internet access, LAN reach, logging) driven by a single config file.
 - Logs all WiFi client traffic at configurable verbosity.
 - **Captures per-device pcap files** for Wireshark analysis — designed for reverse engineering unknown IoT devices (WiFi plugs, cameras, drone controllers, etc.).
@@ -26,8 +26,8 @@ A Raspberry Pi configured as a WiFi access point with per-device, policy-driven 
 
 | Component | Role |
 |---|---|
-| `hostapd` | WiFi AP (wlan0) |
-| `dnsmasq` | DHCP + DNS for AP clients |
+| `hostapd` | WiFi AP for isolated side when `topology.isolated.kind=wifi-ap` |
+| `dnsmasq` | DHCP + DNS for the isolated side |
 | `nftables` | Per-device firewall + traffic logging |
 | `scripts/apply-rules.py` | Config → nftables ruleset generator |
 | `systemd` unit `isolator.service` | Orchestrates startup and live reload |
@@ -55,11 +55,15 @@ notepad config\isolator.conf.yaml
 
 # Deploy without restarting services
 .\scripts\deploy-dashboard-web.ps1 -NoRestart
+
+# Also sync local config\isolator.conf.yaml to /mnt/isolator/conf/isolator.conf.yaml
+.\scripts\deploy-dashboard-web.ps1 -SyncConfig
 ```
 
 The deploy script:
 1. **Phase 1** — uploads `server/web/*.py` and BLE scripts, backs up existing files, installs, restarts `isolator-dashboard`
-2. **Phase 2** — packs `supervisor/` as a tarball, uploads, installs to `/opt/isolator/supervisor/`, installs/enables `isolator-supervisor.service`, installs pip deps, restarts supervisor
+2. **Optional config sync** (`-SyncConfig`) — backs up `/mnt/isolator/conf/isolator.conf.yaml`, installs local `config/isolator.conf.yaml` to runtime path, reloads `isolator` (unless `-NoRestart`)
+3. **Phase 2** — packs `supervisor/` as a tarball, uploads, installs to `/opt/isolator/supervisor/`, installs/enables `isolator-supervisor.service`, installs pip deps, restarts supervisor
 
 ### Initial Setup (First Time)
 
@@ -121,7 +125,31 @@ ssh -L 8080:localhost:8080 paul@192.168.69.11
 | `GET` | `/api/v1/metrics` | CPU / memory / disk / capability counts |
 | `WS` | `/api/v1/events` | Real-time event stream |
 
+**Smoke test:**
+```powershell
+python scripts/smoke-supervisor-api.py --base-url http://127.0.0.1:8080
+```
+
 See [docs/PI-SUPERVISOR-API.md](docs/PI-SUPERVISOR-API.md) for the full API contract.
+
+## Generic Service Descriptors
+
+The platform now includes a generic per-service descriptor contract for multi-service, multi-Pi orchestration.
+
+**Descriptor schema:**
+- `supervisor/resources/schemas/service-descriptor.schema.yaml`
+
+**Initial descriptors:**
+- `config/services/network_isolator.service.yaml`
+- `config/services/ble_gatt_repeater.service.yaml`
+- `config/services/esl_ap.service.yaml`
+- `config/services/photo_booth.service.yaml`
+- `config/services/wildlife_monitor.service.yaml`
+
+**Validate descriptors locally:**
+```powershell
+python scripts/validate-service-descriptors.py
+```
 
 ## SSH Remote Management
 
@@ -153,6 +181,48 @@ ssh -i ./y paul@192.168.69.11 "sudo systemctl reload isolator"
 ## Config
 
 Edit `config/isolator.conf.yaml` — see inline comments for all options.
+
+The config supports explicit interface roles:
+
+```yaml
+topology:
+	upstream:
+		interface: eth0
+		kind: ethernet
+	isolated:
+		interface: wlan0
+		kind: wifi-ap
+```
+
+Dashboard listener exposure is configurable too:
+
+```yaml
+dashboard:
+	port: 5006
+	exposure:
+		mode: localhost   # localhost | upstream | isolated | all | explicit
+		bind_address: "" # used only when mode=explicit
+```
+
+To expose the dashboard on the upstream IP (instead of SSH-only), set:
+
+```yaml
+dashboard:
+	exposure:
+		mode: upstream
+```
+
+Reverse mode is also supported:
+
+```yaml
+topology:
+	upstream:
+		interface: wlan0
+		kind: wifi-client
+	isolated:
+		interface: eth0
+		kind: ethernet
+```
 
 **Key Features:**
 - **Max sniff mode by default:** Unknown devices are auto-captured with full logging for immediate analysis
@@ -232,7 +302,7 @@ pip3 install -r server/requirements.txt
 | 4 | Web dashboard with Bokeh (live traffic, device mgmt) | ✅ Complete |
 | 4b | Bridge mode for target device AP analysis | ✅ Complete |
 | 4c | BLE scanning, GATT profiling, sniffer, mirror proxy | ✅ Complete |
-| 5 | Supervisor control plane (REST API, state, reconciliation) | 🔄 In Progress |
+| 5 | Supervisor control plane (REST API, state, reconciliation) | ✅ Complete (MVP) |
 | 6 | Multi-capability scheduling (BLE scan + WiFi isolation concurrent) | 📋 Planned |
 | 7 | Home Assistant integration (optional aggregation layer) | 📋 Planned |
 | 8 | Yocto image for true appliance deploy | 📋 Planned |

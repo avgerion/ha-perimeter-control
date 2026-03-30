@@ -47,6 +47,77 @@ class DataManager:
         """Reload configuration file (called on file change or manual refresh)."""
         logger.info("Reloading configuration...")
         self.config = self._load_config()
+
+    def get_active_config_text(self, max_chars: int = 120000) -> Dict[str, Any]:
+        """Return runtime config file contents with metadata for dashboard display."""
+        try:
+            path = Path(self.config_path)
+            if not path.exists():
+                return {
+                    'success': False,
+                    'error': f'Config file not found: {path}',
+                    'text': '',
+                    'path': str(path),
+                }
+
+            text = path.read_text(encoding='utf-8')
+            truncated = False
+            if len(text) > max_chars:
+                text = text[:max_chars] + "\n\n... [truncated]"
+                truncated = True
+
+            stat = path.stat()
+            return {
+                'success': True,
+                'text': text,
+                'path': str(path),
+                'size_bytes': stat.st_size,
+                'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(timespec='seconds'),
+                'truncated': truncated,
+            }
+        except Exception as e:
+            logger.error(f"Failed to read active config text: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'text': '',
+                'path': str(self.config_path),
+            }
+
+    def get_network_topology(self) -> Dict[str, Any]:
+        """Resolve effective isolated/upstream roles from config, with legacy fallbacks."""
+        topology = self.config.get('topology', {}) or {}
+        upstream = topology.get('upstream', {}) or {}
+        isolated = topology.get('isolated', {}) or {}
+        ap = self.config.get('ap', {}) or {}
+        wan = self.config.get('wan', {}) or {}
+        lan = self.config.get('lan', {}) or {}
+
+        isolated_kind = isolated.get('kind') or ('wifi-ap' if ap else 'ethernet')
+        isolated_interface = (
+            isolated.get('interface')
+            or lan.get('interface')
+            or ap.get('interface')
+            or ('wlan0' if isolated_kind == 'wifi-ap' else 'eth0')
+        )
+        upstream_interface = upstream.get('interface') or wan.get('interface')
+        if not upstream_interface:
+            upstream_interface = 'eth0' if isolated_interface != 'eth0' else 'wlan0'
+        upstream_kind = upstream.get('kind') or wan.get('kind') or ('wifi-client' if upstream_interface.startswith('wl') else 'ethernet')
+
+        return {
+            'isolated': {
+                'interface': isolated_interface,
+                'kind': isolated_kind,
+                'label': isolated.get('label', 'Isolated')
+            },
+            'upstream': {
+                'interface': upstream_interface,
+                'kind': upstream_kind,
+                'label': upstream.get('label', 'Upstream')
+            },
+            'ap': ap,
+        }
     
     def get_connected_devices(self) -> pd.DataFrame:
         """
@@ -531,13 +602,18 @@ class DataManager:
         Returns:
             Dict with keys: running, ssid, channel, clients, interface
         """
+        topology = self.get_network_topology()
         status = {
             'running': False,
             'ssid': None,
             'channel': None,
             'clients': 0,
-            'interface': 'wlan0'
+            'interface': topology['isolated']['interface'],
+            'enabled': topology['isolated']['kind'] == 'wifi-ap'
         }
+
+        if not status['enabled']:
+            return status
         
         try:
             # Check if hostapd service is running

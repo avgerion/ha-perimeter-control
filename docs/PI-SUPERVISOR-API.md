@@ -12,6 +12,47 @@ Optional: Bearer token auth for remote scenarios (add `Authorization: Bearer {to
 
 ---
 
+## Generic Service Endpoints
+
+These endpoints support the new multi-service, per-config-file workflow.
+
+### GET `/api/v1/services`
+List known service descriptors from the node config directory.
+
+### GET `/api/v1/services/{service_id}/config`
+Read the service config file contents and metadata.
+
+### PUT `/api/v1/services/{service_id}/config`
+Write service config file content.
+
+Request body:
+```json
+{
+  "content": "...raw config file text..."
+}
+```
+
+### GET `/api/v1/services/{service_id}/access`
+Read the generic access profile for a service.
+
+### PUT `/api/v1/services/{service_id}/access`
+Update the generic access profile for a service descriptor.
+
+Request body:
+```json
+{
+  "access_profile": {
+    "mode": "upstream",
+    "port": 5006,
+    "tls_mode": "self_signed",
+    "auth_mode": "token",
+    "exposure_scope": "lan_only"
+  }
+}
+```
+
+---
+
 ## Node Information
 
 ### GET `/api/v1/node/info`

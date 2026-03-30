@@ -13,8 +13,13 @@ Access methods:
 """
 
 import logging
+import socket
+import subprocess
 from pathlib import Path
 from collections import Counter
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 from bokeh.server.server import Server
 from bokeh.application import Application
@@ -142,9 +147,125 @@ _install_patch_doc_diagnostics()
 
 # Configuration
 CONFIG_FILE = Path('/mnt/isolator/conf/isolator.conf.yaml')
-BIND_ADDRESS = '127.0.0.1'  # Localhost only by default (SSH tunnel)
-# BIND_ADDRESS = '0.0.0.0'  # Uncomment for direct LAN access
-PORT = 5006
+DEFAULT_BIND_ADDRESS = '127.0.0.1'  # SSH tunnel by default
+DEFAULT_PORT = 5006
+
+
+def _load_config(path: Path) -> Dict[str, Any]:
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as exc:
+        logger.warning(f"Failed to parse config {path}: {exc}; using defaults")
+        return {}
+
+
+def _get_interface_ipv4(interface: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ['ip', '-4', '-o', 'addr', 'show', 'dev', interface],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if 'inet' in parts:
+                idx = parts.index('inet')
+                if idx + 1 < len(parts):
+                    return parts[idx + 1].split('/')[0]
+    except Exception:
+        return None
+    return None
+
+
+def _resolve_interface_roles(config: Dict[str, Any]) -> Dict[str, str]:
+    topology = config.get('topology', {}) or {}
+    upstream = topology.get('upstream', {}) or {}
+    isolated = topology.get('isolated', {}) or {}
+    ap = config.get('ap', {}) or {}
+    wan = config.get('wan', {}) or {}
+    lan = config.get('lan', {}) or {}
+
+    isolated_interface = (
+        isolated.get('interface')
+        or lan.get('interface')
+        or ap.get('interface')
+        or 'wlan0'
+    )
+    upstream_interface = wan.get('interface') or upstream.get('interface')
+    if not upstream_interface:
+        upstream_interface = 'eth0' if isolated_interface != 'eth0' else 'wlan0'
+
+    return {
+        'isolated_interface': isolated_interface,
+        'upstream_interface': upstream_interface,
+        'lan_gateway': (lan.get('gateway') or '').strip(),
+    }
+
+
+def _resolve_server_network(config: Dict[str, Any]) -> Dict[str, Any]:
+    roles = _resolve_interface_roles(config)
+    dashboard_cfg = config.get('dashboard', {}) or {}
+    exposure = dashboard_cfg.get('exposure', {}) or {}
+
+    mode = str(exposure.get('mode', 'localhost')).lower()
+    port = int(dashboard_cfg.get('port', DEFAULT_PORT))
+    explicit_bind = str(exposure.get('bind_address', '')).strip()
+
+    upstream_ip = _get_interface_ipv4(roles['upstream_interface'])
+    isolated_ip = _get_interface_ipv4(roles['isolated_interface']) or roles['lan_gateway'] or None
+
+    bind_address = DEFAULT_BIND_ADDRESS
+    if mode == 'localhost':
+        bind_address = '127.0.0.1'
+    elif mode == 'upstream':
+        bind_address = upstream_ip or '127.0.0.1'
+    elif mode == 'isolated':
+        bind_address = isolated_ip or '127.0.0.1'
+    elif mode == 'all':
+        bind_address = '0.0.0.0'
+    elif mode == 'explicit':
+        bind_address = explicit_bind or '127.0.0.1'
+    else:
+        logger.warning(f"Unknown dashboard exposure mode '{mode}', using localhost")
+        bind_address = '127.0.0.1'
+
+    hosts = {
+        'localhost',
+        '127.0.0.1',
+        'isolator.local',
+        socket.gethostname(),
+    }
+    if upstream_ip:
+        hosts.add(upstream_ip)
+    if isolated_ip:
+        hosts.add(isolated_ip)
+    if bind_address not in ('0.0.0.0', '::'):
+        hosts.add(bind_address)
+
+    extra_origins = exposure.get('allow_websocket_origins', [])
+    if isinstance(extra_origins, list):
+        for origin in extra_origins:
+            if isinstance(origin, str) and origin.strip():
+                hosts.add(origin.strip())
+
+    allow_websocket_origin = [f"{h}:{port}" for h in sorted(hosts)]
+
+    return {
+        'mode': mode,
+        'port': port,
+        'bind_address': bind_address,
+        'allow_websocket_origin': allow_websocket_origin,
+        'upstream_interface': roles['upstream_interface'],
+        'isolated_interface': roles['isolated_interface'],
+        'upstream_ip': upstream_ip,
+        'isolated_ip': isolated_ip,
+    }
 
 
 class IsolatorDashboard:
@@ -227,10 +348,17 @@ class IsolatorDashboard:
 
 def main():
     """Start the Bokeh server."""
+    config = _load_config(CONFIG_FILE)
+    server_net = _resolve_server_network(config)
+
     logger.info("=" * 60)
     logger.info("Network Isolator Dashboard Starting")
     logger.info(f"Config: {CONFIG_FILE}")
-    logger.info(f"Bind: {BIND_ADDRESS}:{PORT}")
+    logger.info(f"Bind mode: {server_net['mode']}")
+    logger.info(
+        f"Bind: {server_net['bind_address']}:{server_net['port']} "
+        f"(upstream={server_net['upstream_interface']} isolated={server_net['isolated_interface']})"
+    )
     logger.info("=" * 60)
     
     # Check config file exists
@@ -249,14 +377,9 @@ def main():
     # Configure server
     server = Server(
         {'/': app},
-        port=PORT,
-        address=BIND_ADDRESS,
-        allow_websocket_origin=[
-            f"{BIND_ADDRESS}:{PORT}",
-            f"localhost:{PORT}",
-            f"isolator.local:{PORT}",
-            f"127.0.0.1:{PORT}"
-        ],
+        port=server_net['port'],
+        address=server_net['bind_address'],
+        allow_websocket_origin=server_net['allow_websocket_origin'],
         session_token_expiration=86400000,  # 24 hours (in milliseconds)
         num_procs=1  # Single process on Pi 3
     )
@@ -266,8 +389,14 @@ def main():
     
     logger.info("=" * 60)
     logger.info("Dashboard is LIVE!")
-    logger.info(f"Access via SSH tunnel: ssh -L {PORT}:localhost:{PORT} pi@isolator.local")
-    logger.info(f"Then browse to: http://localhost:{PORT}")
+    logger.info(
+        f"Access via SSH tunnel: ssh -L {server_net['port']}:localhost:{server_net['port']} pi@isolator.local"
+    )
+    logger.info(f"Then browse to: http://localhost:{server_net['port']}")
+    if server_net['mode'] in ('upstream', 'all') and server_net['upstream_ip']:
+        logger.info(f"Upstream access: http://{server_net['upstream_ip']}:{server_net['port']}")
+    if server_net['mode'] in ('isolated', 'all') and server_net['isolated_ip']:
+        logger.info(f"Isolated-side access: http://{server_net['isolated_ip']}:{server_net['port']}")
     logger.info("=" * 60)
     
     # Start the IOLoop

@@ -8,10 +8,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 
-# Configure static IP on wlan0
-ExecStartPre=/usr/sbin/ip addr flush dev wlan0
-ExecStartPre=/usr/sbin/ip addr add 192.168.111.1/24 dev wlan0
-ExecStartPre=/usr/sbin/ip link set wlan0 up
+# Configure static IP on whichever interface is isolated by config
+ExecStartPre=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/network-topology.py --config /mnt/isolator/conf/isolator.conf.yaml prepare-interface
 
 # Generate and apply configurations
 ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml --output-dir /etc/isolator
@@ -21,7 +19,7 @@ ExecReload=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py -
 
 # Cleanup on stop
 ExecStop=/usr/sbin/nft flush ruleset
-ExecStop=/usr/sbin/ip addr flush dev wlan0
+ExecStop=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/network-topology.py --config /mnt/isolator/conf/isolator.conf.yaml cleanup-interface
 
 # Logging
 StandardOutput=journal

@@ -1,6 +1,7 @@
 param(
     [switch]$NoRestart,
-    [switch]$SkipSupervisor
+    [switch]$SkipSupervisor,
+    [switch]$SyncConfig
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +18,10 @@ $localBleSniffer = Join-Path $root "scripts/ble-sniffer.py"
 $localBleDebug = Join-Path $root "scripts/ble-debug.sh"
 $localBleProfiler = Join-Path $root "scripts/ble-proxy-profiler.py"
 $localBleMirror = Join-Path $root "scripts/ble-gatt-mirror.py"
+$localApplyRules = Join-Path $root "scripts/apply-rules.py"
+$localNetworkTopology = Join-Path $root "scripts/network-topology.py"
+$localTopologyConfig = Join-Path $root "scripts/topology_config.py"
+$localConfig = Join-Path $root "config/isolator.conf.yaml"
 
 $localSupervisorDir = Join-Path $root "supervisor"
 $localSupervisorService = Join-Path $root "server/isolator-supervisor.service"
@@ -27,8 +32,11 @@ function Assert-LastExitCode([string]$step) {
     }
 }
 
-foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer, $localBleProfiler, $localBleMirror)) {
+foreach ($f in @($localDashboard, $localLayouts, $localCallbacks, $localDataSources, $localBleScanner, $localBleSniffer, $localBleProfiler, $localBleMirror, $localApplyRules, $localNetworkTopology, $localTopologyConfig)) {
     if (-not (Test-Path $f)) { throw "Missing local file: $f" }
+}
+if ($SyncConfig -and -not (Test-Path $localConfig)) {
+    throw "-SyncConfig specified but local config file is missing: $localConfig"
 }
 
 Write-Host "Resolving active service code path from systemd ExecStart..."
@@ -60,18 +68,41 @@ scp -i $key $localBleSniffer  "${remote}:/tmp/ble-sniffer.py"   | Out-Null; Asse
 scp -i $key $localBleDebug    "${remote}:/tmp/ble-debug.sh"     | Out-Null; Assert-LastExitCode "Upload ble-debug.sh"
 scp -i $key $localBleProfiler "${remote}:/tmp/ble-proxy-profiler.py" | Out-Null; Assert-LastExitCode "Upload ble-proxy-profiler.py"
 scp -i $key $localBleMirror   "${remote}:/tmp/ble-gatt-mirror.py" | Out-Null; Assert-LastExitCode "Upload ble-gatt-mirror.py"
+scp -i $key $localApplyRules  "${remote}:/tmp/apply-rules.py" | Out-Null; Assert-LastExitCode "Upload apply-rules.py"
+scp -i $key $localNetworkTopology "${remote}:/tmp/network-topology.py" | Out-Null; Assert-LastExitCode "Upload network-topology.py"
+scp -i $key $localTopologyConfig "${remote}:/tmp/topology_config.py" | Out-Null; Assert-LastExitCode "Upload topology_config.py"
+if ($SyncConfig) {
+    scp -i $key $localConfig "${remote}:/tmp/isolator.conf.yaml" | Out-Null
+    Assert-LastExitCode "Upload isolator.conf.yaml"
+}
 
 $backupTag = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupDir = "/tmp/isolator-dashboard-backup-$backupTag"
 Write-Host "Creating remote backup in $backupDir ..."
-$backupCmd = "set -e; sudo mkdir -p $backupDir; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $activeDir/\$f ] && sudo cp -a $activeDir/\$f $backupDir/\$f || true; done; [ -f /opt/isolator/scripts/ble-scanner-v2.py ] && sudo cp -a /opt/isolator/scripts/ble-scanner-v2.py $backupDir/ble-scanner-v2.py || true; [ -f /opt/isolator/scripts/ble-sniffer.py ] && sudo cp -a /opt/isolator/scripts/ble-sniffer.py $backupDir/ble-sniffer.py || true; [ -f /opt/isolator/scripts/ble-proxy-profiler.py ] && sudo cp -a /opt/isolator/scripts/ble-proxy-profiler.py $backupDir/ble-proxy-profiler.py || true; [ -f /opt/isolator/scripts/ble-gatt-mirror.py ] && sudo cp -a /opt/isolator/scripts/ble-gatt-mirror.py $backupDir/ble-gatt-mirror.py || true; sudo ls -l --time-style=long-iso $backupDir || true"
+$backupCmd = "set -e; sudo mkdir -p $backupDir; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $activeDir/\$f ] && sudo cp -a $activeDir/\$f $backupDir/\$f || true; done; for f in ble-scanner-v2.py ble-sniffer.py ble-proxy-profiler.py ble-gatt-mirror.py apply-rules.py network-topology.py topology_config.py; do [ -f /opt/isolator/scripts/\$f ] && sudo cp -a /opt/isolator/scripts/\$f $backupDir/\$f || true; done; sudo ls -l --time-style=long-iso $backupDir || true"
 ssh -i $key $remote $backupCmd
 Assert-LastExitCode "Create remote backup"
 
 Write-Host "Installing files into active directory..."
-$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo install -o root -g root -m 0644 /tmp/data_sources.py $activeDir/data_sources.py; sudo install -o root -g root -m 0755 /tmp/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py; sudo install -o root -g root -m 0755 /tmp/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py; sudo install -o root -g root -m 0755 /tmp/ble-debug.sh /opt/isolator/scripts/ble-debug.sh; sudo install -o root -g root -m 0755 /tmp/ble-proxy-profiler.py /opt/isolator/scripts/ble-proxy-profiler.py; sudo install -o root -g root -m 0755 /tmp/ble-gatt-mirror.py /opt/isolator/scripts/ble-gatt-mirror.py; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py $activeDir/data_sources.py /opt/isolator/scripts/ble-scanner-v2.py /opt/isolator/scripts/ble-sniffer.py /opt/isolator/scripts/ble-proxy-profiler.py /opt/isolator/scripts/ble-gatt-mirror.py"
+$installCmd = "set -e; sudo install -o root -g root -m 0644 /tmp/dashboard.py $activeDir/dashboard.py; sudo install -o root -g root -m 0644 /tmp/layouts.py $activeDir/layouts.py; sudo install -o root -g root -m 0644 /tmp/callbacks.py $activeDir/callbacks.py; sudo install -o root -g root -m 0644 /tmp/data_sources.py $activeDir/data_sources.py; sudo install -o root -g root -m 0755 /tmp/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py; sudo install -o root -g root -m 0755 /tmp/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py; sudo install -o root -g root -m 0755 /tmp/ble-debug.sh /opt/isolator/scripts/ble-debug.sh; sudo install -o root -g root -m 0755 /tmp/ble-proxy-profiler.py /opt/isolator/scripts/ble-proxy-profiler.py; sudo install -o root -g root -m 0755 /tmp/ble-gatt-mirror.py /opt/isolator/scripts/ble-gatt-mirror.py; sudo install -o root -g root -m 0755 /tmp/apply-rules.py /opt/isolator/scripts/apply-rules.py; sudo install -o root -g root -m 0755 /tmp/network-topology.py /opt/isolator/scripts/network-topology.py; sudo install -o root -g root -m 0644 /tmp/topology_config.py /opt/isolator/scripts/topology_config.py; sudo ls -l --time-style=long-iso $activeDir/dashboard.py $activeDir/layouts.py $activeDir/callbacks.py $activeDir/data_sources.py /opt/isolator/scripts/ble-scanner-v2.py /opt/isolator/scripts/ble-sniffer.py /opt/isolator/scripts/ble-proxy-profiler.py /opt/isolator/scripts/ble-gatt-mirror.py /opt/isolator/scripts/apply-rules.py /opt/isolator/scripts/network-topology.py /opt/isolator/scripts/topology_config.py"
 ssh -i $key $remote $installCmd
 Assert-LastExitCode "Install files"
+
+if ($SyncConfig) {
+    Write-Host "Syncing local config to runtime config path..."
+    $syncCmd = "set -e; sudo mkdir -p /mnt/isolator/conf; [ -f /mnt/isolator/conf/isolator.conf.yaml ] && sudo cp -a /mnt/isolator/conf/isolator.conf.yaml $backupDir/isolator.conf.yaml || true; sudo install -o root -g root -m 0644 /tmp/isolator.conf.yaml /mnt/isolator/conf/isolator.conf.yaml; sudo ls -l --time-style=long-iso /mnt/isolator/conf/isolator.conf.yaml"
+    ssh -i $key $remote $syncCmd
+    Assert-LastExitCode "Sync runtime config"
+
+    if (-not $NoRestart) {
+        Write-Host "Reloading isolator to apply synced config..."
+        ssh -i $key $remote "sudo systemctl reload isolator"
+        Assert-LastExitCode "Reload isolator"
+    }
+    else {
+        Write-Host "Skipping isolator reload for synced config (-NoRestart)."
+    }
+}
 
 if (-not $NoRestart) {
     Write-Host "Restarting isolator-dashboard..."
@@ -91,7 +122,7 @@ if (-not $NoRestart) {
 
     if (-not $serviceHealthy) {
         Write-Host "Service failed health check. Rolling back previous files..."
-        $rollbackCmd = "set -e; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $backupDir/\$f ] && sudo install -o root -g root -m 0644 $backupDir/\$f $activeDir/\$f || true; done; [ -f $backupDir/ble-scanner-v2.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-scanner-v2.py /opt/isolator/scripts/ble-scanner-v2.py || true; [ -f $backupDir/ble-sniffer.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-sniffer.py /opt/isolator/scripts/ble-sniffer.py || true; [ -f $backupDir/ble-proxy-profiler.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-proxy-profiler.py /opt/isolator/scripts/ble-proxy-profiler.py || true; [ -f $backupDir/ble-gatt-mirror.py ] && sudo install -o root -g root -m 0755 $backupDir/ble-gatt-mirror.py /opt/isolator/scripts/ble-gatt-mirror.py || true; sudo systemctl restart isolator-dashboard"
+        $rollbackCmd = "set -e; for f in dashboard.py layouts.py callbacks.py data_sources.py; do [ -f $backupDir/\$f ] && sudo install -o root -g root -m 0644 $backupDir/\$f $activeDir/\$f || true; done; for f in ble-scanner-v2.py ble-sniffer.py ble-proxy-profiler.py ble-gatt-mirror.py apply-rules.py network-topology.py topology_config.py; do [ -f $backupDir/\$f ] && case \$f in topology_config.py) sudo install -o root -g root -m 0644 $backupDir/\$f /opt/isolator/scripts/\$f ;; *) sudo install -o root -g root -m 0755 $backupDir/\$f /opt/isolator/scripts/\$f ;; esac || true; done; sudo systemctl restart isolator-dashboard"
         ssh -i $key $remote $rollbackCmd
         Assert-LastExitCode "Rollback and restart isolator-dashboard"
 
@@ -151,7 +182,7 @@ else {
 
     Write-Host "Installing supervisor package to /opt/isolator/supervisor ..."
     $supBackupCmd = "sudo cp -a /opt/isolator/supervisor /tmp/isolator-supervisor-backup 2>/dev/null; true"
-    $supExtractCmd = "set -e; cd /tmp; rm -rf /tmp/supervisor; tar -xzf /tmp/supervisor.tar.gz; sudo mkdir -p /opt/isolator/supervisor; sudo cp -a /tmp/supervisor/. /opt/isolator/supervisor/; sudo chown -R root:root /opt/isolator/supervisor; sudo find /opt/isolator/supervisor -type f -name '*.py' -exec chmod 644 {} +; echo SUPERVISOR_INSTALLED; sudo ls -l --time-style=long-iso /opt/isolator/supervisor"
+    $supExtractCmd = "cd /tmp || exit 1; rm -rf /tmp/supervisor; tar -xzf /tmp/supervisor.tar.gz || exit 1; sudo mkdir -p /opt/isolator/supervisor || exit 1; sudo cp -a /tmp/supervisor/. /opt/isolator/supervisor/ || exit 1; sudo chown -R root:root /opt/isolator/supervisor 2>/dev/null; sudo find /opt/isolator/supervisor -type f -name '*.py' -exec chmod 644 {} + 2>/dev/null; sudo find /opt/isolator/supervisor -type d -exec chmod 755 {} + 2>/dev/null; echo SUPERVISOR_INSTALLED; sudo ls -la /opt/isolator/supervisor"
     ssh -i $key $remote $supBackupCmd
     ssh -i $key $remote $supExtractCmd
     Assert-LastExitCode "Install supervisor package"
@@ -172,6 +203,27 @@ else {
     $runtimeDirCmd = "set -e; sudo mkdir -p /opt/isolator/state /var/log/isolator /mnt/isolator/conf; echo RUNTIME_DIRS_OK"
     ssh -i $key $remote $runtimeDirCmd
     Assert-LastExitCode "Prepare supervisor runtime directories"
+
+    # Deploy service descriptors to /mnt/isolator/conf/services/
+    $localServicesDir = Join-Path $root "config/services"
+    if (Test-Path $localServicesDir) {
+        $serviceFiles = Get-ChildItem -Path $localServicesDir -Filter "*.service.yaml" -File
+        if ($serviceFiles.Count -gt 0) {
+            Write-Host "Deploying $($serviceFiles.Count) service descriptor(s) to /mnt/isolator/conf/services/ ..."
+            ssh -i $key $remote "sudo mkdir -p /mnt/isolator/conf/services" | Out-Null
+            Assert-LastExitCode "Create remote services dir"
+            foreach ($sf in $serviceFiles) {
+                scp -i $key $sf.FullName "${remote}:/tmp/$($sf.Name)" | Out-Null
+                Assert-LastExitCode "Upload $($sf.Name)"
+                ssh -i $key $remote "sudo install -o root -g root -m 0644 /tmp/$($sf.Name) /mnt/isolator/conf/services/$($sf.Name)" | Out-Null
+                Assert-LastExitCode "Install $($sf.Name)"
+            }
+            Write-Host "Service descriptors installed."
+        }
+    }
+    else {
+        Write-Host "No config/services/ directory found - skipping descriptor deploy."
+    }
 
     if (-not $NoRestart) {
         Write-Host "Starting/restarting isolator-supervisor ..."

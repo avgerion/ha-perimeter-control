@@ -94,52 +94,53 @@ def create_dashboard_layout(data_manager):
 def create_system_status_panel(data_manager):
     """System health indicators and network status."""
     # Get initial network status
+    topology = data_manager.get_network_topology()
     wifi_status = data_manager.get_wifi_ap_status()
-    eth_status = data_manager.get_interface_status('eth0')
-    wlan_status = data_manager.get_interface_status(wifi_status.get('interface', 'wlan0'))
+    upstream_status = data_manager.get_interface_status(topology['upstream']['interface'])
+    isolated_status = data_manager.get_interface_status(topology['isolated']['interface'])
     sys_stats = data_manager.get_system_stats()
     
     wifi_icon = '🟢' if wifi_status.get('running') else '🔴'
-    eth_icon = '🟢' if eth_status.get('up') else '🔴'
-    wlan_icon = '🟢' if wlan_status.get('up') else '🔴'
+    upstream_icon = '🟢' if upstream_status.get('up') else '🔴'
+    isolated_icon = '🟢' if isolated_status.get('up') else '🔴'
     
     status_html = f"""
     <div style="background: #2c3e50; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
             
-            <!-- WiFi AP Status -->
+            <!-- Access Side Status -->
             <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
                 <div id="wifi-icon" style="font-size: 24px;">{wifi_icon}</div>
-                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">WiFi AP</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{'WiFi AP' if wifi_status.get('enabled') else 'Access Side'}</div>
                 <div id="wifi-ssid" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                    {wifi_status.get('ssid', 'Not configured')}
+                    {wifi_status.get('ssid') if wifi_status.get('enabled') else topology['isolated']['interface']}
                 </div>
                 <div id="wifi-clients" style="font-size: 12px; color: #3498db; margin-top: 3px;">
-                    {wifi_status.get('clients', 0)} clients
+                    {f"{wifi_status.get('clients', 0)} clients" if wifi_status.get('enabled') else topology['isolated']['kind']}
                 </div>
             </div>
             
-            <!-- Ethernet Status -->
+            <!-- Upstream Status -->
             <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
-                <div id="eth-icon" style="font-size: 24px;">{eth_icon}</div>
-                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">Ethernet</div>
+                <div id="eth-icon" style="font-size: 24px;">{upstream_icon}</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{topology['upstream']['label']}</div>
                 <div id="eth-ip" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                    {eth_status.get('ip', 'No IP')}
+                    {topology['upstream']['interface']} · {upstream_status.get('ip', 'No IP')}
                 </div>
                 <div id="eth-traffic" style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
-                    ↓{eth_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{eth_status.get('tx_bytes', 0) // (1024*1024)}MB
+                    ↓{upstream_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{upstream_status.get('tx_bytes', 0) // (1024*1024)}MB
                 </div>
             </div>
             
-            <!-- WLAN Interface -->
+            <!-- Isolated Interface -->
             <div style="text-align: center; padding: 10px; background: #34495e; border-radius: 5px;">
-                <div id="wlan-icon" style="font-size: 24px;">{wlan_icon}</div>
-                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">wlan0</div>
+                <div id="wlan-icon" style="font-size: 24px;">{isolated_icon}</div>
+                <div style="font-size: 14px; font-weight: bold; margin-top: 5px;">{topology['isolated']['label']}</div>
                 <div id="wlan-ip" style="font-size: 11px; color: #bdc3c7; margin-top: 3px;">
-                    {wlan_status.get('ip', 'No IP')}
+                    {topology['isolated']['interface']} · {isolated_status.get('ip', 'No IP')}
                 </div>
                 <div id="wlan-traffic" style="font-size: 10px; color: #95a5a6; margin-top: 3px;">
-                    ↓{wlan_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{wlan_status.get('tx_bytes', 0) // (1024*1024)}MB
+                    ↓{isolated_status.get('rx_bytes', 0) // (1024*1024)}MB ↑{isolated_status.get('tx_bytes', 0) // (1024*1024)}MB
                 </div>
             </div>
             
@@ -317,46 +318,93 @@ def create_events_log():
 
 def create_config_panel(data_manager):
     """Configuration sidebar for quick rule changes."""
-    
+
     device_select = Select(
         title="Select Device:",
         value="",
         options=[],
         width=300
     )
-    
+
     internet_toggle = Select(
         title="Internet Access:",
         value="allow",
         options=["allow", "deny", "log-only"],
         width=300
     )
-    
+
     capture_toggle = Toggle(
         label="Enable Packet Capture",
         active=False,
         width=300
     )
-    
+
     logging_select = Select(
         title="Logging Level:",
         value="metadata",
         options=["none", "metadata", "full"],
         width=300
     )
-    
+
     apply_button = Button(
         label="Apply Changes",
         button_type="success",
         width=300
     )
-    
+
     reload_button = Button(
         label="Reload Config",
         button_type="warning",
         width=300
     )
-    
+
+    refresh_active_config_button = Button(
+        label="Refresh Active Config",
+        button_type="primary",
+        width=300
+    )
+
+    active_config_meta = Div(
+        text="<p style='color:#7f8c8d;font-size:12px;'>Active runtime config: /mnt/isolator/conf/isolator.conf.yaml</p>",
+        width=300
+    )
+
+    active_config_text = PreText(
+        text="Loading active config...",
+        width=300,
+        height=260,
+        styles={
+            'background-color': '#2c3e50',
+            'color': '#ecf0f1',
+            'font-family': 'monospace',
+            'font-size': '11px',
+            'padding': '8px',
+            'border-radius': '5px',
+            'overflow-y': 'auto'
+        }
+    )
+
+    download_config_button = Button(
+        label="Download Active Config",
+        button_type="default",
+        width=300
+    )
+    download_config_button.js_on_click(CustomJS(
+        args=dict(cfg=active_config_text),
+        code="""
+        const text = cfg.text || '';
+        const blob = new Blob([text], {type: 'text/yaml'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'isolator.conf.yaml';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        """
+    ))
+
     panel = column(
         Div(text="<h3>⚙️ Configuration</h3>"),
         device_select,
@@ -366,9 +414,14 @@ def create_config_panel(data_manager):
         apply_button,
         reload_button,
         Div(text="<hr>"),
+        Div(text="<h4 style='margin-top:0;'>Active Runtime Config</h4>"),
+        active_config_meta,
+        row(refresh_active_config_button, download_config_button, sizing_mode="stretch_width"),
+        active_config_text,
+        Div(text="<hr>"),
         sizing_mode="stretch_width"
     )
-    
+
     # Return both panel and widget references
     config_widgets = {
         'device_select': device_select,
@@ -376,9 +429,12 @@ def create_config_panel(data_manager):
         'capture_toggle': capture_toggle,
         'logging_select': logging_select,
         'apply_button': apply_button,
-        'reload_button': reload_button
+        'reload_button': reload_button,
+        'refresh_active_config_button': refresh_active_config_button,
+        'active_config_meta': active_config_meta,
+        'active_config_text': active_config_text,
     }
-    
+
     return panel, config_widgets
 
 

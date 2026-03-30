@@ -22,8 +22,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -149,6 +147,7 @@ class NetworkIsolationCapability(CapabilityModule):
         rc = await _systemctl("reload", _ISOLATOR_SERVICE)
         if rc != 0:
             raise RuntimeError(f"systemctl reload {_ISOLATOR_SERVICE} failed (rc={rc})")
+        self._sync_devices_from_yaml()
         self._refresh_entities()
 
     def _conf_path(self) -> Path:
@@ -165,7 +164,20 @@ class NetworkIsolationCapability(CapabilityModule):
         # Fall back to primary target path; caller will get a clear error if missing.
         return Path(_ISOLATOR_CONF_CANDIDATES[0])
 
-    async def _persist_devices_to_yaml(self) -> None:
+    def _sync_devices_from_yaml(self) -> List[Dict[str, Any]]:
+        """Load devices from YAML and keep self.config in sync."""
+        path = self._conf_path()
+        full_conf: dict = {}
+        if path.exists():
+            with open(path) as f:
+                full_conf = yaml.safe_load(f) or {}
+        devices = full_conf.get("devices", [])
+        if not isinstance(devices, list):
+            devices = []
+        self.config["devices"] = devices
+        return devices
+
+    async def _persist_devices_to_yaml(self, devices: List[Dict[str, Any]]) -> None:
         """
         Atomically update the 'devices' section of isolator.conf.yaml so that
         apply-rules.py picks up device changes on the next systemctl reload.
@@ -179,15 +191,16 @@ class NetworkIsolationCapability(CapabilityModule):
                 with open(path) as f:
                     full_conf = yaml.safe_load(f) or {}
 
-            full_conf["devices"] = self.config.get("devices", [])
+            full_conf["devices"] = devices
 
             tmp_path = path.with_suffix(".tmp")
             with open(tmp_path, "w") as f:
                 yaml.dump(full_conf, f, default_flow_style=False, allow_unicode=True)
             os.replace(str(tmp_path), str(path))
+            self.config["devices"] = devices
             logger.info(
                 "[%s] Persisted %d device(s) to %s",
-                self.cap_id, len(full_conf["devices"]), path,
+                self.cap_id, len(devices), path,
             )
         except Exception as exc:
             logger.error("[%s] Failed to persist config to YAML: %s", self.cap_id, exc)
@@ -231,8 +244,8 @@ class NetworkIsolationCapability(CapabilityModule):
         if not device_id or not mac:
             raise ValueError("'device_id' and 'mac' are required")
 
-        # Append to in-memory config
-        devices: List[Dict] = self.config.setdefault("devices", [])
+        # Always mutate the authoritative YAML device list.
+        devices: List[Dict[str, Any]] = list(self._sync_devices_from_yaml())
         # Avoid duplicates
         if any(d.get("id") == device_id or d.get("mac") == mac for d in devices):
             return {"message": f"Device {device_id} already exists"}
@@ -242,7 +255,7 @@ class NetworkIsolationCapability(CapabilityModule):
             entry["ip"] = ip
         devices.append(entry)
 
-        await self._persist_devices_to_yaml()
+        await self._persist_devices_to_yaml(devices)
         await self._reload_rules()
         logger.info("[%s] Added device %s (%s)", self.cap_id, device_id, mac)
         return {"message": f"Device {device_id} added"}
@@ -252,17 +265,20 @@ class NetworkIsolationCapability(CapabilityModule):
         if not device_id:
             raise ValueError("'device_id' is required")
 
-        devices: List[Dict] = self.config.get("devices", [])
-        self.config["devices"] = [
+        devices: List[Dict[str, Any]] = list(self._sync_devices_from_yaml())
+        updated_devices = [
             d for d in devices
             if d.get("id") != device_id and d.get("name") != device_id
         ]
+
+        if len(updated_devices) == len(devices):
+            return {"message": f"Device {device_id} not present"}
 
         prefix = f"network_isolation:{device_id}"
         self.entity_cache.remove(f"{prefix}:connected")
         self.entity_cache.remove(f"{prefix}:policy")
 
-        await self._persist_devices_to_yaml()
+        await self._persist_devices_to_yaml(updated_devices)
         await self._reload_rules()
         logger.info("[%s] Removed device %s", self.cap_id, device_id)
         return {"message": f"Device {device_id} removed"}
@@ -273,7 +289,7 @@ class NetworkIsolationCapability(CapabilityModule):
         if not device_id or not policy:
             raise ValueError("'device_id' and 'policy' are required")
 
-        devices: List[Dict] = self.config.get("devices", [])
+        devices: List[Dict[str, Any]] = list(self._sync_devices_from_yaml())
         updated = False
         for dev in devices:
             if dev.get("id") == device_id or dev.get("name") == device_id:
@@ -284,7 +300,7 @@ class NetworkIsolationCapability(CapabilityModule):
         if not updated:
             raise ValueError(f"Device '{device_id}' not found in config")
 
-        await self._persist_devices_to_yaml()
+        await self._persist_devices_to_yaml(devices)
         await self._reload_rules()
         logger.info("[%s] Set policy for %s → %s", self.cap_id, device_id, policy)
         return {"message": f"Policy for {device_id} set to {policy}"}

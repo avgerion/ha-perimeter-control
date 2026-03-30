@@ -35,6 +35,10 @@ CONFIG_FILE="/mnt/isolator/conf/isolator.conf.yaml"
 INSTALL_DIR="/opt/isolator"
 LOG_DIR="/var/log/isolator"
 RUN_DIR="/run/isolator"
+ISOLATED_INTERFACE=""
+ISOLATED_KIND=""
+UPSTREAM_INTERFACE=""
+UPSTREAM_KIND=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -90,6 +94,17 @@ check_config() {
     log_success "Config file found: $CONFIG_FILE"
 }
 
+load_topology_from_config() {
+    eval "$(python3 "$PROJECT_ROOT/scripts/network-topology.py" --config "$CONFIG_FILE" summary --format shell)"
+
+    ISOLATED_INTERFACE="$ISOLATED_INTERFACE"
+    ISOLATED_KIND="$ISOLATED_KIND"
+    UPSTREAM_INTERFACE="$UPSTREAM_INTERFACE"
+    UPSTREAM_KIND="$UPSTREAM_KIND"
+
+    log_info "Resolved topology: isolated=$ISOLATED_INTERFACE ($ISOLATED_KIND), upstream=$UPSTREAM_INTERFACE ($UPSTREAM_KIND)"
+}
+
 ################################################################################
 # Main Installation Steps
 ################################################################################
@@ -121,7 +136,7 @@ step_install_packages() {
     apt install -y bluez python3-bleak
 
     # Python for dashboard and scripts
-    apt install -y python3 python3-pip python3-venv python3-dev
+    apt install -y python3 python3-pip python3-venv python3-dev python3-yaml
     
     # Utilities
     apt install -y git vim nano htop iftop nethogs jq pv
@@ -203,19 +218,35 @@ step_enable_ip_forwarding() {
 step_disable_default_services() {
     log_info "Configuring network managers..."
     
-    # Configure NetworkManager to ignore wlan0 (but keep managing eth0)
+    # Configure NetworkManager to ignore the isolated interface only.
     if systemctl is-active --quiet NetworkManager; then
-        log_info "Configuring NetworkManager to ignore wlan0..."
+        log_info "Configuring NetworkManager to ignore $ISOLATED_INTERFACE..."
         
-        # Add unmanaged-devices for wlan0
-        if ! grep -q "unmanaged-devices.*wlan0" /etc/NetworkManager/NetworkManager.conf; then
-            echo "" >> /etc/NetworkManager/NetworkManager.conf
-            echo "[keyfile]" >> /etc/NetworkManager/NetworkManager.conf
-            echo "unmanaged-devices=interface-name:wlan0" >> /etc/NetworkManager/NetworkManager.conf
-            systemctl restart NetworkManager
-        fi
+        python3 - <<PY
+from pathlib import Path
+
+iface = ${ISOLATED_INTERFACE@Q}
+path = Path('/etc/NetworkManager/NetworkManager.conf')
+content = path.read_text() if path.exists() else ''
+block = f"[keyfile]\nunmanaged-devices=interface-name:{iface}\n"
+
+if f"interface-name:{iface}" not in content:
+    if '[keyfile]' in content:
+        lines = content.splitlines()
+        updated = []
+        inserted = False
+        for line in lines:
+            updated.append(line)
+            if line.strip() == '[keyfile]' and not inserted:
+                updated.append(f'unmanaged-devices=interface-name:{iface}')
+                inserted = True
+        path.write_text('\n'.join(updated) + '\n')
+    else:
+        path.write_text(content + ('\n' if content and not content.endswith('\n') else '') + block)
+PY
+        systemctl restart NetworkManager
         
-        log_success "NetworkManager configured to ignore wlan0"
+        log_success "NetworkManager configured to ignore $ISOLATED_INTERFACE"
     fi
     
     # Stop default dnsmasq if running
@@ -282,17 +313,23 @@ EOF
 step_start_services() {
     log_info "Starting network isolator services..."
     
-    # Start in order
-    systemctl enable hostapd
-    systemctl start hostapd
+    # Prepare isolated interface, rules, and generated configs first.
+    systemctl enable isolator
+    systemctl start isolator
     sleep 2
-    
+
+    if [[ "$ISOLATED_KIND" == "wifi-ap" ]]; then
+        systemctl enable hostapd
+        systemctl start hostapd
+        sleep 2
+    else
+        systemctl stop hostapd 2>/dev/null || true
+        systemctl disable hostapd 2>/dev/null || true
+    fi
+
     systemctl enable dnsmasq
     systemctl start dnsmasq
     sleep 2
-    
-    systemctl enable isolator
-    systemctl start isolator
     
     # Start dashboard
     systemctl enable isolator-dashboard
@@ -320,14 +357,28 @@ step_verify_installation() {
     echo ""
     echo "Network Interfaces:"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    ip addr show wlan0 | grep "inet " || echo "  wlan0: No IP assigned yet"
+    ip addr show "$ISOLATED_INTERFACE" | grep "inet " || echo "  $ISOLATED_INTERFACE: No IP assigned yet"
+    ip addr show "$UPSTREAM_INTERFACE" | grep "inet " || echo "  $UPSTREAM_INTERFACE: No IP assigned yet"
     
     echo ""
-    echo "Access Point:"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    SSID=$(grep "ssid:" "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
-    echo "  SSID: $SSID"
-    echo "  Connect devices to test the AP"
+    if [[ "$ISOLATED_KIND" == "wifi-ap" ]]; then
+        echo "Access Point:"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        SSID=$(python3 - <<PY
+import yaml
+with open(${CONFIG_FILE@Q}) as f:
+    cfg = yaml.safe_load(f) or {}
+print((cfg.get('ap') or {}).get('ssid', 'Unknown'))
+PY
+)
+        echo "  SSID: $SSID"
+        echo "  Connect devices to test the AP on $ISOLATED_INTERFACE"
+    else
+        echo "Isolated Ethernet Segment:"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Isolated interface: $ISOLATED_INTERFACE"
+        echo "  Upstream interface: $UPSTREAM_INTERFACE"
+    fi
     
     echo ""
     echo "Web Dashboard:"
@@ -354,6 +405,7 @@ main() {
     step_install_packages
     step_create_directories
     step_copy_files
+    load_topology_from_config
     step_setup_python_env
     step_enable_ip_forwarding
     step_disable_default_services
