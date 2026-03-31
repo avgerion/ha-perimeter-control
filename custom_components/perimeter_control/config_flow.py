@@ -29,7 +29,7 @@ STEP_CONNECTION_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_SSH_PORT): int,
         vol.Optional(CONF_USER, default=DEFAULT_USER): str,
-        vol.Required(CONF_SSH_KEY): str,
+        vol.Required(CONF_SSH_KEY): str,  # Will be rendered as textarea
     }
 )
 
@@ -41,10 +41,11 @@ STEP_SERVICES_SCHEMA = vol.Schema(
 )
 
 
-class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class PerimeterControlConfigFlow(config_entries.ConfigFlow):
     """Handle the Add Device wizard."""
 
     VERSION = 1
+    DOMAIN = DOMAIN
 
     def __init__(self) -> None:
         self._connection_data: dict[str, Any] = {}
@@ -81,6 +82,7 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._connection_data = user_input
                 return await self.async_step_services()
 
+        # Home Assistant supports multi-line input for secrets.yaml and TextArea in UI (if supported by frontend)
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_CONNECTION_SCHEMA,

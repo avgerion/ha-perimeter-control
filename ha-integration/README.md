@@ -38,8 +38,7 @@ npm run build
 # Copy dist/ to your Home Assistant config
 # .../config/www/isolator-service-access/
 ls -la dist/
-# dist/service-access-editor.js
-# dist/home-assistant-card.js
+# dist/ha-integration.js
 ```
 
 Then in your HA `configuration.yaml`:
@@ -47,7 +46,7 @@ Then in your HA `configuration.yaml`:
 ```yaml
 frontend:
   extra_module_url:
-    - /local/isolator-service-access/home-assistant-card.js
+    - /local/isolator-service-access/ha-integration.js
 ```
 
 ## Usage
@@ -175,9 +174,7 @@ npm run lint
 ```
 
 Build output goes to `dist/`:
-- `service-access-editor.js` — Core component
-- `home-assistant-card.js` — HA card wrapper
-- `.d.ts` files — TypeScript definitions
+- `ha-integration.js` — Bundled HA card + editor component
 
 ## Development
 

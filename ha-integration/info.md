@@ -37,7 +37,7 @@ service_id: photo_booth
 
 # Optional: show deploy panel
 show_deploy_panel: true
-deploy_command: isolator_deploy
+entry_id: "<config_entry_id>"  # Find in HA Settings → Devices & Services → Perimeter Control
 pi_host: "192.168.69.11"
 services:
   - photo_booth

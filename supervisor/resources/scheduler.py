@@ -8,7 +8,7 @@ resource (e.g. the BLE radio).
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class ResourceScheduler:
     ``allocate`` / ``release`` update the in-memory tally.
     """
 
-    def __init__(self, budget: NodeBudget = None) -> None:
+    def __init__(self, budget: Optional[NodeBudget] = None) -> None:
         self.budget = budget or NodeBudget()
         self._allocations: Dict[str, CapabilityAllocation] = {}
 

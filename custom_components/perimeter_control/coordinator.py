@@ -79,7 +79,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Deploy
     # ------------------------------------------------------------------
 
-    async def async_deploy(self) -> None:
+    async def async_deploy(self) -> bool:
         """Start a deploy in the background; progress dispatched via coordinator updates."""
         if self._deploy_in_progress:
             _LOGGER.warning("Deploy already in progress for %s", self._entry.data[CONF_HOST])

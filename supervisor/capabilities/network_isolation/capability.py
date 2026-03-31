@@ -320,4 +320,4 @@ async def _systemctl(*args: str) -> int:
     _, stderr = await proc.communicate()
     if proc.returncode != 0 and stderr:
         logger.warning("systemctl %s: %s", " ".join(args), stderr.decode(errors="replace").strip())
-    return proc.returncode
+    return proc.returncode or 0
