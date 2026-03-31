@@ -42,12 +42,18 @@ STEP_SERVICES_SCHEMA = vol.Schema(
 
 
 class PerimeterControlConfigFlow(config_entries.ConfigFlow):
-    """Handle the Add Device wizard."""
+    """Handle the Add Device wizard. [DEBUG PATCH: UNIQUE LOGGING & DOMAIN CHECK]"""
 
     VERSION = 1
     DOMAIN = DOMAIN
 
     def __init__(self) -> None:
+        # DEBUG: Unique log marker to confirm config_flow.py __init__ is executed
+        _LOGGER.error("PERIMETER_CONTROL_CONFIG_FLOW_INIT: This is a unique debug marker. If you see this, config_flow.py __init__ ran.")
+        # Check DOMAIN is set and correct
+        if not hasattr(self, "DOMAIN") or not self.DOMAIN or not isinstance(self.DOMAIN, str):
+            _LOGGER.error("PERIMETER_CONTROL_CONFIG_FLOW_ERROR: DOMAIN is missing or not a string! Value: %r", getattr(self, "DOMAIN", None))
+            raise RuntimeError("PERIMETER_CONTROL_CONFIG_FLOW_ERROR: DOMAIN is missing or not a string!")
         self._connection_data: dict[str, Any] = {}
         self._node_info: dict[str, Any] = {}
 
@@ -55,6 +61,8 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Step 1: SSH connection details."""
+        # DEBUG: Unique log marker to confirm async_step_user is running
+        _LOGGER.error("PERIMETER_CONTROL_CONFIG_FLOW_STEP_USER: async_step_user called. This is a unique debug marker.")
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -71,12 +79,13 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow):
                 client = SshClient(host=host, port=port, user=user, private_key=ssh_key)
                 self._node_info = await client.async_preflight()
             except SshConnectionError:
+                _LOGGER.error("Cannot connect to %s:%s as %s", host, port, user, exc_info=True)
                 errors["base"] = "cannot_connect"
             except SshPreflightError as exc:
-                _LOGGER.warning("Preflight failed for %s: %s", host, exc)
+                _LOGGER.warning("Preflight failed for %s: %s", host, exc, exc_info=True)
                 errors["base"] = "preflight_failed"
-            except Exception:
-                _LOGGER.exception("Unexpected error connecting to %s", host)
+            except Exception as exc:
+                _LOGGER.error("Unexpected error connecting to %s: %s", host, exc, exc_info=True)
                 errors["base"] = "unknown"
             else:
                 self._connection_data = user_input
@@ -98,21 +107,25 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow):
         """Step 2: Select services to install on this device."""
         errors: dict[str, str] = {}
 
-        if user_input is not None:
-            selected = [svc for svc in AVAILABLE_SERVICES if user_input.get(svc)]
-            if not selected:
-                errors["base"] = "no_services_selected"
-            else:
-                entry_data = {
-                    **self._connection_data,
-                    CONF_SERVICES: selected,
-                    "node_info": self._node_info,
-                }
-                host = self._connection_data[CONF_HOST]
-                return self.async_create_entry(
-                    title=f"Pi @ {host}",
-                    data=entry_data,
-                )
+        try:
+            if user_input is not None:
+                selected = [svc for svc in AVAILABLE_SERVICES if user_input.get(svc)]
+                if not selected:
+                    errors["base"] = "no_services_selected"
+                else:
+                    entry_data = {
+                        **self._connection_data,
+                        CONF_SERVICES: selected,
+                        "node_info": self._node_info,
+                    }
+                    host = self._connection_data[CONF_HOST]
+                    return self.async_create_entry(
+                        title=f"Pi @ {host}",
+                        data=entry_data,
+                    )
+        except Exception as exc:
+            _LOGGER.error("Error in async_step_services: %s", exc, exc_info=True)
+            errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="services",
