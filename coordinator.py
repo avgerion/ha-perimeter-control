@@ -103,7 +103,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Try auto-deployment if supervisor is not available
             try:
                 # Quick SSH test to see if deployment is possible
-                await instance._client.async_run("echo 'SSH test'", timeout=5)
+                await instance._client.async_run("echo 'SSH test'")
                 _LOGGER.info("SSH connection successful. Starting automatic deployment...")
                 
                 # Trigger automatic deployment in background
