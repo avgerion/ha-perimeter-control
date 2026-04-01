@@ -90,8 +90,15 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connector=aiohttp.TCPConnector(limit=10),
         )
         
-        # Start WebSocket connection for real-time updates
-        await instance._start_websocket_listener()
+        # Check if supervisor is available before starting WebSocket
+        try:
+            await instance._supervisor_get("/api/v1/health")
+            # Supervisor is available, start WebSocket connection for real-time updates
+            await instance._start_websocket_listener()
+            _LOGGER.info("Connected to Supervisor API at %s", instance._supervisor_base_url)
+        except Exception as exc:
+            _LOGGER.warning("Supervisor API not available at %s: %s. Integration will work in limited mode until deployment is completed.", 
+                          instance._supervisor_base_url, exc)
         
         return instance
 
