@@ -259,7 +259,7 @@ class Deployer:
         # Install pip deps
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         await self._client.async_run(
-            f"sudo {REMOTE_VENV}/bin/pip install --quiet aiohttp psutil python-json-logger"
+            f"sudo {REMOTE_VENV}/bin/pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado"
         )
 
         # Pack supervisor/ into tar and upload
@@ -408,6 +408,31 @@ class Deployer:
         
         if "active" not in dashboard_status or "INACTIVE" in dashboard_status:
             _LOGGER.warning("Dashboard service is not active: %s", dashboard_status)
+            
+            # Get detailed diagnostics before retry
+            try:
+                status_detail = await self._client.async_run(
+                    f"systemctl status {SYSTEMD_DASHBOARD} --no-pager -l || true"
+                )
+                _LOGGER.debug("Dashboard service status: %s", status_detail)
+                
+                # Check if python and dashboard.py exist and are accessible
+                venv_check = await self._client.async_run(
+                    f"[ -x {REMOTE_VENV}/bin/python3 ] && echo PYTHON_OK || echo PYTHON_MISSING"
+                )
+                dashboard_check = await self._client.async_run(
+                    f"[ -f {REMOTE_WEB_DIR}/dashboard.py ] && echo DASHBOARD_OK || echo DASHBOARD_MISSING"
+                )
+                _LOGGER.debug("Environment check - Python: %s, Dashboard: %s", venv_check.strip(), dashboard_check.strip())
+                
+                # Try to run dashboard.py directly to see import errors
+                direct_test = await self._client.async_run(
+                    f"cd {REMOTE_WEB_DIR} && timeout 10s sudo {REMOTE_VENV}/bin/python3 -c 'import dashboard' 2>&1 || echo IMPORT_FAILED"
+                )
+                _LOGGER.debug("Dashboard import test: %s", direct_test.strip())
+                
+            except Exception as e:
+                _LOGGER.debug("Diagnostic check failed: %s", e)
             
             # Try to start it one more time
             _LOGGER.info("Attempting final start of dashboard service...")
