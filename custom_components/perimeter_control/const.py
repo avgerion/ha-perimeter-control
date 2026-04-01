@@ -1,7 +1,7 @@
 """Constants for Perimeter Control integration."""
 
 DOMAIN = "perimeter_control"
-PLATFORMS: list[str] = []
+PLATFORMS: list[str] = ["sensor", "button"]
 
 # Config entry keys
 CONF_HOST = "host"

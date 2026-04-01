@@ -1,0 +1,3 @@
+# Home Assistant entity platform registration for Perimeter Control
+platform: entity
+name: Perimeter Control Service Dashboard

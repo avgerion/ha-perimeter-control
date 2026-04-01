@@ -20,6 +20,8 @@ from .const import (
 )
 from .deployer import DeployProgress, Deployer
 from .ssh_client import SshClient, SshConnectionError
+from .service_descriptor import load_service_descriptors
+from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,17 +46,37 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=_POLL_INTERVAL,
         )
         self._entry = entry
-        # Load SSH key from file at runtime if not present in config entry
+        self._client = None  # Initialize client as None
+        self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
+        self._deploy_in_progress = False
+        self._deploy_log: list[DeployProgress] = []
+        # Use Home Assistant's config path for config/services directory
+        descriptors_dir = Path(hass.config.path("config/services"))
+        self._service_descriptors = {d.id: d for d in load_service_descriptors(descriptors_dir, self._selected_services)}
+
+    @classmethod
+    async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
+        # Load SSH key from file at runtime if not present in config entry, using executor
         private_key = entry.data.get(CONF_SSH_KEY, "")
         ssh_key_path = entry.data.get("ssh_key_path", "")
         if not private_key and ssh_key_path:
             try:
                 from pathlib import Path
-                private_key = Path(ssh_key_path).read_text(encoding="utf-8")
+                private_key = await hass.async_add_executor_job(
+                    lambda: Path(ssh_key_path).read_text(encoding="utf-8")
+                )
                 _LOGGER.info("PERIMETER_CONTROL: Loaded SSH key from file at runtime: %s (len=%d)", ssh_key_path, len(private_key))
             except Exception as exc:
                 _LOGGER.error("PERIMETER_CONTROL: Failed to read SSH key file at runtime: %s", exc, exc_info=True)
                 private_key = ""
+        instance = cls(hass, entry)
+        instance._client = SshClient(
+            host=entry.data[CONF_HOST],
+            port=entry.data.get(CONF_PORT, DEFAULT_SSH_PORT),
+            user=entry.data[CONF_USER],
+            private_key=private_key,
+        )
+        return instance
         self._client = SshClient(
             host=entry.data[CONF_HOST],
             port=entry.data.get(CONF_PORT, DEFAULT_SSH_PORT),
@@ -64,24 +86,34 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False
         self._deploy_log: list[DeployProgress] = []
+        # Load service descriptors for selected services
+        # Use workspace root config/services directory
+        workspace_root = Path(__file__).parents[3]
+        descriptors_dir = workspace_root / "config" / "services"
+        self._service_descriptors = {d.id: d for d in load_service_descriptors(descriptors_dir, self._selected_services)}
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict[str, Any]:
+        # Query status for each selected service
+        service_status = {}
         try:
-            result = await self._client.async_run(
-                "systemctl is-active isolator-dashboard; "
-                "systemctl is-active isolator-supervisor 2>/dev/null || echo inactive"
-            )
+            for service_id, desc in self._service_descriptors.items():
+                # Try to check systemd status for each service
+                sysd_name = f"{service_id}.service"
+                try:
+                    result = await self._client.async_run(f"systemctl is-active {sysd_name} 2>/dev/null || echo inactive")
+                    service_status[service_id] = (result.strip() == "active")
+                except Exception as exc:
+                    service_status[service_id] = False
         except SshConnectionError as exc:
             raise UpdateFailed(f"SSH connection failed: {exc}") from exc
 
-        lines = result.strip().splitlines()
         return {
-            KEY_DASHBOARD_ACTIVE: (lines[0].strip() == "active") if lines else False,
-            KEY_SUPERVISOR_ACTIVE: (lines[1].strip() == "active") if len(lines) > 1 else False,
+            "service_status": service_status,
+            "service_ports": {k: v.port for k, v in self._service_descriptors.items()},
             KEY_DEPLOY_IN_PROGRESS: self._deploy_in_progress,
             KEY_DEPLOY_PROGRESS: list(self._deploy_log),
         }

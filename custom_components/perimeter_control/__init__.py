@@ -28,7 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_data_redacted["ssh_key"] = f"<redacted, len={len(key) if key else 0}>"
     _LOGGER.warning("PERIMETER_CONTROL_DIAG: Loaded config entry data: %r", entry_data_redacted)
 
-    coordinator = PerimeterControlCoordinator(hass, entry)
+    coordinator = await PerimeterControlCoordinator.create(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
