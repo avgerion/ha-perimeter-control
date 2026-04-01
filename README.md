@@ -306,3 +306,20 @@ pip3 install -r server/requirements.txt
 | 6 | Multi-capability scheduling (BLE scan + WiFi isolation concurrent) | 📋 Planned |
 | 7 | Home Assistant integration (optional aggregation layer) | 📋 Planned |
 | 8 | Yocto image for true appliance deploy | 📋 Planned |
+
+## Home Assistant Integration: Manual Dependency Installation
+
+If you use the custom Home Assistant integration in `custom_components/perimeter_control`, you may need to manually install the `asyncssh` Python package in your Home Assistant environment. 
+
+- Home Assistant is supposed to install requirements from `manifest.json` automatically, but this may fail if there are early import or syntax errors, or due to platform limitations.
+- If you see errors like `connected but preflight checks failed`, `Preflight script did not complete. stdout=''`, or the integration icon does not appear, it likely means `asyncssh` was not installed.
+- To fix, install `asyncssh` manually in your Home Assistant environment (e.g., using the SSH add-on or a terminal):
+
+```
+pip install asyncssh==2.14.2
+```
+
+- After installing, restart Home Assistant.
+- If you continue to have issues, check the Home Assistant logs for import errors and ensure your integration code is error-free.
+
+> **Note:** This is a known limitation. A smarter model or future Home Assistant update may resolve this in the future.

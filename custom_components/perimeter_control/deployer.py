@@ -328,8 +328,13 @@ echo SUPERVISOR_INSTALLED
 
 def _pack_directory(src_dir: Path, arcname: str) -> bytes:
     """Pack a directory into an in-memory .tar.gz and return the bytes."""
-    buf = tempfile.SpooledTemporaryFile(max_size=10 * 1024 * 1024)
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        tar.add(str(src_dir), arcname=arcname)
-    buf.seek(0)
-    return buf.read()
+    import asyncio
+    def _do_pack():
+        buf = tempfile.SpooledTemporaryFile(max_size=10 * 1024 * 1024)
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            tar.add(str(src_dir), arcname=arcname)
+        buf.seek(0)
+        return buf.read()
+    return asyncio.get_event_loop().run_until_complete(
+        asyncio.get_event_loop().run_in_executor(None, _do_pack)
+    )

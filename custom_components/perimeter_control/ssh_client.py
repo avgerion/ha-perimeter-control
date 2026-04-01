@@ -102,7 +102,7 @@ class SshClient:
             key = asyncssh.import_private_key(self._private_key)
             self._conn = await asyncio.wait_for(
                 asyncssh.connect(
-                    self._host,
+                    host=self._host,
                     port=self._port,
                     username=self._user,
                     client_keys=[key],
@@ -125,17 +125,43 @@ class SshClient:
     # ------------------------------------------------------------------
 
     async def async_preflight(self) -> dict[str, Any]:
-        """Run preflight checks; return parsed NodeInfo dict."""
+        """Run preflight checks; return parsed NodeInfo dict. If preflight fails, run diagnostics."""
         conn = await self._connect()
-        result = await conn.run(_PREFLIGHT_SCRIPT, check=False)
+        # First, run a simple echo test and log output
+        try:
+            proc = await conn.create_process("echo test")
+            echo_stdout, echo_stderr = await proc.communicate()
+            echo_exit_status = proc.exit_status
+        except Exception as exc:
+            _LOGGER.error("PERIMETER_CONTROL: create_process failed for echo test: %r", exc, exc_info=True)
+            raise SshPreflightError(f"Echo test failed: {exc}") from exc
+        _LOGGER.debug(
+            "PERIMETER_CONTROL_DEBUG: echo test result: stdout: %r, stderr: %r, exit_status: %r",
+            echo_stdout, echo_stderr, echo_exit_status
+        )
 
-        if "DONE" not in result.stdout:
+        try:
+            proc = await conn.create_process(_PREFLIGHT_SCRIPT)
+            stdout, stderr = await proc.communicate()
+            exit_status = proc.exit_status
+        except Exception as exc:
+            _LOGGER.error("PERIMETER_CONTROL: create_process failed for preflight: %r", exc, exc_info=True)
+            raise SshPreflightError(f"Preflight script failed: {exc}") from exc
+        _LOGGER.debug(
+            "PERIMETER_CONTROL_DEBUG: preflight result: stdout: %r, stderr: %r, exit_status: %r",
+            stdout, stderr, exit_status
+        )
+
+        if "DONE" not in (stdout or ""):
+            # Run diagnostics if preflight fails
+            diag_results = await self._run_diagnostics(conn)
+            _LOGGER.error("PERIMETER_CONTROL_DIAGNOSTICS: SSH diagnostics results: %r", diag_results)
             raise SshPreflightError(
-                f"Preflight script did not complete. stdout={result.stdout!r}"
+                f"Preflight script did not complete. stdout={stdout!r} | diagnostics={diag_results!r}"
             )
 
         info = NodeInfo()
-        for line in result.stdout.splitlines():
+        for line in (stdout or "").splitlines():
             if line.startswith("HOSTNAME:"):
                 info.hostname = line.split(":", 1)[1]
             elif line.startswith("ARCH:"):
@@ -154,19 +180,109 @@ class SshClient:
 
         return info.to_dict()
 
+    async def _run_diagnostics(self, conn) -> dict:
+        """Run a series of SSH commands using multiple methods to diagnose remote execution issues."""
+        import traceback
+        import shlex
+        commands = [
+            "echo DIAG1:hello",
+            "whoami",
+            "uname -a",
+            "id",
+            "pwd",
+            "ls -l /tmp",
+            "ls -l /",
+            "cat /etc/os-release || cat /etc/issue",
+            "which python3",
+            "python3 --version",
+            "echo $SHELL",
+            "env | sort | grep -E 'SHELL|USER|HOME|PATH'",
+            "ls -l $HOME",
+            "ps aux | head -5",
+            "df -h",
+            "uptime",
+            "date",
+            "echo DIAG2:done"
+        ]
+        results = {}
+        for cmd in commands:
+            results[cmd] = {}
+            # Method 1: Standard run
+            try:
+                res = await conn.run(cmd, check=False)
+                if getattr(res, "stdout", None) is None and getattr(res, "stderr", None) is None:
+                    _LOGGER.warning("PERIMETER_CONTROL_DIAGNOSTICS: asyncssh.run returned None for stdout/stderr (broken in this environment)")
+                results[cmd]["run"] = {
+                    "stdout": getattr(res, "stdout", None),
+                    "stderr": getattr(res, "stderr", None),
+                    "exit_status": getattr(res, "exit_status", None),
+                    "type": str(type(res)),
+                }
+            except Exception as exc:
+                results[cmd]["run"] = {"error": str(exc), "traceback": traceback.format_exc()}
+            # Method 2: run with PTY
+            try:
+                res = await conn.run(cmd, check=False, term_type="xterm")
+                if getattr(res, "stdout", None) is None and getattr(res, "stderr", None) is None:
+                    _LOGGER.warning("PERIMETER_CONTROL_DIAGNOSTICS: asyncssh.run(..., pty=True) returned None for stdout/stderr (broken in this environment)")
+                results[cmd]["run_pty"] = {
+                    "stdout": getattr(res, "stdout", None),
+                    "stderr": getattr(res, "stderr", None),
+                    "exit_status": getattr(res, "exit_status", None),
+                    "type": str(type(res)),
+                }
+            except Exception as exc:
+                results[cmd]["run_pty"] = {"error": str(exc), "traceback": traceback.format_exc()}
+            # Method 3: run with bash -c (fixed quote)
+            try:
+                res = await conn.run(f"bash -c {shlex.quote(cmd)}", check=False)
+                results[cmd]["run_bash_c"] = {
+                    "stdout": getattr(res, "stdout", None),
+                    "stderr": getattr(res, "stderr", None),
+                    "exit_status": getattr(res, "exit_status", None),
+                    "type": str(type(res)),
+                }
+            except Exception as exc:
+                results[cmd]["run_bash_c"] = {"error": str(exc), "traceback": traceback.format_exc()}
+            # Method 4: create_process (recommended)
+            try:
+                proc = await conn.create_process(cmd)
+                stdout, stderr = await proc.communicate()
+                results[cmd]["create_process"] = {
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "exit_status": proc.exit_status,
+                    "type": str(type(proc)),
+                }
+            except Exception as exc:
+                results[cmd]["create_process"] = {"error": str(exc), "traceback": traceback.format_exc()}
+        return results
+
     # ------------------------------------------------------------------
     # Command execution
     # ------------------------------------------------------------------
 
     async def async_run(self, script: str, *, sudo: bool = False) -> str:
-        """Run a shell script on the remote host; return stdout. Raises SshCommandError on failure."""
+        """Run a shell script on the remote host; return stdout. Uses create_process for reliability. Raises SshCommandError on failure."""
+        import shlex
         conn = await self._connect()
         if sudo:
-            script = f"sudo bash -c {asyncssh.quote(script)}"
-        result = await conn.run(script, check=False)
-        if result.exit_status != 0:
-            raise SshCommandError(script[:80], result.exit_status, result.stderr or "")
-        return result.stdout
+            script = f"sudo bash -c {shlex.quote(script)}"
+        _LOGGER.debug("PERIMETER_CONTROL_DEBUG: Running SSH command (create_process): %r (sudo=%r)", script, sudo)
+        try:
+            proc = await conn.create_process(script)
+            stdout, stderr = await proc.communicate()
+            exit_status = proc.exit_status
+        except Exception as exc:
+            _LOGGER.error("PERIMETER_CONTROL: create_process failed: %r", exc, exc_info=True)
+            raise SshCommandError(script[:80], 1, str(exc)) from exc
+        _LOGGER.debug(
+            "PERIMETER_CONTROL_DEBUG: SSH command result (create_process): stdout: %r, stderr: %r, exit_status: %r",
+            stdout, stderr, exit_status
+        )
+        if exit_status != 0:
+            raise SshCommandError(script[:80], exit_status, stderr or "")
+        return stdout or ""
 
     async def async_run_b64(self, script: str) -> str:
         """Base64-encode a multi-line script and execute it safely via `base64 -d | bash`.
@@ -178,12 +294,16 @@ class SshClient:
             script.replace("\r\n", "\n").encode()
         ).decode()
         conn = await self._connect()
-        result = await conn.run(
-            f"echo '{encoded}' | base64 -d | bash", check=False
-        )
-        if result.exit_status != 0:
-            raise SshCommandError("<b64 script>", result.exit_status, result.stderr or "")
-        return result.stdout
+        try:
+            proc = await conn.create_process(f"echo '{encoded}' | base64 -d | bash")
+            stdout, stderr = await proc.communicate()
+            exit_status = proc.exit_status
+        except Exception as exc:
+            _LOGGER.error("PERIMETER_CONTROL: create_process failed for b64 script: %r", exc, exc_info=True)
+            raise SshCommandError("<b64 script>", 1, str(exc)) from exc
+        if exit_status != 0:
+            raise SshCommandError("<b64 script>", exit_status, stderr or "")
+        return stdout or ""
 
     # ------------------------------------------------------------------
     # File upload

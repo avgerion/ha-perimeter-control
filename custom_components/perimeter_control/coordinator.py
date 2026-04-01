@@ -44,11 +44,22 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=_POLL_INTERVAL,
         )
         self._entry = entry
+        # Load SSH key from file at runtime if not present in config entry
+        private_key = entry.data.get(CONF_SSH_KEY, "")
+        ssh_key_path = entry.data.get("ssh_key_path", "")
+        if not private_key and ssh_key_path:
+            try:
+                from pathlib import Path
+                private_key = Path(ssh_key_path).read_text(encoding="utf-8")
+                _LOGGER.info("PERIMETER_CONTROL: Loaded SSH key from file at runtime: %s (len=%d)", ssh_key_path, len(private_key))
+            except Exception as exc:
+                _LOGGER.error("PERIMETER_CONTROL: Failed to read SSH key file at runtime: %s", exc, exc_info=True)
+                private_key = ""
         self._client = SshClient(
             host=entry.data[CONF_HOST],
             port=entry.data.get(CONF_PORT, DEFAULT_SSH_PORT),
             user=entry.data[CONF_USER],
-            private_key=entry.data[CONF_SSH_KEY],
+            private_key=private_key,
         )
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False

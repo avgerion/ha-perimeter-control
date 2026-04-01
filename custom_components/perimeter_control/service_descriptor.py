@@ -28,13 +28,18 @@ def load_service_descriptors(
 ) -> list[ServiceDescriptor]:
     """Load service descriptors for the given service IDs from the bundled YAML files."""
     result: list[ServiceDescriptor] = []
+    import asyncio
     for sid in service_ids:
         path = descriptors_dir / f"{sid}.service.yaml"
         if not path.exists():
             _LOGGER.warning("Service descriptor not found: %s", path)
             continue
         try:
-            data: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+            # Use executor for file I/O
+            text = asyncio.get_event_loop().run_until_complete(
+                asyncio.get_event_loop().run_in_executor(None, path.read_text)
+            )
+            data: dict[str, Any] = yaml.safe_load(text) or {}
         except yaml.YAMLError:
             _LOGGER.exception("Failed to parse service descriptor: %s", path)
             continue

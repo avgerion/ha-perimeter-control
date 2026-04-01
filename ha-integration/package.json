@@ -22,7 +22,7 @@
         "raspberry-pi",
         "network-isolator"
     ],
-    "author": "NetworkIsolator",
+    "author": "Paul Avgerinos",
     "license": "MIT",
     "dependencies": {
         "lit": "^3.0.0"
