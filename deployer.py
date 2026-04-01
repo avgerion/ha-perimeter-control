@@ -50,6 +50,7 @@ _COMPONENT_DIR = Path(__file__).parent
 _SERVER_FILES_DIR = _COMPONENT_DIR / "remote_services" / "dashboard_web"
 _SUPERVISOR_DIR = _COMPONENT_DIR / "remote_services" / "supervisor"
 _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
+_SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
 
 
 @dataclass
@@ -101,6 +102,7 @@ class Deployer:
             await self._phase_upload()
             await self._phase_install()
             await self._phase_supervisor()
+            await self._phase_system_services()
             await self._phase_restart()
             await self._phase_verify()
         except SshCommandError as exc:
@@ -256,25 +258,67 @@ class Deployer:
             )
         self._emit(PHASE_SUPERVISOR, "Service descriptors deployed", 78)
 
+    async def _phase_system_services(self) -> None:
+        """Deploy systemd service unit files from system_services/ directory."""
+        if not _SYSTEM_SERVICES_DIR.exists():
+            _LOGGER.warning("system_services/ directory not found, skipping service units")
+            return
+
+        self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 79)
+        
+        # Find all .service files in system_services/
+        service_files = list(_SYSTEM_SERVICES_DIR.glob("*.service"))
+        if not service_files:
+            _LOGGER.info("No .service files found in system_services/")
+            return
+
+        for service_file in service_files:
+            # Upload service file
+            await self._client.async_put_file(service_file, f"/tmp/{service_file.name}")
+            
+            # Install to /etc/systemd/system/
+            await self._client.async_run(
+                f"sudo install -o root -g root -m 0644 /tmp/{service_file.name} /etc/systemd/system/{service_file.name}"
+            )
+            
+            _LOGGER.debug("Installed systemd service: %s", service_file.name)
+
+        # Reload systemd to pick up new service files
+        await self._client.async_run("sudo systemctl daemon-reload")
+        
+        # Enable services (but don't start them yet - restart phase will handle that)
+        for service_file in service_files:
+            service_name = service_file.name
+            await self._client.async_run(f"sudo systemctl enable {service_name}")
+            
+        self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 80)
+
     # ------------------------------------------------------------------
-    # Phase 5: Restart
+    # Phase 6: Restart
     # ------------------------------------------------------------------
 
     async def _phase_restart(self) -> None:
-        self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_DASHBOARD}...", 80)
-        await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+        # Check if dashboard service exists before trying to restart it
+        dashboard_service_exists = await self._client.async_run(
+            f"systemctl list-unit-files {SYSTEMD_DASHBOARD}.service 2>/dev/null | grep -c {SYSTEMD_DASHBOARD} || true"
+        )
+        if dashboard_service_exists.strip() != "0":
+            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_DASHBOARD}...", 82)
+            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+        else:
+            _LOGGER.warning("Dashboard service unit not found, skipping restart")
         await asyncio.sleep(2)
 
         sup_service_exists = await self._client.async_run(
             f"systemctl list-unit-files {SYSTEMD_SUPERVISOR}.service 2>/dev/null | grep -c {SYSTEMD_SUPERVISOR} || true"
         )
         if sup_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 85)
+            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 87)
             await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
             await asyncio.sleep(2)
 
     # ------------------------------------------------------------------
-    # Phase 6: Verify
+    # Phase 7: Verify
     # ------------------------------------------------------------------
 
     async def _phase_verify(self) -> None:
