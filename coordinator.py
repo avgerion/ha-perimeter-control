@@ -97,8 +97,19 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await instance._start_websocket_listener()
             _LOGGER.info("Connected to Supervisor API at %s", instance._supervisor_base_url)
         except Exception as exc:
-            _LOGGER.warning("Supervisor API not available at %s: %s. Integration will work in limited mode until deployment is completed.", 
+            _LOGGER.warning("Supervisor API not available at %s: %s. Will attempt auto-deployment.", 
                           instance._supervisor_base_url, exc)
+            
+            # Try auto-deployment if supervisor is not available
+            try:
+                # Quick SSH test to see if deployment is possible
+                await instance._client.async_run("echo 'SSH test'", timeout=5)
+                _LOGGER.info("SSH connection successful. Starting automatic deployment...")
+                
+                # Trigger automatic deployment in background
+                instance.hass.async_create_task(instance._auto_deploy_supervisor())
+            except Exception as ssh_exc:
+                _LOGGER.error("Cannot auto-deploy: SSH connection failed: %s", ssh_exc)
         
         return instance
 
@@ -386,6 +397,32 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
     # Deploy
     # ------------------------------------------------------------------
+
+    async def _auto_deploy_supervisor(self) -> None:
+        """Automatically deploy supervisor if not available during initial setup."""
+        try:
+            _LOGGER.info("Starting automatic supervisor deployment...")
+            
+            # Use the existing deploy method but only log the key phases
+            success = await self.async_deploy()
+            
+            if success:
+                _LOGGER.info("Automatic supervisor deployment completed successfully!")
+                
+                # Try to connect to the newly deployed supervisor
+                try:
+                    await self._supervisor_get("/api/v1/health")
+                    await self._start_websocket_listener()
+                    _LOGGER.info("Successfully connected to deployed supervisor API")
+                    
+                    # Trigger a coordinator update to refresh all entities
+                    await self.async_request_refresh()
+                except Exception as exc:
+                    _LOGGER.warning("Deployment succeeded but supervisor connection failed: %s", exc)
+            else:
+                _LOGGER.error("Automatic supervisor deployment failed. Please check the integration logs and try manual deployment.")
+        except Exception as exc:
+            _LOGGER.error("Error during automatic supervisor deployment: %s", exc)
 
     async def async_deploy(self) -> bool:
         """Start a deploy in the background; progress dispatched via coordinator updates."""
