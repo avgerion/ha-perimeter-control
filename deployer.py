@@ -240,7 +240,7 @@ class Deployer:
             return
 
         # Resolve required apt deps from selected service descriptors
-        descriptors = load_service_descriptors(
+        descriptors = await load_service_descriptors(
             _SERVICE_DESCRIPTORS_DIR, self._selected_services
         )
         apt_groups: set[str] = set()
@@ -265,7 +265,7 @@ class Deployer:
 
         # Pack supervisor/ into tar and upload
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
-        tar_bytes = _pack_directory(supervisor_src, arcname="supervisor")
+        tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
         await self._client.async_put_bytes(tar_bytes, "/tmp/supervisor.tar.gz")
 
         # Upload service unit
@@ -309,7 +309,7 @@ class Deployer:
         self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 82)
         
         # Find all .service files in system_services/
-        service_files = list(_SYSTEM_SERVICES_DIR.glob("*.service"))
+        service_files = await asyncio.to_thread(lambda: list(_SYSTEM_SERVICES_DIR.glob("*.service")))
         if not service_files:
             _LOGGER.info("No .service files found in system_services/")
             return
@@ -578,10 +578,14 @@ echo SUPERVISOR_INSTALLED
 """
 
 
-def _pack_directory(src_dir: Path, arcname: str) -> bytes:
+async def _pack_directory(src_dir: Path, arcname: str) -> bytes:
     """Pack a directory into an in-memory .tar.gz and return the bytes."""
-    buf = tempfile.SpooledTemporaryFile(max_size=10 * 1024 * 1024)
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        tar.add(str(src_dir), arcname=arcname)
-    buf.seek(0)
-    return buf.read()
+    def _do_pack():
+        buf = tempfile.SpooledTemporaryFile(max_size=10 * 1024 * 1024)
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            tar.add(str(src_dir), arcname=arcname)
+        buf.seek(0)
+        return buf.read()
+    
+    # Run the blocking tar operation in a thread pool
+    return await asyncio.to_thread(_do_pack)

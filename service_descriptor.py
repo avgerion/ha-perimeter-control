@@ -1,6 +1,7 @@
 """Load and represent service descriptors bundled with the component."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,7 +23,7 @@ class ServiceDescriptor:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
-def load_service_descriptors(
+async def load_service_descriptors(
     descriptors_dir: Path,
     service_ids: list[str],
 ) -> list[ServiceDescriptor]:
@@ -34,9 +35,9 @@ def load_service_descriptors(
             _LOGGER.warning("Service descriptor not found: %s", path)
             continue
         try:
-            # Read file synchronously - these are small YAML files
-            text = path.read_text(encoding="utf-8")
-            data: dict[str, Any] = yaml.safe_load(text) or {}
+            # Read file asynchronously to avoid blocking the event loop
+            text = await asyncio.to_thread(path.read_text, encoding="utf-8")
+            data: dict[str, Any] = await asyncio.to_thread(yaml.safe_load, text) or {}
         except yaml.YAMLError:
             _LOGGER.exception("Failed to parse service descriptor: %s", path)
             continue

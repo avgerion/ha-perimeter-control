@@ -305,7 +305,8 @@ class SshClient:
         conn = await self._connect()
         try:
             async with conn.start_sftp_client() as sftp:
-                await sftp.put(str(local_path), remote_path)
+                # Run sftp.put in thread pool to avoid blocking the event loop
+                await asyncio.to_thread(sftp.put, str(local_path), remote_path)
         except asyncssh.Error as exc:
             raise SshCommandError(f"put {local_path}", 1, str(exc)) from exc
 

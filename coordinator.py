@@ -24,7 +24,7 @@ from .const import (
 )
 from .deployer import DeployProgress, Deployer
 from .ssh_client import SshClient, SshConnectionError
-from .service_descriptor import load_service_descriptors
+from .service_descriptor import ServiceDescriptor, load_service_descriptors
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,9 +58,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False
         self._deploy_log: list[DeployProgress] = []
-        # Use bundled service descriptors from the integration directory
-        descriptors_dir = Path(__file__).parent / "service_descriptors"
-        self._service_descriptors = {d.id: d for d in load_service_descriptors(descriptors_dir, self._selected_services)}
+        # Service descriptors will be loaded in create() method
+        self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
     @classmethod
     async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
@@ -78,6 +77,12 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error("Failed to read SSH key file: %s", exc)
                 private_key = ""
         instance = cls(hass, entry)
+        
+        # Load service descriptors asynchronously now that we're in async context
+        descriptors_dir = Path(__file__).parent / "service_descriptors"
+        descriptors = await load_service_descriptors(descriptors_dir, instance._selected_services)
+        instance._service_descriptors = {d.id: d for d in descriptors}
+        
         instance._client = SshClient(
             host=entry.data[CONF_HOST],
             port=entry.data.get(CONF_PORT, DEFAULT_SSH_PORT),
