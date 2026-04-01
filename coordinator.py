@@ -382,11 +382,6 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "network_status": {"status": "unknown"},  # Placeholder
             "device_registry": {},  # Placeholder
         }
-            "service_status": service_status,
-            "service_ports": {k: v.port for k, v in self._service_descriptors.items()},
-            KEY_DEPLOY_IN_PROGRESS: self._deploy_in_progress,
-            KEY_DEPLOY_PROGRESS: list(self._deploy_log),
-        }
 
     # ------------------------------------------------------------------
     # Deploy
