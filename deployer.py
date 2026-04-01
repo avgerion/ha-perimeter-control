@@ -51,6 +51,7 @@ _SERVER_FILES_DIR = _COMPONENT_DIR / "remote_services" / "dashboard_web"
 _SUPERVISOR_DIR = _COMPONENT_DIR / "remote_services" / "supervisor"
 _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 _SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
+_SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
 
 
 @dataclass
@@ -167,13 +168,25 @@ class Deployer:
             "topology_config.py",
         ]
         total = len(web_files) + len(script_files)
-        for i, fname in enumerate(web_files + script_files):
+        
+        # Upload web files from dashboard_web directory
+        for i, fname in enumerate(web_files):
             src = _SERVER_FILES_DIR / fname
             if not src.exists():
-                _LOGGER.warning("Server file not found, skipping: %s", src)
+                _LOGGER.warning("Web file not found, skipping: %s", src)
                 continue
             await self._client.async_put_file(src, f"/tmp/{fname}")
-            pct = 15 + int(30 * (i + 1) / total)
+            pct = 15 + int(15 * (i + 1) / len(web_files))
+            self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
+        
+        # Upload script files from scripts directory
+        for i, fname in enumerate(script_files):
+            src = _SCRIPTS_DIR / fname
+            if not src.exists():
+                _LOGGER.warning("Script file not found, skipping: %s", src)
+                continue
+            await self._client.async_put_file(src, f"/tmp/{fname}")
+            pct = 30 + int(15 * (i + 1) / len(script_files))
             self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
 
     # ------------------------------------------------------------------
