@@ -3,7 +3,7 @@
     "name": "Perimeter Control",
     "codeowners": [],
     "config_flow": true,
-    "documentation": "https://github.com/avgerion/ha-perimeter-control.git",
+    "documentation": "https://github.com/avgerion/ha-perimeter-control",
     "iot_class": "local_push",
     "requirements": [
         "asyncssh==2.14.2"
