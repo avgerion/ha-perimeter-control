@@ -58,8 +58,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False
         self._deploy_log: list[DeployProgress] = []
-        # Use Home Assistant's config path for config/services directory
-        descriptors_dir = Path(hass.config.path("config/services"))
+        # Use bundled service descriptors from the integration directory
+        descriptors_dir = Path(__file__).parent / "service_descriptors"
         self._service_descriptors = {d.id: d for d in load_service_descriptors(descriptors_dir, self._selected_services)}
 
     @classmethod
@@ -94,13 +94,6 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await instance._start_websocket_listener()
         
         return instance
-        self._deploy_in_progress = False
-        self._deploy_log: list[DeployProgress] = []
-        # Load service descriptors for selected services
-        # Use workspace root config/services directory
-        workspace_root = Path(__file__).parents[3]
-        descriptors_dir = workspace_root / "config" / "services"
-        self._service_descriptors = {d.id: d for d in load_service_descriptors(descriptors_dir, self._selected_services)}
 
     # ------------------------------------------------------------------
     # Supervisor API HTTP methods
