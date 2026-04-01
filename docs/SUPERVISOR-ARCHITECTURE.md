@@ -1,6 +1,20 @@
 # Supervisor Architecture
 
-The Pi Supervisor is the heart of the local autonomous stack. It manages capability lifecycle, enforces resource constraints, handles health probes, and exposes the REST API that Home Assistant queries.
+The Pi Supervisor is the heart of the **remote Pi device** autonomous stack. It runs on the target Pi device (e.g., `192.168.50.47`) and manages capability lifecycle, enforces resource constraints, handles health probes, and exposes the REST API that the Home Assistant integration queries via network calls.
+
+## Device Architecture
+
+```
+┌─────────────────────────┐    SSH Deploy     ┌─────────────────────────┐
+│   Home Assistant        │ ────────────────► │    Raspberry Pi         │
+│   (Custom Integration)  │                   │    (Target Device)     │
+│                         │    API Calls      │    192.168.50.47        │
+│   - UI & Entity Mgmt    │ ◄──────────────── │                         │
+│   - Deployment Logic    │                   │   - Supervisor API      │
+│   - SSH Client          │                   │   - Dashboard Web       │
+│                         │                   │   - Services Runtime    │
+└─────────────────────────┘                   └─────────────────────────┘
+```
 
 ## Core Responsibilities
 

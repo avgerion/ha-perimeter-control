@@ -5,6 +5,15 @@
 
 Advanced Raspberry Pi network gateway management with **dynamic entity discovery**, **real-time monitoring**, and **optimized performance**.
 
+## 🏗️ Architecture Overview
+
+This integration uses a **two-device architecture**:
+
+- 🏠 **Home Assistant Server**: Runs the custom integration that provides the UI, entity management, and deployment orchestration
+- 🥧 **Raspberry Pi Target Device**: Remote Pi where supervisor API and services are deployed (e.g., `192.168.50.47`)
+
+The Home Assistant integration uses SSH to deploy services to the Pi, then communicates with the supervisor API running on the Pi for real-time monitoring and control.
+
 ## ✨ Features
 
 ### 🔄 **Dynamic Entity Discovery**
@@ -59,9 +68,9 @@ This integration provides **two deployment methods** for setting up fresh Pi nod
 ### Method 1: GUI Deployment (Recommended for Users)
 Deploy directly from Home Assistant interface:
 1. **Add Integration** via Settings > Devices & Services
-2. **Enter Pi Details** (IP, SSH key, username)  
+2. **Enter Pi Target Details** (IP address like `192.168.50.47`, SSH key, username)  
 3. **Select Services** to install (photo booth, BLE repeater, etc.)
-4. **Deploy** - Integration handles everything automatically
+4. **Deploy** - Home Assistant pushes code to Pi via SSH and starts services automatically
 
 ### Method 2: Command Line Deployment (Power Users)  
 Deploy via HA shell commands or automation:
@@ -69,15 +78,18 @@ Deploy via HA shell commands or automation:
 shell_command:
   deploy_pi: >
     python3 /config/ha-integration/scripts/deploy.py
-    --host 192.168.1.100 --user pi --ssh-key /config/ssh_key
+    --host 192.168.50.47 --user pi --ssh-key /config/ssh_key
 ```
 
+> **Note**: The `--host` parameter specifies the **target Pi device** IP address, not the Home Assistant server IP.
+
 ### Fresh Pi Bootstrap Capability
-Both methods can set up a **fresh Pi with just Pi OS + SSH**:
-- ✅ Install system dependencies (GStreamer, I2C tools, etc.)
-- ✅ Set up supervisor service and API on port 8080  
-- ✅ Deploy service configurations and descriptors
-- ✅ Start all systemd services automatically
+Both methods can set up a **fresh Pi target device with just Pi OS + SSH**:
+- ✅ Home Assistant SSH deploys to Pi target (e.g., `192.168.50.47`)
+- ✅ Install system dependencies (GStreamer, I2C tools, etc.) on Pi
+- ✅ Set up supervisor service and API on port 8080 on Pi
+- ✅ Deploy service configurations and descriptors to Pi
+- ✅ Start all systemd services automatically on Pi
 - ✅ Handle rollback on deployment failures
 
 ## 📦 Installation

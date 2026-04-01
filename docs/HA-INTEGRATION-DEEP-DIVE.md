@@ -2,23 +2,34 @@
 
 Detailed guide for HA discovery, entity translation, automation examples, and fleet management.
 
+## Two-Device Architecture
+
+This integration operates across **two separate devices**:
+
+1. **Home Assistant Server**: Runs the custom integration (custom_components/perimeter_control/)
+2. **Raspberry Pi Target Device(s)**: Remote Pi(s) where services are deployed (e.g., `192.168.50.47`)
+
+Communication flow:
+- HA → Pi: SSH deployment of supervisor and services
+- HA ← Pi: HTTP API calls for entity states and actions  
+- HA ← Pi: WebSocket events for real-time updates
+
 ## Integration Architecture
 
 ```
-Home Assistant
-├── Isolator Integration (custom component)
-│   ├── Config Flow (first-time setup)
-│   ├── Fleet Manager (add 1..N Pis)
-│   ├── Entity Platform Handlers
-│   │   ├── sensor (BLE values, network stats)
-│   │   ├── binary_sensor (connectivity, health)
-│   │   ├── switch (enable/disable capability)
-│   │   └── device_tracker (network devices)
-│   ├── Service Handlers (trigger actions)
-│   ├── Service Config Editor (per-service config file)
-│   ├── Access Profile Editor (shared SSL/network/auth controls)
-│   └── Webhook Listener (Pi → HA push updates)
-└── Pi Entity State (REST API + WebSocket)
+Home Assistant Server                          Raspberry Pi Target (192.168.50.47)         
+├── Isolator Integration (custom component)    ├── Supervisor API (port 8080)
+│   ├── Config Flow (Pi IP & SSH setup)       │   ├── Entity Discovery Endpoints
+│   ├── SSH Deployer (push code to Pi)        │   ├── State Query Handlers  
+│   ├── HTTP API Client (query Pi states)     │   ├── Action Trigger Handlers
+│   ├── Entity Platform Handlers              │   └── WebSocket Event Stream
+│   │   ├── sensor (BLE values, network stats)├── Dashboard Web (port 3000)
+│   │   ├── binary_sensor (connectivity, health)├── Service Runtime
+│   │   ├── switch (enable/disable capability) │   ├── BLE Repeater
+│   │   └── device_tracker (network devices)   │   ├── ESL Access Point
+│   ├── Service Handlers (trigger actions)     │   ├── Photo Booth
+│   └── Webhook Listener (Pi → HA push)        │   └── Wildlife Monitor
+└── SSH Connection (deploy & manage)           └── Systemd Services
 ```
 
 ## Generic Fleet UI Model

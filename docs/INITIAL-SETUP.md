@@ -1,6 +1,17 @@
-# Initial Setup — Raspberry Pi Network Isolator
+# Initial Setup — Raspberry Pi Target Device
 
-This guide walks through setting up a Raspberry Pi 3 from scratch as a Network Isolator appliance using Raspberry Pi Imager.
+This guide walks through setting up a **Raspberry Pi target device** from scratch as a Network Isolator appliance. This Pi will be the **deployment target** for the Home Assistant integration.
+
+> **Important**: This Pi device (e.g., `192.168.50.47`) is separate from your Home Assistant server. The HA integration will deploy services to this Pi via SSH.
+
+## Device Architecture
+
+```
+Home Assistant Server ──SSH Deploy──► Raspberry Pi Target Device (this setup)
+                                      ├── Supervisor API (port 8080)  
+                                      ├── Dashboard Web (port 3000)
+                                      └── Service Runtime
+```
 
 ## Prerequisites
 

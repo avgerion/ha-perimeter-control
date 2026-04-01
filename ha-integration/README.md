@@ -1,6 +1,20 @@
 # Perimeter Control — Home Assistant Integration
 
-A reusable **Lit web component** for Home Assistant that enables end-to-end editing of service access profiles on a remote **Isolator Supervisor** instance.
+A reusable **Lit web component** for Home Assistant that enables end-to-end editing of service access profiles on a remote **Pi target device** running the Isolator Supervisor.
+
+## Architecture
+
+This integration connects your **Home Assistant server** to a **remote Raspberry Pi target device**:
+
+```
+Home Assistant Server ──SSH Deploy──► Pi Target (192.168.50.47)
+                      ◄─────API────── Supervisor (port 8080)
+```
+
+The integration handles:
+- SSH deployment of supervisor and services to the Pi target
+- Real-time communication with the Pi's supervisor API  
+- UI components for managing Pi services from HA
 
 ## Features
 
