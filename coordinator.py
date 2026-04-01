@@ -73,9 +73,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 private_key = await hass.async_add_executor_job(
                     lambda: Path(ssh_key_path).read_text(encoding="utf-8")
                 )
-                _LOGGER.info("PERIMETER_CONTROL: Loaded SSH key from file at runtime: %s (len=%d)", ssh_key_path, len(private_key))
+                _LOGGER.debug("Loaded SSH key from %s (%d bytes)", ssh_key_path, len(private_key))
             except Exception as exc:
-                _LOGGER.error("PERIMETER_CONTROL: Failed to read SSH key file at runtime: %s", exc, exc_info=True)
+                _LOGGER.error("Failed to read SSH key file: %s", exc)
                 private_key = ""
         instance = cls(hass, entry)
         instance._client = SshClient(
@@ -294,7 +294,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_content = config_data.get("config", {}).get("content", "")
             # For now, just log that we could detect changes
             # In full implementation, store previous hash in entry options
-            _LOGGER.debug("Service %s config hash: %s", service_id, hash(config_content))
+
             
         return changes
     
@@ -331,7 +331,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         event = json.loads(msg.data)
                         await self._handle_supervisor_event(event)
                     except json.JSONDecodeError:
-                        _LOGGER.debug("Invalid JSON from Supervisor WebSocket: %s", msg.data)
+                        _LOGGER.debug("Invalid WebSocket JSON: %s", msg.data[:100])
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     _LOGGER.warning("WebSocket error: %s", self._websocket.exception())
                     break
@@ -350,7 +350,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         if event_type == "entity_updated":
             # Entity state changed - trigger immediate refresh
-            _LOGGER.debug("Entity updated event received: %s", event.get("entity_id"))
+
             await self.async_request_refresh()
             
         elif event_type == "deployment_completed":
@@ -401,13 +401,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _auto_deploy_supervisor(self) -> None:
         """Automatically deploy supervisor if not available during initial setup."""
         try:
-            _LOGGER.info("Starting automatic supervisor deployment...")
+            _LOGGER.info("Auto-deployment started for %s", self._entry.data[CONF_HOST])
             
             # Use the existing deploy method but only log the key phases
             success = await self.async_deploy()
             
             if success:
-                _LOGGER.info("Automatic supervisor deployment completed successfully!")
+                _LOGGER.info("Auto-deployment completed successfully")
                 
                 # Try to connect to the newly deployed supervisor
                 try:
@@ -432,16 +432,18 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._deploy_in_progress = True
         self._deploy_log = []
+        current_data = self.data or {}
         self.async_set_updated_data({
-            **self.data,
+            **current_data,
             KEY_DEPLOY_IN_PROGRESS: True,
             KEY_DEPLOY_PROGRESS: [],
         })
 
         def _on_progress(p: DeployProgress) -> None:
             self._deploy_log.append(p)
+            current_data = self.data or {}
             self.async_set_updated_data({
-                **self.data,
+                **current_data,
                 KEY_DEPLOY_IN_PROGRESS: True,
                 KEY_DEPLOY_PROGRESS: list(self._deploy_log),
             })
@@ -455,6 +457,12 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             success = await deployer.async_deploy()
         finally:
             self._deploy_in_progress = False
+            current_data = self.data or {}
+            self.async_set_updated_data({
+                **current_data,
+                KEY_DEPLOY_IN_PROGRESS: False,
+                KEY_DEPLOY_PROGRESS: list(self._deploy_log),
+            })
         await self.async_refresh()
         return success
 

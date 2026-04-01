@@ -57,7 +57,7 @@ ssh -i ./y paul@192.168.69.11
 
 # Run setup script
 cd /tmp/isolator-deploy
-sudo bash server/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml
+sudo bash system_services/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml
 ```
 
 The setup script will:

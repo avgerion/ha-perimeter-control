@@ -47,8 +47,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Resolved at runtime relative to this file (inside the HA custom component)
 _COMPONENT_DIR = Path(__file__).parent
-_SERVER_FILES_DIR = _COMPONENT_DIR / "server_files"
-_SUPERVISOR_DIR = _COMPONENT_DIR / "supervisor_files"
+_SERVER_FILES_DIR = _COMPONENT_DIR / "dashboard_web"
+_SUPERVISOR_DIR = _COMPONENT_DIR / "supervisor"
 _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 
 

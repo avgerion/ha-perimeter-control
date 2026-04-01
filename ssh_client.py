@@ -133,29 +133,23 @@ class SshClient:
             echo_stdout, echo_stderr = await proc.communicate()
             echo_exit_status = proc.exit_status
         except Exception as exc:
-            _LOGGER.error("PERIMETER_CONTROL: create_process failed for echo test: %r", exc, exc_info=True)
+            _LOGGER.warning("SSH echo test failed: %r", exc)
             raise SshPreflightError(f"Echo test failed: {exc}") from exc
-        _LOGGER.debug(
-            "PERIMETER_CONTROL_DEBUG: echo test result: stdout: %r, stderr: %r, exit_status: %r",
-            echo_stdout, echo_stderr, echo_exit_status
-        )
+        _LOGGER.debug("SSH echo test completed")
 
         try:
             proc = await conn.create_process(_PREFLIGHT_SCRIPT)
             stdout, stderr = await proc.communicate()
             exit_status = proc.exit_status
         except Exception as exc:
-            _LOGGER.error("PERIMETER_CONTROL: create_process failed for preflight: %r", exc, exc_info=True)
+            _LOGGER.warning("SSH preflight failed: %r", exc)
             raise SshPreflightError(f"Preflight script failed: {exc}") from exc
-        _LOGGER.debug(
-            "PERIMETER_CONTROL_DEBUG: preflight result: stdout: %r, stderr: %r, exit_status: %r",
-            stdout, stderr, exit_status
-        )
+        _LOGGER.debug("SSH preflight completed")
 
         if "DONE" not in (stdout or ""):
             # Run diagnostics if preflight fails
             diag_results = await self._run_diagnostics(conn)
-            _LOGGER.error("PERIMETER_CONTROL_DIAGNOSTICS: SSH diagnostics results: %r", diag_results)
+            _LOGGER.debug("SSH diagnostics completed: %r", diag_results)
             raise SshPreflightError(
                 f"Preflight script did not complete. stdout={stdout!r} | diagnostics={diag_results!r}"
             )
@@ -211,7 +205,7 @@ class SshClient:
             try:
                 res = await conn.run(cmd, check=False)
                 if getattr(res, "stdout", None) is None and getattr(res, "stderr", None) is None:
-                    _LOGGER.warning("PERIMETER_CONTROL_DIAGNOSTICS: asyncssh.run returned None for stdout/stderr (broken in this environment)")
+                    _LOGGER.debug("asyncssh.run returned None for stdout/stderr (environment issue)")
                 results[cmd]["run"] = {
                     "stdout": getattr(res, "stdout", None),
                     "stderr": getattr(res, "stderr", None),
@@ -224,7 +218,7 @@ class SshClient:
             try:
                 res = await conn.run(cmd, check=False, term_type="xterm")
                 if getattr(res, "stdout", None) is None and getattr(res, "stderr", None) is None:
-                    _LOGGER.warning("PERIMETER_CONTROL_DIAGNOSTICS: asyncssh.run(..., pty=True) returned None for stdout/stderr (broken in this environment)")
+                    _LOGGER.debug("asyncssh.run with pty=True returned None (environment issue)")
                 results[cmd]["run_pty"] = {
                     "stdout": getattr(res, "stdout", None),
                     "stderr": getattr(res, "stderr", None),
@@ -268,18 +262,15 @@ class SshClient:
         conn = await self._connect()
         if sudo:
             script = f"sudo bash -c {shlex.quote(script)}"
-        _LOGGER.debug("PERIMETER_CONTROL_DEBUG: Running SSH command (create_process): %r (sudo=%r)", script, sudo)
+        _LOGGER.debug("Executing SSH command: %s", script[:100] + ("..." if len(script) > 100 else ""))
         try:
             proc = await conn.create_process(script)
             stdout, stderr = await proc.communicate()
             exit_status = proc.exit_status
         except Exception as exc:
-            _LOGGER.error("PERIMETER_CONTROL: create_process failed: %r", exc, exc_info=True)
+            _LOGGER.warning("SSH command execution failed: %r", exc)
             raise SshCommandError(script[:80], 1, str(exc)) from exc
-        _LOGGER.debug(
-            "PERIMETER_CONTROL_DEBUG: SSH command result (create_process): stdout: %r, stderr: %r, exit_status: %r",
-            stdout, stderr, exit_status
-        )
+        _LOGGER.debug("SSH command completed")
         if exit_status != 0:
             raise SshCommandError(script[:80], exit_status, stderr or "")
         return stdout or ""
@@ -299,7 +290,7 @@ class SshClient:
             stdout, stderr = await proc.communicate()
             exit_status = proc.exit_status
         except Exception as exc:
-            _LOGGER.error("PERIMETER_CONTROL: create_process failed for b64 script: %r", exc, exc_info=True)
+            _LOGGER.warning("SSH base64 script execution failed: %r", exc)
             raise SshCommandError("<b64 script>", 1, str(exc)) from exc
         if exit_status != 0:
             raise SshCommandError("<b64 script>", exit_status, stderr or "")

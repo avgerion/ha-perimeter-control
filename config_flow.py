@@ -30,9 +30,9 @@ _LOGGER = logging.getLogger(__name__)
 # Check asyncssh availability and version for debugging
 try:
     import asyncssh
-    _LOGGER.warning("PERIMETER_CONTROL_DEBUG: asyncssh version: %s", getattr(asyncssh, '__version__', 'unknown'))
+    _LOGGER.debug("asyncssh version: %s", getattr(asyncssh, '__version__', 'unknown'))
 except ImportError as e:
-    _LOGGER.error("PERIMETER_CONTROL_DEBUG: asyncssh is NOT installed! ImportError: %s", e)
+    _LOGGER.error("asyncssh dependency not available: %s", e)
 
 STEP_CONNECTION_SCHEMA = vol.Schema(
     {
@@ -65,12 +65,9 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         import asyncio
         loop = asyncio.get_event_loop()
         platform_str = await loop.run_in_executor(None, platform.platform)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: Python version: %s", sys.version)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: sys.executable: %s", sys.executable)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: sys.path: %r", sys.path)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: platform: %s", platform_str)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: OpenSSL: %s", ssl.OPENSSL_VERSION)
-        _LOGGER.error("PERIMETER_CONTROL_DIAG: os.environ (PATH, PYTHONPATH): PATH=%s, PYTHONPATH=%s", os.environ.get('PATH'), os.environ.get('PYTHONPATH'))
+        _LOGGER.debug("Python: %s | Executable: %s | Platform: %s", 
+                      sys.version.split()[0], sys.executable, platform_str)
+        _LOGGER.debug("OpenSSL: %s", ssl.OPENSSL_VERSION)
 
     VERSION = 1
     DOMAIN = DOMAIN
@@ -78,13 +75,13 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         # DEBUG: Unique log marker to confirm config_flow.py __init__ is executed
-        _LOGGER.debug("PERIMETER_CONTROL_CONFIG_FLOW_INIT: This is a unique debug marker. If you see this, config_flow.py __init__ ran.")
+
         # Log system diagnostics at integration startup (schedule as task)
         import asyncio
         asyncio.get_event_loop().create_task(self._log_system_diagnostics())
         # Check DOMAIN is set and correct
         if not hasattr(self, "DOMAIN") or not self.DOMAIN or not isinstance(self.DOMAIN, str):
-            _LOGGER.error("PERIMETER_CONTROL_CONFIG_FLOW_ERROR: DOMAIN is missing or not a string! Value: %r", getattr(self, "DOMAIN", None))
+            _LOGGER.error("Config flow DOMAIN validation failed: %r", getattr(self, "DOMAIN", None))
             raise RuntimeError("PERIMETER_CONTROL_CONFIG_FLOW_ERROR: DOMAIN is missing or not a string!")
         self._connection_data: dict[str, Any] = {}
         self._node_info: dict[str, Any] = {}
@@ -93,7 +90,7 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Step 1: SSH connection details."""
-        _LOGGER.debug("PERIMETER_CONTROL_CONFIG_FLOW_STEP_USER: async_step_user called. This is a unique debug marker.")
+
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -131,7 +128,7 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     private_key = ssh_key
                     key_source = f"saved:{key_path}"
                     ssh_key_path = key_path
-                    _LOGGER.info("PERIMETER_CONTROL: Saved pasted SSH key to file: %s", key_path)
+                    _LOGGER.info("SSH key saved to: %s", key_path)
                 except Exception as exc:
                     _LOGGER.error("Failed to save pasted SSH key to file: %s", exc, exc_info=True)
                     errors[CONF_SSH_KEY] = "save_failed"
@@ -139,13 +136,7 @@ class PerimeterControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_SSH_KEY] = "no_key_provided"
 
             if private_key:
-                _LOGGER.debug(
-                    "PERIMETER_CONTROL_DEBUG: Using SSH key from %s, length=%d, start=%.10s...end=%.10s",
-                    key_source,
-                    len(private_key),
-                    private_key[:10].replace('\n',' '),
-                    private_key[-10:].replace('\n',' ')
-                )
+                _LOGGER.debug("Using SSH key from %s (length: %d)", key_source, len(private_key))
 
             await self.async_set_unique_id(f"{user}@{host}:{port}")
             self._abort_if_unique_id_configured()

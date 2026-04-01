@@ -287,7 +287,7 @@ scp -r . pi@isolator.local:/tmp/isolator-deploy/
 # SSH in and install
 ssh pi@isolator.local
 cd /tmp/isolator-deploy
-sudo bash server/setup-isolator.sh --config config/isolator.conf.yaml
+sudo bash system_services/setup-isolator.sh --config config/isolator.conf.yaml
 ```
 
 ## Web Dashboard Access

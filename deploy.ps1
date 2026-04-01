@@ -45,7 +45,8 @@ try {
         throw "SSH test failed"
     }
     Write-Host "  ✓ SSH connection successful" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "❌ Cannot connect to Pi. Check IP address, SSH key, and network." -ForegroundColor Red
     exit 1
 }
@@ -110,7 +111,7 @@ Write-Host "  This will install packages and configure services." -ForegroundCol
 Write-Host "  You may be prompted for sudo password on the Pi." -ForegroundColor Gray
 Write-Host ""
 
-ssh -i $KeyFile -t "${PiUser}@${PiIP}" "cd /tmp/isolator-deploy && sudo bash server/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml"
+ssh -i $KeyFile -t "${PiUser}@${PiIP}" "cd /tmp/isolator-deploy && sudo bash system_services/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml"
 
 Write-Host ""
 Write-Host "  ✓ Setup complete" -ForegroundColor Green
@@ -126,7 +127,8 @@ foreach ($service in $services) {
     $status = ssh -i $KeyFile "${PiUser}@${PiIP}" "systemctl is-active $service" 2>$null
     if ($status -eq "active") {
         Write-Host "  ✓ $service is running" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "  ✗ $service is NOT running" -ForegroundColor Red
         $allRunning = $false
     }
@@ -138,7 +140,8 @@ if ($allRunning) {
     Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
     Write-Host "║              Deployment Successful! 🎉                     ║" -ForegroundColor Green
     Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow
     Write-Host "║   Deployment complete, but some services need attention    ║" -ForegroundColor Yellow
     Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
