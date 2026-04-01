@@ -353,8 +353,11 @@ class Deployer:
             try:
                 await self._client.async_run("sudo systemctl start isolator.service")
                 await asyncio.sleep(2)
+                _LOGGER.info("Base isolator service started successfully")
             except SshCommandError as exc:
-                _LOGGER.warning("Base isolator service failed to start: %s", exc)
+                # Base service failure should not block dashboard deployment
+                _LOGGER.warning("Base isolator service failed to start (this is often expected): %s", exc)
+                _LOGGER.info("Continuing deployment - dashboard can run independently")
         
         # Check if dashboard service exists before trying to restart it
         dashboard_service_exists = await self._client.async_run(
@@ -363,9 +366,10 @@ class Deployer:
         if dashboard_service_exists.strip() != "0":
             self._emit(PHASE_RESTART, f"Starting {SYSTEMD_DASHBOARD}...", 90)
             try:
-                await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+                await self._client.async_run(f"sudo systemctl start {SYSTEMD_DASHBOARD}")
+                _LOGGER.info("Dashboard service started successfully")
             except SshCommandError as exc:
-                _LOGGER.warning("Dashboard service failed to restart: %s", exc)
+                _LOGGER.warning("Dashboard service failed to start: %s", exc)
         else:
             _LOGGER.warning("Dashboard service unit not found, skipping restart")
         await asyncio.sleep(2)
@@ -388,22 +392,16 @@ class Deployer:
     async def _phase_verify(self) -> None:
         self._emit(PHASE_VERIFY, "Verifying service health...", 95)
         
-        # First check base isolator service
+        # Check base isolator service (but don't fail if it's not running)
         base_status = await self._client.async_run(
             "systemctl is-active isolator.service || echo INACTIVE"
         )
         if "INACTIVE" in base_status:
-            _LOGGER.warning("Base isolator.service is not active: %s", base_status)
-            # Try to get more details about why it failed
-            try:
-                status_detail = await self._client.async_run(
-                    "systemctl status isolator.service --no-pager -l || true"
-                )
-                _LOGGER.debug("Base isolator service status: %s", status_detail)
-            except Exception:
-                pass
+            _LOGGER.info("Base isolator.service is not active (this is often expected for dashboard-only deployments)")
+        else:
+            _LOGGER.info("Base isolator.service is active: %s", base_status)
         
-        # Check dashboard service with more details
+        # Check dashboard service - this is the main service we care about
         dashboard_status = await self._client.async_run(
             f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
         )
@@ -411,25 +409,9 @@ class Deployer:
         if "active" not in dashboard_status or "INACTIVE" in dashboard_status:
             _LOGGER.warning("Dashboard service is not active: %s", dashboard_status)
             
-            # Get detailed status and recent logs
+            # Try to start it one more time
+            _LOGGER.info("Attempting final start of dashboard service...")
             try:
-                status_detail = await self._client.async_run(
-                    f"systemctl status {SYSTEMD_DASHBOARD} --no-pager -l || true"
-                )
-                _LOGGER.debug("Dashboard service status: %s", status_detail)
-                
-                recent_logs = await self._client.async_run(
-                    f"journalctl -u {SYSTEMD_DASHBOARD} --no-pager -l --since='5 minutes ago' || true"
-                )
-                _LOGGER.debug("Dashboard service recent logs: %s", recent_logs)
-            except Exception:
-                pass
-            
-            # Try to restart once more with dependency check
-            _LOGGER.info("Attempting final restart of dashboard service...")
-            try:
-                await self._client.async_run("sudo systemctl start isolator.service")
-                await asyncio.sleep(3)
                 await self._client.async_run(f"sudo systemctl start {SYSTEMD_DASHBOARD}")
                 await asyncio.sleep(3)
                 
@@ -440,6 +422,14 @@ class Deployer:
                 if "active" in final_status and "INACTIVE" not in final_status:
                     _LOGGER.info("Dashboard service started successfully on retry")
                 else:
+                    # Get detailed error information
+                    try:
+                        status_detail = await self._client.async_run(
+                            f"systemctl status {SYSTEMD_DASHBOARD} --no-pager -l || true"
+                        )
+                        _LOGGER.debug("Dashboard service status: %s", status_detail)
+                    except Exception:
+                        pass
                     raise SshCommandError(
                         PHASE_VERIFY, 1, f"{SYSTEMD_DASHBOARD} is not active after deploy and retry attempts"
                     )
@@ -447,6 +437,8 @@ class Deployer:
                 raise SshCommandError(
                     PHASE_VERIFY, 1, f"{SYSTEMD_DASHBOARD} failed to start: {e}"
                 )
+        else:
+            _LOGGER.info("Dashboard service is running successfully")
         
         self._emit(PHASE_VERIFY, "Deploy complete — dashboard is running", 100)
 

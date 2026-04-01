@@ -1,7 +1,7 @@
 [Unit]
 Description=Network Isolator Web Dashboard
 After=network.target isolator.service
-Requires=isolator.service
+Wants=isolator.service
 
 [Service]
 Type=simple
