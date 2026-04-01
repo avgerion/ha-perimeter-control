@@ -316,13 +316,28 @@ class Deployer:
     # ------------------------------------------------------------------
 
     async def _phase_restart(self) -> None:
+        # Start base isolator service first (dashboard depends on it)
+        base_service_exists = await self._client.async_run(
+            "systemctl list-unit-files isolator.service 2>/dev/null | grep -c isolator || true"
+        )
+        if base_service_exists.strip() != "0":
+            self._emit(PHASE_RESTART, "Starting base isolator service...", 82)
+            try:
+                await self._client.async_run("sudo systemctl start isolator.service")
+                await asyncio.sleep(2)
+            except SshCommandError as exc:
+                _LOGGER.warning("Base isolator service failed to start: %s", exc)
+        
         # Check if dashboard service exists before trying to restart it
         dashboard_service_exists = await self._client.async_run(
             f"systemctl list-unit-files {SYSTEMD_DASHBOARD}.service 2>/dev/null | grep -c {SYSTEMD_DASHBOARD} || true"
         )
         if dashboard_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_DASHBOARD}...", 82)
-            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+            self._emit(PHASE_RESTART, f"Starting {SYSTEMD_DASHBOARD}...", 85)
+            try:
+                await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+            except SshCommandError as exc:
+                _LOGGER.warning("Dashboard service failed to restart: %s", exc)
         else:
             _LOGGER.warning("Dashboard service unit not found, skipping restart")
         await asyncio.sleep(2)
