@@ -47,8 +47,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Resolved at runtime relative to this file (inside the HA custom component)
 _COMPONENT_DIR = Path(__file__).parent
-_SERVER_FILES_DIR = _COMPONENT_DIR / "dashboard_web"
-_SUPERVISOR_DIR = _COMPONENT_DIR / "supervisor"
+_SERVER_FILES_DIR = _COMPONENT_DIR / "remote_services" / "dashboard_web"
+_SUPERVISOR_DIR = _COMPONENT_DIR / "remote_services" / "supervisor"
 _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 
 
@@ -116,15 +116,30 @@ class Deployer:
     # ------------------------------------------------------------------
 
     async def _phase_preflight(self) -> None:
-        self._emit(PHASE_PREFLIGHT, "Verifying Python interpreter and venv...", 5)
+        self._emit(PHASE_PREFLIGHT, "Verifying Python interpreter and environment...", 5)
         out = await self._client.async_run(
             "set -e; "
+            "python3 --version && echo PYTHON_OK; "
             f"[ -x {REMOTE_VENV}/bin/python3 ] && echo VENV_OK "
             "|| echo VENV_MISSING; "
             f"[ -d {REMOTE_WEB_DIR} ] && echo WEBDIR_OK || echo WEBDIR_MISSING"
         )
+        
+        # Check if we need to create the venv
         if "VENV_MISSING" in out:
-            raise SshCommandError(PHASE_PREFLIGHT, 1, f"venv not found at {REMOTE_VENV}")
+            self._emit(PHASE_PREFLIGHT, "Creating Python virtual environment...", 7)
+            await self._client.async_run(
+                f"sudo mkdir -p $(dirname {REMOTE_VENV}) && "
+                f"cd $(dirname {REMOTE_VENV}) && "
+                f"sudo python3 -m venv --system-site-packages $(basename {REMOTE_VENV})"
+            )
+            self._emit(PHASE_PREFLIGHT, "Virtual environment created", 8)
+        
+        # Ensure web directory exists
+        if "WEBDIR_MISSING" in out:
+            self._emit(PHASE_PREFLIGHT, "Creating web directory...", 9)
+            await self._client.async_run(f"sudo mkdir -p {REMOTE_WEB_DIR}")
+            
         self._emit(PHASE_PREFLIGHT, "Preflight passed", 10)
 
     # ------------------------------------------------------------------
