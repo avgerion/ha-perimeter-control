@@ -286,10 +286,15 @@ class Deployer:
         # Reload systemd to pick up new service files
         await self._client.async_run("sudo systemctl daemon-reload")
         
-        # Enable services (but don't start them yet - restart phase will handle that)
+        # Enable services (but skip template units which end with @.service)
         for service_file in service_files:
             service_name = service_file.name
+            if "@." in service_name:
+                # Skip template units - they can't be enabled directly
+                _LOGGER.debug("Skipping template unit (cannot enable): %s", service_name)
+                continue
             await self._client.async_run(f"sudo systemctl enable {service_name}")
+            _LOGGER.debug("Enabled systemd service: %s", service_name)
             
         self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 80)
 
