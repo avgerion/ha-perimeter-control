@@ -52,6 +52,7 @@ _SUPERVISOR_DIR = _COMPONENT_DIR / "remote_services" / "supervisor"
 _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 _SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
 _SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
+_CONFIG_DIR = _COMPONENT_DIR / "config"
 
 
 @dataclass
@@ -102,6 +103,7 @@ class Deployer:
             await self._phase_preflight()
             await self._phase_upload()
             await self._phase_install()
+            await self._phase_config()
             await self._phase_supervisor()
             await self._phase_system_services()
             await self._phase_restart()
@@ -200,11 +202,37 @@ class Deployer:
         self._emit(PHASE_INSTALL, "Files installed", 55)
 
     # ------------------------------------------------------------------
-    # Phase 4: Supervisor
+    # Phase 4: Config  
+    # ------------------------------------------------------------------
+
+    async def _phase_config(self) -> None:
+        """Deploy configuration files to their expected locations."""
+        self._emit(PHASE_INSTALL, "Deploying configuration files...", 57)
+        
+        # Deploy main config file
+        config_file = _CONFIG_DIR / "isolator.conf.yaml"
+        if config_file.exists():
+            # Upload to temp location
+            await self._client.async_put_file(config_file, "/tmp/isolator.conf.yaml")
+            
+            # Ensure target directory exists and move to final location
+            await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
+            await self._client.async_run("sudo mv /tmp/isolator.conf.yaml /mnt/isolator/conf/")
+            await self._client.async_run("sudo chown root:root /mnt/isolator/conf/isolator.conf.yaml")
+            await self._client.async_run("sudo chmod 644 /mnt/isolator/conf/isolator.conf.yaml")
+            
+            _LOGGER.debug("Deployed config file: isolator.conf.yaml")
+        else:
+            _LOGGER.warning("Main config file not found: %s", config_file)
+        
+        self._emit(PHASE_INSTALL, "Configuration files deployed", 60)
+
+    # ------------------------------------------------------------------
+    # Phase 5: Supervisor
     # ------------------------------------------------------------------
 
     async def _phase_supervisor(self) -> None:
-        self._emit(PHASE_SUPERVISOR, "Preparing supervisor package...", 57)
+        self._emit(PHASE_SUPERVISOR, "Preparing supervisor package...", 62)
         supervisor_src = _SUPERVISOR_DIR
         if not supervisor_src.exists():
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
@@ -229,13 +257,13 @@ class Deployer:
                 )
 
         # Install pip deps
-        self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 65)
+        self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         await self._client.async_run(
             f"sudo {REMOTE_VENV}/bin/pip install --quiet aiohttp psutil python-json-logger"
         )
 
         # Pack supervisor/ into tar and upload
-        self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 68)
+        self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
         tar_bytes = _pack_directory(supervisor_src, arcname="supervisor")
         await self._client.async_put_bytes(tar_bytes, "/tmp/supervisor.tar.gz")
 
@@ -247,7 +275,7 @@ class Deployer:
         # Extract + install on remote via b64 script
         sup_install_script = _build_supervisor_install_script()
         await self._client.async_run_b64(sup_install_script)
-        self._emit(PHASE_SUPERVISOR, "Supervisor installed", 72)
+        self._emit(PHASE_SUPERVISOR, "Supervisor installed", 77)
 
         # Deploy service descriptors
         await self._deploy_service_descriptors(descriptors)
@@ -257,7 +285,7 @@ class Deployer:
     ) -> None:
         if not descriptors:
             return
-        self._emit(PHASE_SUPERVISOR, "Deploying service descriptors...", 75)
+        self._emit(PHASE_SUPERVISOR, "Deploying service descriptors...", 78)
         await self._client.async_run(f"sudo mkdir -p {REMOTE_SERVICES_DIR}")
         for desc in descriptors:
             fname = f"{desc.id}.service.yaml"
@@ -269,7 +297,7 @@ class Deployer:
             await self._client.async_run(
                 f"sudo install -o root -g root -m 0644 /tmp/{fname} {REMOTE_SERVICES_DIR}/{fname}"
             )
-        self._emit(PHASE_SUPERVISOR, "Service descriptors deployed", 78)
+        self._emit(PHASE_SUPERVISOR, "Service descriptors deployed", 80)
 
     async def _phase_system_services(self) -> None:
         """Deploy systemd service unit files from system_services/ directory."""
@@ -277,7 +305,7 @@ class Deployer:
             _LOGGER.warning("system_services/ directory not found, skipping service units")
             return
 
-        self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 79)
+        self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 82)
         
         # Find all .service files in system_services/
         service_files = list(_SYSTEM_SERVICES_DIR.glob("*.service"))
@@ -309,10 +337,10 @@ class Deployer:
             await self._client.async_run(f"sudo systemctl enable {service_name}")
             _LOGGER.debug("Enabled systemd service: %s", service_name)
             
-        self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 80)
+        self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 85)
 
     # ------------------------------------------------------------------
-    # Phase 6: Restart
+    # Phase 7: Restart
     # ------------------------------------------------------------------
 
     async def _phase_restart(self) -> None:
@@ -321,7 +349,7 @@ class Deployer:
             "systemctl list-unit-files isolator.service 2>/dev/null | grep -c isolator || true"
         )
         if base_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, "Starting base isolator service...", 82)
+            self._emit(PHASE_RESTART, "Starting base isolator service...", 87)
             try:
                 await self._client.async_run("sudo systemctl start isolator.service")
                 await asyncio.sleep(2)
@@ -333,7 +361,7 @@ class Deployer:
             f"systemctl list-unit-files {SYSTEMD_DASHBOARD}.service 2>/dev/null | grep -c {SYSTEMD_DASHBOARD} || true"
         )
         if dashboard_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, f"Starting {SYSTEMD_DASHBOARD}...", 85)
+            self._emit(PHASE_RESTART, f"Starting {SYSTEMD_DASHBOARD}...", 90)
             try:
                 await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
             except SshCommandError as exc:
@@ -346,7 +374,7 @@ class Deployer:
             f"systemctl list-unit-files {SYSTEMD_SUPERVISOR}.service 2>/dev/null | grep -c {SYSTEMD_SUPERVISOR} || true"
         )
         if sup_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 88)
+            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 93)
             try:
                 await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
                 await asyncio.sleep(2)
@@ -354,11 +382,11 @@ class Deployer:
                 _LOGGER.warning("Supervisor service failed to restart: %s", exc)
 
     # ------------------------------------------------------------------
-    # Phase 7: Verify
+    # Phase 8: Verify
     # ------------------------------------------------------------------
 
     async def _phase_verify(self) -> None:
-        self._emit(PHASE_VERIFY, "Verifying service health...", 90)
+        self._emit(PHASE_VERIFY, "Verifying service health...", 95)
         
         # First check base isolator service
         base_status = await self._client.async_run(
