@@ -214,8 +214,20 @@ class Deployer:
         config_file = _CONFIG_DIR / "isolator.conf.yaml"
         if config_file.exists():
             try:
-                # Upload to temp location
+                # Verify file is readable
+                file_size = config_file.stat().st_size
+                _LOGGER.debug("Config file found: %s (%d bytes)", config_file, file_size)
+                
+                # Test file readability with async to avoid blocking
+                content_preview = await asyncio.to_thread(
+                    lambda: config_file.read_text(encoding="utf-8")[:100]
+                )
+                _LOGGER.debug("Config file readable, preview: %s...", repr(content_preview))
+                
+                _LOGGER.debug("Uploading config file from %s to /tmp/isolator.conf.yaml", config_file)
+                # Upload to temp location (this is where it's failing)
                 await self._client.async_put_file(config_file, "/tmp/isolator.conf.yaml")
+                _LOGGER.debug("Config file upload completed successfully")
                 
                 # Ensure target directory exists and move to final location
                 await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
@@ -223,12 +235,13 @@ class Deployer:
                 await self._client.async_run(f"sudo chown root:root {REMOTE_CONF_DIR}/isolator.conf.yaml")
                 await self._client.async_run(f"sudo chmod 644 {REMOTE_CONF_DIR}/isolator.conf.yaml")
                 
-                _LOGGER.debug("Deployed config file: isolator.conf.yaml")
+                _LOGGER.info("Successfully deployed config file: isolator.conf.yaml")
             except Exception as exc:
-                _LOGGER.error("Failed to deploy config file %s: %s", config_file, exc)
-                # Don't fail the entire deployment, just log the error
+                _LOGGER.error("Failed to deploy config file %s: %s", config_file, exc, exc_info=True)
+                # Don't fail the entire deployment, just log the error and skip config deployment 
+                return
         else:
-            _LOGGER.warning("Main config file not found: %s", config_file)
+            _LOGGER.warning("Main config file not found: %s (Full path: %s)", config_file, config_file.absolute())
         
         self._emit(PHASE_INSTALL, "Configuration files deployed", 60)
 
