@@ -1,24 +1,25 @@
 """Constants for Perimeter Control integration."""
 
 DOMAIN = "perimeter_control"
-PLATFORMS: list[str] = ["sensor", "button"]
+PLATFORMS: list[str] = ["sensor", "button", "binary_sensor"]
 
 # Config entry keys
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_USER = "user"
-CONF_SSH_KEY = "ssh_key"       # private key content (stored in HA secrets)
-CONF_SSH_KEY_PATH = "ssh_key_path"  # alternative: path on HA host
-CONF_SERVICES = "services"     # list of enabled service IDs
+CONF_SSH_KEY = "ssh_key"       # Private key content (stored in HA secrets)
+CONF_SSH_KEY_PATH = "ssh_key_path"  # Alternative: path on HA host
+CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
 
 DEFAULT_SSH_PORT = 22
 DEFAULT_API_PORT = 8080
 DEFAULT_USER = "pi"
 
-# Known service IDs (must match config/services/*.service.yaml metadata.id)
+# Legacy static service list - will be replaced by dynamic discovery
+# TODO: Remove once all platforms use dynamic entity discovery
 AVAILABLE_SERVICES = [
     "network_isolator",
-    "photo_booth",
+    "photo_booth", 
     "wildlife_monitor",
     "ble_gatt_repeater",
     "esl_ap",

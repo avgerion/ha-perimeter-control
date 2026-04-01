@@ -19,7 +19,7 @@ A reusable **Lit web component** for Home Assistant that enables end-to-end edit
 1. Add repository to HACS:
    ```yaml
    custom_repositories:
-     - repository: https://github.com/isolator/isolator
+     - repository: https://github.com/avgerion/ha-perimeter-control
        category: lovelace
    ```
 
@@ -30,7 +30,7 @@ A reusable **Lit web component** for Home Assistant that enables end-to-end edit
 
 ```bash
 # Clone and build
-git clone https://github.com/isolator/isolator.git
+git clone https://github.com/avgerion/ha-perimeter-control.git
 cd ha-integration
 npm install
 npm run build
@@ -244,7 +244,7 @@ MIT — See [LICENSE](../../LICENSE) for details
 
 ## Contact
 
-- 🐛 Issues: [GitHub Issues](https://github.com/isolator/isolator/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/isolator/isolator/discussions)
+- 🐛 Issues: [GitHub Issues](https://github.com/avgerion/ha-perimeter-control/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/avgerion/ha-perimeter-control/discussions)
 - 📧 Email: isolator@example.com
 

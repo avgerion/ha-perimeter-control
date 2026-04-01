@@ -108,7 +108,7 @@ cp dist/home-assistant-card.js ~/.homeassistant/www/isolator/
 
 1. Open Home Assistant
 2. Go to HACS → Frontend
-3. Add repository: `https://github.com/isolator/isolator`
+3. Add repository: `https://github.com/avgerion/ha-perimeter-control`
 4. Install "Perimeter Control"
 5. Restart Home Assistant
 6. Add cards to Lovelace dashboard

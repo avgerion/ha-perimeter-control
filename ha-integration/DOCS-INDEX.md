@@ -203,7 +203,7 @@ Follow SAFE-DEPLOYMENT.md phases
 6. HA version: Settings → System → About
 
 **Send debug output to**:
-https://github.com/isolator/isolator/issues
+https://github.com/avgerion/ha-perimeter-control/issues
 
 ---
 

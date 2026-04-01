@@ -1,4 +1,4 @@
-"""Dynamic sensor entities for Perimeter Control."""
+"""Dynamic binary sensor entities for Perimeter Control."""
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -9,10 +9,10 @@ from .dynamic_entity import expand_templated_entities
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry, 
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up sensor entities from Supervisor API schema."""
+    """Set up binary sensor entities from Supervisor API schema."""
     coordinator: PerimeterControlCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     # Wait for initial coordinator data
@@ -24,7 +24,7 @@ async def async_setup_entry(
     
     for entity_schema in supervisor_entities:
         entity_type = entity_schema.get("type")
-        if entity_type == "sensor":
+        if entity_type == "binary_sensor":
             # Expand templated entities (handles both single and multi-dimensional)
             entities.extend(expand_templated_entities(coordinator, entity_schema))
     

@@ -1,6 +1,6 @@
 {
     "name": "Perimeter Control",
-    "content_in_root": false,
+    "content_in_root": true,
     "zip_release": true,
     "render_readme": true,
     "iot_class": "Local Push",

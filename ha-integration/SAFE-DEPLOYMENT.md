@@ -159,7 +159,7 @@ Run locally: `npm run dev` and verify the component renders without errors.
 ```bash
 # On your Home Assistant device:
 cd /config/www/
-git clone https://github.com/{your-repo}/ha-integration isolator-integration
+git clone https://github.com/avgerion/ha-perimeter-control isolator-integration
 # OR manually upload the dist/ folder to /config/www/isolator-integration/
 ```
 
@@ -499,7 +499,7 @@ Then reload HA → Check if other dashboards work.
    ```
 
 2. **Check Existing Issues**:
-   https://github.com/isolator/isolator/issues
+   https://github.com/avgerion/ha-perimeter-control/issues
 
 3. **Create Issue with**:
    - Error message from card

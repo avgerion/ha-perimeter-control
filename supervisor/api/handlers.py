@@ -7,6 +7,9 @@ GET  /api/v1/node/info                          → NodeInfoHandler
 GET  /api/v1/entities                           → EntitiesHandler
 GET  /api/v1/entities/{id}                      → EntityStateHandler
 POST /api/v1/entities/states/query              → EntityStatesBulkHandler
+GET  /api/v1/ha/integration                     → HAIntegrationHandler (combined schema+states)
+GET  /api/v1/ha/dashboard-urls                  → HADashboardUrlsHandler
+GET  /api/v1/ha/config-status                   → HAConfigStatusHandler
 GET  /api/v1/capabilities                       → CapabilitiesHandler
 POST /api/v1/capabilities/{id}/deploy           → CapabilityDeployHandler
 POST /api/v1/capabilities/{id}/actions/{action} → CapabilityActionHandler
@@ -614,6 +617,223 @@ class ServiceAccessHandler(_Base):
         )
 
 
+
+# ------------------------------------------------------------------
+# Home Assistant Integration Optimized Endpoints
+# ------------------------------------------------------------------
+
+class HAIntegrationHandler(_Base):
+    """Combined endpoint for HA integration - entities, states, and config in one call."""
+    
+    def get(self):
+        # Get all entities from supervisor
+        entities = self.supervisor.get_entities()
+        
+        # Get all entity states
+        entity_ids = [e.get("id") for e in entities if e.get("id")]
+        entity_states = self.supervisor.query_entity_states(entity_ids)
+        
+        # Convert to dict for easier lookup
+        states_dict = {s["entity_id"]: s for s in entity_states if "entity_id" in s}
+        
+        # Get service info with dashboard URLs
+        services_info = self._get_services_with_dashboard_urls()
+        
+        # Get config version info for change detection
+        config_version = self._get_config_version()
+        
+        self._json({
+            "entities": entities,
+            "entity_states": states_dict,
+            "services": services_info,
+            "config_version": config_version,
+            "node_info": self.supervisor.get_node_info(),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        })
+    
+    def _get_services_with_dashboard_urls(self) -> List[Dict[str, Any]]:
+        """Get service info with pre-computed dashboard URLs."""
+        services_dir = self._services_dir()
+        services = []
+        
+        if services_dir.exists():
+            for path in sorted(services_dir.glob("*.service.yaml")):
+                try:
+                    descriptor = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    metadata = descriptor.get("metadata", {})
+                    spec = descriptor.get("spec", {})
+                    access_profile = spec.get("access_profile", {})
+                    
+                    # Compute dashboard URL from access profile
+                    dashboard_url = self._compute_dashboard_url(access_profile)
+                    
+                    services.append({
+                        "id": metadata.get("id") or path.stem.replace(".service", ""),
+                        "name": metadata.get("name", "unknown"),
+                        "version": metadata.get("version"),
+                        "dashboard_url": dashboard_url,
+                        "status": "active" if self._service_is_active(metadata.get("id")) else "inactive",
+                        "port": access_profile.get("port", 8080),
+                        "access_mode": access_profile.get("mode", "localhost"),
+                    })
+                except Exception as exc:
+                    continue
+                    
+        return services
+    
+    def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
+        """Compute dashboard URL from access profile."""
+        mode = access_profile.get("mode", "localhost")
+        if mode == "isolated":
+            return None  # Service not accessible
+            
+        port = access_profile.get("port", 8080)
+        # In real deployment, this would use the actual hostname/IP
+        return f"http://localhost:{port}/"
+    
+    def _service_is_active(self, service_id: str) -> bool:
+        """Check if service is currently active via capability status."""
+        if not service_id:
+            return False
+            
+        capabilities = self.supervisor.db.list_capabilities()
+        for cap in capabilities:
+            if cap.get("id") == service_id:
+                return cap.get("status") == "active"
+        return False
+    
+    def _get_config_version(self) -> str:
+        """Get current config version hash for change detection."""
+        import hashlib
+        
+        # Create hash from all service config files
+        config_content = ""
+        services_dir = self._services_dir()
+        
+        if services_dir.exists():
+            for path in sorted(services_dir.glob("*.service.yaml")):
+                if path.exists():
+                    config_content += path.read_text(encoding="utf-8")
+        
+        return hashlib.sha256(config_content.encode()).hexdigest()[:12]
+
+
+class HADashboardUrlsHandler(_Base):
+    """Endpoint providing dashboard URLs for all services."""
+    
+    def get(self):
+        services = self._get_services_with_urls()
+        self._json({
+            "services": services,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        })
+    
+    def _get_services_with_urls(self) -> Dict[str, Dict[str, Any]]:
+        """Get dashboard URLs indexed by service ID."""
+        services = {}
+        services_dir = self._services_dir()
+        
+        if services_dir.exists():
+            for path in sorted(services_dir.glob("*.service.yaml")):
+                try:
+                    descriptor = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    metadata = descriptor.get("metadata", {})
+                    spec = descriptor.get("spec", {})
+                    access_profile = spec.get("access_profile", {})
+                    
+                    service_id = metadata.get("id") or path.stem.replace(".service", "")
+                    dashboard_url = self._compute_dashboard_url(access_profile)
+                    
+                    if dashboard_url:  # Only include accessible services
+                        services[service_id] = {
+                            "url": dashboard_url,
+                            "name": metadata.get("name", "unknown"),
+                            "port": access_profile.get("port", 8080),
+                            "mode": access_profile.get("mode", "localhost"),
+                            "status": "active" if self._service_is_active(service_id) else "inactive"
+                        }
+                except Exception:
+                    continue
+                    
+        return services
+    
+    def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
+        """Compute dashboard URL from access profile."""
+        mode = access_profile.get("mode", "localhost")
+        if mode == "isolated":
+            return None
+            
+        port = access_profile.get("port", 8080)
+        return f"http://localhost:{port}/"
+    
+    def _service_is_active(self, service_id: str) -> bool:
+        """Check if service is active."""
+        capabilities = self.supervisor.db.list_capabilities()
+        for cap in capabilities:
+            if cap.get("id") == service_id:
+                return cap.get("status") == "active"
+        return False
+
+
+class HAConfigStatusHandler(_Base):
+    """Endpoint for config change detection and versioning."""
+    
+    def get(self):
+        config_info = self._get_config_status()
+        self._json(config_info)
+    
+    def _get_config_status(self) -> Dict[str, Any]:
+        """Get config status with version and change information."""
+        import hashlib
+        
+        services_config = {}
+        overall_hash_content = ""
+        
+        services_dir = self._services_dir()
+        
+        if services_dir.exists():
+            for path in sorted(services_dir.glob("*.service.yaml")):
+                service_id = path.stem.replace(".service", "")
+                
+                try:
+                    # Service descriptor
+                    descriptor = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    descriptor_content = path.read_text(encoding="utf-8")
+                    
+                    # Service config file (if exists)
+                    config_content = ""
+                    config_path = self._service_config_path(descriptor)
+                    if config_path and config_path.exists():
+                        config_content = config_path.read_text(encoding="utf-8")
+                    
+                    # Combined hash for this service
+                    combined_content = descriptor_content + config_content
+                    service_hash = hashlib.sha256(combined_content.encode()).hexdigest()[:12]
+                    
+                    services_config[service_id] = {
+                        "version": service_hash,
+                        "config_path": str(config_path) if config_path else None,
+                        "config_exists": config_path.exists() if config_path else False,
+                        "last_modified": config_path.stat().st_mtime if config_path and config_path.exists() else None
+                    }
+                    
+                    overall_hash_content += combined_content
+                    
+                except Exception as exc:
+                    services_config[service_id] = {
+                        "version": "error",
+                        "error": str(exc)
+                    }
+        
+        overall_version = hashlib.sha256(overall_hash_content.encode()).hexdigest()[:12]
+        
+        return {
+            "overall_version": overall_version,
+            "services": services_config,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+
+
 # ------------------------------------------------------------------
 # WebSocket event stream
 # ------------------------------------------------------------------
@@ -683,6 +903,10 @@ def make_app(supervisor) -> tornado.web.Application:
             (r"/api/v1/services/([^/]+)/access",            ServiceAccessHandler),
             (r"/api/v1/services",                           ServicesHandler),
             (r"/api/v1/events",                             EventsWebSocketHandler),
+            # HA Integration-specific endpoints
+            (r"/api/v1/ha/integration",                     HAIntegrationHandler),
+            (r"/api/v1/ha/dashboard-urls",                  HADashboardUrlsHandler),
+            (r"/api/v1/ha/config-status",                   HAConfigStatusHandler),
         ],
         supervisor=supervisor,
     )

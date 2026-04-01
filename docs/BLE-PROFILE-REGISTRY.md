@@ -34,7 +34,7 @@ schema_version: "1.0"
 name: "Kitchen Scale"
 version: "1.0.0"
 author: "isolator.dev"
-repository: "https://github.com/isolator/profiles"
+repository: "https://github.com/avgerion/ha-perimeter-control/profiles
 description: "Weight scale using standard GATT Weight Scale Service"
 
 # Device matching

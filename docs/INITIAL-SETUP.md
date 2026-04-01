@@ -243,7 +243,7 @@ sudo ln -s /mnt/isolator/logs /var/log/isolator
 ```bash
 # Clone the repository
 cd ~
-git clone https://github.com/YOUR-USERNAME/NetworkIsolator.git
+git clone https://github.com/avgerion/ha-perimeter-control.git
 # Or if you copied files manually:
 # scp -r ./NetworkIsolator pi@isolator.local:~/
 

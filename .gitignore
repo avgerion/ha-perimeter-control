@@ -1,2 +1,90 @@
-scripts/__pycache__/**
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Home Assistant
+.HA_VERSION
+.storage/
+*.log
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# SSH Keys (keep them out of repo!)
+y
+y.pub
+*.pem
+*.key
+id_*
+
+# Integration Testing
+test_basic.py
+test_dynamic_integration.py  
+test_ha_endpoints.py
+
+# Keep ha-integration/ - it contains the CLI deployment system
+# Only exclude build artifacts
+ha-integration/node_modules/
+ha-integration/dist/
+
+# Temporary files
+*.tmp
+*.temp
+*.tar.gz
+*.zip
+
+# Local development
+.env
+*.local
+config.yaml
+secrets.yaml
+
+# Node modules (if any frontend components)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
