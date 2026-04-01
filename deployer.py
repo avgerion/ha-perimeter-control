@@ -106,6 +106,7 @@ class Deployer:
             await self._phase_config()
             await self._phase_supervisor()
             await self._phase_system_services()
+            await self._phase_test_dashboard()
             await self._phase_restart()
             await self._phase_verify()
         except SshCommandError as exc:
@@ -338,6 +339,51 @@ class Deployer:
             _LOGGER.debug("Enabled systemd service: %s", service_name)
             
         self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 85)
+
+    async def _phase_test_dashboard(self) -> None:
+        """Test dashboard startup before trying to run as systemd service."""
+        self._emit(PHASE_SUPERVISOR, "Testing dashboard startup...", 86)
+        
+        # Make sure log directory is writable
+        await self._client.async_run("sudo mkdir -p /var/log/isolator")
+        await self._client.async_run("sudo chmod 755 /var/log/isolator")
+        
+        # Test if all required files are present
+        required_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
+        for file in required_files:
+            check_result = await self._client.async_run(
+                f"[ -f {REMOTE_WEB_DIR}/{file} ] && echo FOUND || echo MISSING"
+            )
+            if "MISSING" in check_result:
+                _LOGGER.error("Required file missing: %s", file)
+        
+        # Test Python import directly
+        import_test = await self._client.async_run(
+            f"cd {REMOTE_WEB_DIR} && sudo {REMOTE_VENV}/bin/python3 -c '"
+            f"import sys; sys.path.insert(0, \".\"); "
+            f"try: "
+            f"    import dashboard; print(\"IMPORT_SUCCESS\"); "
+            f"except Exception as e: "
+            f"    print(f\"IMPORT_ERROR: {{e}}\"); "
+            f"    import traceback; traceback.print_exc()' 2>&1 || echo FAILED"
+        )
+        _LOGGER.info("Dashboard import test result: %s", import_test.strip())
+        
+        # Test if we can at least instantiate the basic components
+        component_test = await self._client.async_run(
+            f"cd {REMOTE_WEB_DIR} && timeout 10s sudo {REMOTE_VENV}/bin/python3 -c '"
+            f"import sys; sys.path.insert(0, \".\"); "
+            f"try: "
+            f"    import yaml, logging; "
+            f"    from bokeh.server.server import Server; "
+            f"    print(\"COMPONENTS_OK\"); "
+            f"except Exception as e: "
+            f"    print(f\"COMPONENT_ERROR: {{e}}\"); "
+            f"    import traceback; traceback.print_exc()' 2>&1 || echo TIMEOUT"
+        )
+        _LOGGER.info("Dashboard components test result: %s", component_test.strip())
+        
+        self._emit(PHASE_SUPERVISOR, "Dashboard testing complete", 87)
 
     # ------------------------------------------------------------------
     # Phase 7: Restart
