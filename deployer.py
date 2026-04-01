@@ -346,9 +346,12 @@ class Deployer:
             f"systemctl list-unit-files {SYSTEMD_SUPERVISOR}.service 2>/dev/null | grep -c {SYSTEMD_SUPERVISOR} || true"
         )
         if sup_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 87)
-            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
-            await asyncio.sleep(2)
+            self._emit(PHASE_RESTART, f"Restarting {SYSTEMD_SUPERVISOR}...", 88)
+            try:
+                await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
+                await asyncio.sleep(2)
+            except SshCommandError as exc:
+                _LOGGER.warning("Supervisor service failed to restart: %s", exc)
 
     # ------------------------------------------------------------------
     # Phase 7: Verify
@@ -356,13 +359,67 @@ class Deployer:
 
     async def _phase_verify(self) -> None:
         self._emit(PHASE_VERIFY, "Verifying service health...", 90)
-        out = await self._client.async_run(
+        
+        # First check base isolator service
+        base_status = await self._client.async_run(
+            "systemctl is-active isolator.service || echo INACTIVE"
+        )
+        if "INACTIVE" in base_status:
+            _LOGGER.warning("Base isolator.service is not active: %s", base_status)
+            # Try to get more details about why it failed
+            try:
+                status_detail = await self._client.async_run(
+                    "systemctl status isolator.service --no-pager -l || true"
+                )
+                _LOGGER.debug("Base isolator service status: %s", status_detail)
+            except Exception:
+                pass
+        
+        # Check dashboard service with more details
+        dashboard_status = await self._client.async_run(
             f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
         )
-        if "active" not in out or "INACTIVE" in out:
-            raise SshCommandError(
-                PHASE_VERIFY, 1, f"{SYSTEMD_DASHBOARD} is not active after deploy"
-            )
+        
+        if "active" not in dashboard_status or "INACTIVE" in dashboard_status:
+            _LOGGER.warning("Dashboard service is not active: %s", dashboard_status)
+            
+            # Get detailed status and recent logs
+            try:
+                status_detail = await self._client.async_run(
+                    f"systemctl status {SYSTEMD_DASHBOARD} --no-pager -l || true"
+                )
+                _LOGGER.debug("Dashboard service status: %s", status_detail)
+                
+                recent_logs = await self._client.async_run(
+                    f"journalctl -u {SYSTEMD_DASHBOARD} --no-pager -l --since='5 minutes ago' || true"
+                )
+                _LOGGER.debug("Dashboard service recent logs: %s", recent_logs)
+            except Exception:
+                pass
+            
+            # Try to restart once more with dependency check
+            _LOGGER.info("Attempting final restart of dashboard service...")
+            try:
+                await self._client.async_run("sudo systemctl start isolator.service")
+                await asyncio.sleep(3)
+                await self._client.async_run(f"sudo systemctl start {SYSTEMD_DASHBOARD}")
+                await asyncio.sleep(3)
+                
+                # Check again
+                final_status = await self._client.async_run(
+                    f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
+                )
+                if "active" in final_status and "INACTIVE" not in final_status:
+                    _LOGGER.info("Dashboard service started successfully on retry")
+                else:
+                    raise SshCommandError(
+                        PHASE_VERIFY, 1, f"{SYSTEMD_DASHBOARD} is not active after deploy and retry attempts"
+                    )
+            except Exception as e:
+                raise SshCommandError(
+                    PHASE_VERIFY, 1, f"{SYSTEMD_DASHBOARD} failed to start: {e}"
+                )
+        
         self._emit(PHASE_VERIFY, "Deploy complete — dashboard is running", 100)
 
 
@@ -388,7 +445,19 @@ def _build_install_script() -> str:
         ("network-topology.py", REMOTE_SCRIPTS_DIR, "0755"),
         ("topology_config.py", REMOTE_SCRIPTS_DIR, "0644"),
     ]
-    lines = ["set -e"]
+    lines = [
+        "set -e",
+        # Create all required directories
+        f"sudo mkdir -p {REMOTE_WEB_DIR}",
+        f"sudo mkdir -p {REMOTE_SCRIPTS_DIR}", 
+        f"sudo mkdir -p {REMOTE_CONF_DIR}",
+        f"sudo mkdir -p {REMOTE_SERVICES_DIR}",
+        f"sudo mkdir -p /var/log/isolator",
+        f"sudo mkdir -p /mnt/isolator",
+        # Set proper ownership for log directories
+        "sudo chown root:root /var/log/isolator",
+        "sudo chown root:root /mnt/isolator", 
+    ]
     for fname, dest, mode in web_files + script_files:
         lines.append(
             f"[ -f /tmp/{fname} ] && sudo install -o root -g root -m {mode} "
