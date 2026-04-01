@@ -213,16 +213,20 @@ class Deployer:
         # Deploy main config file
         config_file = _CONFIG_DIR / "isolator.conf.yaml"
         if config_file.exists():
-            # Upload to temp location
-            await self._client.async_put_file(config_file, "/tmp/isolator.conf.yaml")
-            
-            # Ensure target directory exists and move to final location
-            await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
-            await self._client.async_run("sudo mv /tmp/isolator.conf.yaml /mnt/isolator/conf/")
-            await self._client.async_run("sudo chown root:root /mnt/isolator/conf/isolator.conf.yaml")
-            await self._client.async_run("sudo chmod 644 /mnt/isolator/conf/isolator.conf.yaml")
-            
-            _LOGGER.debug("Deployed config file: isolator.conf.yaml")
+            try:
+                # Upload to temp location
+                await self._client.async_put_file(config_file, "/tmp/isolator.conf.yaml")
+                
+                # Ensure target directory exists and move to final location
+                await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
+                await self._client.async_run(f"sudo mv /tmp/isolator.conf.yaml {REMOTE_CONF_DIR}/")
+                await self._client.async_run(f"sudo chown root:root {REMOTE_CONF_DIR}/isolator.conf.yaml")
+                await self._client.async_run(f"sudo chmod 644 {REMOTE_CONF_DIR}/isolator.conf.yaml")
+                
+                _LOGGER.debug("Deployed config file: isolator.conf.yaml")
+            except Exception as exc:
+                _LOGGER.error("Failed to deploy config file %s: %s", config_file, exc)
+                # Don't fail the entire deployment, just log the error
         else:
             _LOGGER.warning("Main config file not found: %s", config_file)
         
