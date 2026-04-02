@@ -58,6 +58,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False
         self._deploy_log: list[DeployProgress] = []
+        self._running = True
+        self._reconnect_attempts = 0
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -322,11 +324,18 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     
     async def _start_websocket_listener(self) -> None:
         """Start WebSocket connection for real-time events."""
-        if not self._http_session:
+        if not self._http_session or not self._running:
             return
             
         try:
-            self._websocket = await self._http_session.ws_connect(self._supervisor_ws_url)
+            # Add timeout to websocket connection
+            self._websocket = await asyncio.wait_for(
+                self._http_session.ws_connect(self._supervisor_ws_url),
+                timeout=10.0
+            )
+            
+            # Reset reconnection attempts on successful connection
+            self._reconnect_attempts = 0
             
             # Send subscription filter for entity events
             await self._websocket.send_str(json.dumps({
@@ -337,6 +346,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.hass.async_create_task(self._websocket_event_loop())
             
             _LOGGER.info("WebSocket listener started for Supervisor events")
+        except asyncio.TimeoutError:
+            _LOGGER.warning("WebSocket connection timed out after 10 seconds")
+            self._websocket = None
         except Exception as exc:
             _LOGGER.warning("Failed to start WebSocket listener: %s", exc)
             self._websocket = None
@@ -347,24 +359,48 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
             
         try:
-            async for msg in self._websocket:
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    try:
-                        event = json.loads(msg.data)
-                        await self._handle_supervisor_event(event)
-                    except json.JSONDecodeError:
-                        _LOGGER.debug("Invalid WebSocket JSON: %s", msg.data[:100])
-                elif msg.type == aiohttp.WSMsgType.ERROR:
-                    _LOGGER.warning("WebSocket error: %s", self._websocket.exception())
-                    break
+            # Add timeout to prevent hanging forever
+            await asyncio.wait_for(
+                self._websocket_message_loop(),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning("WebSocket event loop timed out after 30 seconds")
         except Exception as exc:
             _LOGGER.warning("WebSocket event loop error: %s", exc)
         finally:
+            # Clean up websocket connection
+            if self._websocket and not self._websocket.closed:
+                await self._websocket.close()
             self._websocket = None
-            # Attempt to reconnect after a delay
-            await asyncio.sleep(30)
-            if self._running:
-                await self._start_websocket_listener()
+            
+            # Only attempt reconnection if we're still supposed to be running
+            # and this isn't during shutdown
+            if self._running and hasattr(self, '_reconnect_attempts'):
+                self._reconnect_attempts = getattr(self, '_reconnect_attempts', 0) + 1
+                if self._reconnect_attempts < 3:  # Limit reconnection attempts
+                    _LOGGER.debug("Scheduling WebSocket reconnection attempt %d", self._reconnect_attempts)
+                    await asyncio.sleep(10)  # Shorter delay
+                    if self._running:  # Check again after delay
+                        await self._start_websocket_listener()
+                else:
+                    _LOGGER.warning("Max WebSocket reconnection attempts reached, giving up")
+    
+    async def _websocket_message_loop(self) -> None:
+        """Process websocket messages in a loop."""
+        async for msg in self._websocket:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                try:
+                    event = json.loads(msg.data)
+                    await self._handle_supervisor_event(event)
+                except json.JSONDecodeError:
+                    _LOGGER.debug("Invalid WebSocket JSON: %s", msg.data[:100])
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                _LOGGER.warning("WebSocket error: %s", self._websocket.exception())
+                break
+            elif msg.type == aiohttp.WSMsgType.CLOSE:
+                _LOGGER.debug("WebSocket closed by server")
+                break
     
     async def _handle_supervisor_event(self, event: dict[str, Any]) -> None:
         """Handle incoming Supervisor event."""
@@ -500,6 +536,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_shutdown(self) -> None:
         """Clean shutdown of coordinator resources."""
+        # Stop reconnection attempts
+        self._running = False
+        
         # Close WebSocket connection
         if self._websocket and not self._websocket.closed:
             await self._websocket.close()
