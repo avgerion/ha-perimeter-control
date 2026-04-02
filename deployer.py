@@ -272,15 +272,37 @@ class Deployer:
         for desc in descriptors:
             apt_groups.update(desc.apt_dependency_groups)
 
-        # Install apt packages first
+        # Install apt packages first with retry logic for dpkg lock contention
         for group in sorted(apt_groups):
             pkgs = APT_DEPENDENCY_GROUPS.get(group, [])
             if pkgs:
                 pkg_str = " ".join(pkgs)
                 self._emit(PHASE_SUPERVISOR, f"Installing apt group: {group}", 60)
-                await self._client.async_run(
-                    f"DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq {pkg_str}"
-                )
+                
+                # Retry apt-get install with backoff for dpkg lock issues
+                max_retries = 3
+                retry_delay = 10  # seconds
+                
+                for attempt in range(max_retries):
+                    try:
+                        await self._client.async_run(
+                            f"DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq {pkg_str}"
+                        )
+                        _LOGGER.warning(f"Successfully installed apt group: {group}")
+                        break  # Success, exit retry loop
+                    except SshCommandError as exc:
+                        if "dpkg/lock" in str(exc) or "frontend lock" in str(exc):
+                            if attempt < max_retries - 1:
+                                _LOGGER.warning(f"Apt lock detected (attempt {attempt+1}/{max_retries}), waiting {retry_delay}s for other apt process to finish...")
+                                await asyncio.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                                continue
+                            else:
+                                _LOGGER.error(f"Apt lock persists after {max_retries} attempts - giving up on apt packages")
+                                raise
+                        else:
+                            # Different error, re-raise immediately
+                            raise
 
         # Install pip deps
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
