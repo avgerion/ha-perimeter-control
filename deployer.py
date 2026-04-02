@@ -563,16 +563,75 @@ class Deployer:
         
         if "active" not in supervisor_status or "INACTIVE" in supervisor_status:
             _LOGGER.warning("Supervisor service is not active: %s", supervisor_status)
+            
+            # Get comprehensive diagnostics for supervisor service
+            try:
+                # Check systemd status and logs for supervisor
+                supervisor_status_detail = await self._client.async_run(
+                    f"systemctl status {SYSTEMD_SUPERVISOR} --no-pager -l || true"
+                )
+                _LOGGER.info("Supervisor service status detail: %s", supervisor_status_detail)
+                
+                # Get recent systemd journal entries for the supervisor service
+                supervisor_journal_logs = await self._client.async_run(
+                    f"journalctl -u {SYSTEMD_SUPERVISOR} --no-pager -n 20 -o cat || true"
+                )
+                _LOGGER.info("Supervisor service logs: %s", supervisor_journal_logs)
+                
+                # Check if supervisor unit file exists
+                supervisor_unit_exists = await self._client.async_run(
+                    f"[ -f /etc/systemd/system/{SYSTEMD_SUPERVISOR}.service ] && echo UNIT_EXISTS || echo UNIT_MISSING"
+                )
+                _LOGGER.info("Supervisor service unit check: %s", supervisor_unit_exists.strip())
+                
+                # Check if supervisor files exist
+                supervisor_check = await self._client.async_run(
+                    f"[ -d {REMOTE_SUPERVISOR_DIR} ] && echo DIR_OK || echo DIR_MISSING"
+                )
+                supervisor_main_check = await self._client.async_run(
+                    f"[ -f {REMOTE_SUPERVISOR_DIR}/__main__.py ] && echo MAIN_OK || echo MAIN_MISSING"
+                )
+                _LOGGER.info("Supervisor environment check - Dir: %s, Main: %s", 
+                           supervisor_check.strip(), supervisor_main_check.strip())
+                
+                # Test supervisor import directly
+                supervisor_direct_test = await self._client.async_run(
+                    f"cd {REMOTE_SUPERVISOR_DIR} && timeout 10s sudo {REMOTE_VENV}/bin/python3 -c 'import sys; print(f\"Python: {{sys.version}}\"); import supervisor; print(\"Supervisor import successful\")' 2>&1 || echo FAILED"
+                )
+                _LOGGER.info("Supervisor import test result: %s", supervisor_direct_test.strip())
+                
+                # Check required packages for supervisor
+                supervisor_pkg_check = await self._client.async_run(
+                    f"sudo {REMOTE_VENV}/bin/pip3 list | grep -E '(aiohttp|psutil|pyyaml)' || echo 'SUPERVISOR_PACKAGES_MISSING'"
+                )
+                _LOGGER.info("Supervisor required packages in venv: %s", supervisor_pkg_check.strip())
+                
+            except Exception as e:
+                _LOGGER.warning("Supervisor diagnostic check failed: %s", e)
+            
             # Try to start supervisor
             try:
+                _LOGGER.info("Attempting to start supervisor service...")
                 await self._client.async_run(f"sudo systemctl start {SYSTEMD_SUPERVISOR}")
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
                 supervisor_status = await self._client.async_run(
                     f"systemctl is-active {SYSTEMD_SUPERVISOR} || echo INACTIVE"
                 )
                 if "active" in supervisor_status and "INACTIVE" not in supervisor_status:
                     _LOGGER.info("Supervisor service started successfully on retry")
                 else:
+                    # Get final error details for supervisor
+                    try:
+                        supervisor_final_status = await self._client.async_run(
+                            f"systemctl status {SYSTEMD_SUPERVISOR} --no-pager -l || true"
+                        )
+                        supervisor_final_logs = await self._client.async_run(
+                            f"journalctl -u {SYSTEMD_SUPERVISOR} --no-pager -n 10 -o cat || true"
+                        )
+                        _LOGGER.warning("Supervisor service failed to start. Status: %s", supervisor_final_status)
+                        _LOGGER.warning("Supervisor service logs: %s", supervisor_final_logs)
+                    except Exception:
+                        pass
                     _LOGGER.error("Supervisor service failed to start")
             except Exception as e:
                 _LOGGER.error("Failed to start supervisor service: %s", e)
