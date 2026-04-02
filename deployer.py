@@ -99,12 +99,12 @@ class Deployer:
 
     async def async_deploy(self) -> bool:
         """Run all deploy phases. Returns True on success."""
-        self._logger.info("=== DEPLOYMENT STARTED ===")
-        self._logger.info("async_deploy() method called - deployment is being triggered")
+        _LOGGER.info("=== DEPLOYMENT STARTED ===")
+        _LOGGER.info("async_deploy() method called - deployment is being triggered")
         self._emit(PHASE_PREFLIGHT, "Starting deployment process...", 0)
         
         try:
-            self._logger.info("Starting deployment phases...")
+            _LOGGER.info("Starting deployment phases...")
             await self._phase_preflight()
             await self._phase_upload()
             await self._phase_install()
@@ -114,13 +114,13 @@ class Deployer:
             await self._phase_test_dashboard()
             await self._phase_restart()
             await self._phase_verify()
-            self._logger.info("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
+            _LOGGER.info("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
         except SshCommandError as exc:
-            self._logger.error(f"SSH command failed during deployment: {exc}")
+            _LOGGER.error(f"SSH command failed during deployment: {exc}")
             self._emit_error(exc.command[:40], str(exc))
             return False
         except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Unexpected deployment error: {exc}")
+            _LOGGER.error(f"Unexpected deployment error: {exc}")
             self._emit_error("deploy", f"Unexpected error: {exc}")
             return False
         return True
@@ -303,12 +303,12 @@ class Deployer:
         )
         
         try:
-            self._logger.info(f"Executing pip install command: {pip_cmd}")
+            _LOGGER.info(f"Executing pip install command: {pip_cmd}")
             result = await self._client.async_run(pip_cmd)
-            self._logger.info(f"Pip install completed successfully")
+            _LOGGER.info(f"Pip install completed successfully")
             self._emit(PHASE_VENV, "Pip dependencies installed successfully", 72)
         except Exception as e:
-            self._logger.error(f"Pip install failed: {e}")
+            _LOGGER.error(f"Pip install failed: {e}")
             self._emit(PHASE_VENV, f"Pip install failed: {e}", 72)
             raise
 
