@@ -309,7 +309,7 @@ class Deployer:
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         # Activate venv and install as root (matches systemd service user)
         # Install pip dependencies with debugging
-        self._emit(PHASE_VENV, "Starting pip dependency installation...", 71)
+        self._emit(PHASE_SUPERVISOR, "Starting pip dependency installation...", 71)
         
         pip_cmd = (
             f"sudo bash -c '"
@@ -329,10 +329,10 @@ class Deployer:
             _LOGGER.warning(f"Executing pip install command: {pip_cmd}")
             result = await self._client.async_run(pip_cmd)
             _LOGGER.warning(f"Pip install completed successfully")
-            self._emit(PHASE_VENV, "Pip dependencies installed successfully", 72)
+            self._emit(PHASE_SUPERVISOR, "Pip dependencies installed successfully", 72)
         except Exception as e:
             _LOGGER.error(f"Pip install failed: {e}")
-            self._emit(PHASE_VENV, f"Pip install failed: {e}", 72)
+            self._emit(PHASE_SUPERVISOR, f"Pip install failed: {e}", 72)
             raise
 
         # Pack supervisor/ into tar and upload
