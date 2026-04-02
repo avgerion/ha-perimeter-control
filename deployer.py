@@ -313,15 +313,8 @@ class Deployer:
         
         pip_cmd = (
             f"sudo bash -c '"
-            f"echo 'DEPLOY_DEBUG: Starting pip install process' && "
-            f"echo 'VENV_BEFORE:' && which python3 && python3 --version && "
             f"source {REMOTE_VENV}/bin/activate && "
-            f"echo 'VENV_AFTER:' && which python3 && python3 --version && "
-            f"echo 'DEPLOY_DEBUG: Running pip install...' && "
-            f"pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado pandas && "
-            f"echo 'PIP_SUCCESS: Installation completed' && "
-            f"echo 'PANDAS_CHECK:' && pip list | grep pandas && "
-            f"echo 'DEPLOY_DEBUG: All pip operations completed successfully'"
+            f"pip install aiohttp psutil python-json-logger bokeh pyyaml tornado pandas"
             f"'"
         )
         
