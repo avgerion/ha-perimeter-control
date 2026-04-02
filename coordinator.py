@@ -100,12 +100,19 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Check if supervisor is available before starting WebSocket
         try:
             await instance._supervisor_get("/api/v1/health")
-            # Supervisor is available, start WebSocket connection for real-time updates
-            await instance._start_websocket_listener()
             _LOGGER.info("Connected to Supervisor API at %s", instance._supervisor_base_url)
+            
+            # Start WebSocket connection after successful API connection  
+            instance.hass.async_create_task(
+                instance._delayed_websocket_start(),
+                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+            )
         except Exception as exc:
             _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
                           instance._supervisor_base_url, exc)
+            
+            # Don't try to start WebSocket during initialization - it blocks startup
+            # WebSocket connection will be attempted later via background task
             
             # Try auto-deployment if supervisor is not available
             try:
@@ -127,6 +134,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         task.exception(), exc_info=task.exception())
                         else:
                             _LOGGER.debug("Auto-deployment task completed successfully")
+                            # Start websocket connection after successful deployment
+                            instance.hass.async_create_task(
+                                instance._delayed_websocket_start(),
+                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                            )
                     except Exception as callback_exc:
                         _LOGGER.error("Error in deployment callback: %s", callback_exc)
                 
@@ -401,6 +413,23 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif msg.type == aiohttp.WSMsgType.CLOSE:
                 _LOGGER.debug("WebSocket closed by server")
                 break
+    
+    async def _delayed_websocket_start(self) -> None:
+        """Start websocket connection after a delay to avoid blocking coordinator startup."""
+        try:
+            # Wait a bit to ensure coordinator is fully initialized
+            await asyncio.sleep(2)
+            
+            # Check if supervisor is available before starting websocket
+            try:
+                await self._supervisor_get("/api/v1/health")
+                await self._start_websocket_listener()
+                _LOGGER.info("Delayed WebSocket connection established")
+            except Exception as exc:
+                _LOGGER.debug("Supervisor not ready for WebSocket connection: %s", exc)
+                # Don't retry here - let normal reconnection logic handle it
+        except Exception as exc:
+            _LOGGER.warning("Failed to start delayed WebSocket connection: %s", exc)
     
     async def _handle_supervisor_event(self, event: dict[str, Any]) -> None:
         """Handle incoming Supervisor event."""
