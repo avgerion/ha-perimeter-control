@@ -100,13 +100,48 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Check if supervisor is available before starting WebSocket
         try:
             await instance._supervisor_get("/api/v1/health")
-            _LOGGER.info("Connected to Supervisor API at %s", instance._supervisor_base_url)
+            _LOGGER.info("Supervisor API is available at %s", instance._supervisor_base_url)
             
-            # Start WebSocket connection after successful API connection  
-            instance.hass.async_create_task(
-                instance._delayed_websocket_start(),
-                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-            )
+            # Also check if dashboard is healthy by testing a simple HTTP request
+            try:
+                async with instance._http_session.get(f"http://{instance._entry.data[CONF_HOST]}:{instance._entry.data.get('dashboard_port', 8080)}/") as resp:
+                    if resp.status == 200:
+                        _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
+                        # Start WebSocket connection after successful health checks  
+                        instance.hass.async_create_task(
+                            instance._delayed_websocket_start(),
+                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                        )
+                    else:
+                        raise Exception(f"Dashboard returned HTTP {resp.status}")
+            except Exception as dashboard_exc:
+                _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
+                # Trigger deployment even though supervisor is working
+                await instance._client.async_run("echo 'SSH test'")
+                _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+                
+                deploy_task = instance.hass.async_create_task(
+                    instance._auto_deploy_supervisor(),
+                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                )
+                
+                def deployment_completed(task):
+                    try:
+                        if task.exception():
+                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
+                                        task.exception(), exc_info=task.exception())
+                        else:
+                            _LOGGER.debug("Auto-deployment task completed successfully")
+                            # Start websocket connection after successful deployment
+                            instance.hass.async_create_task(
+                                instance._delayed_websocket_start(),
+                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                            )
+                    except Exception as cb_exc:
+                        _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+                
+                deploy_task.add_done_callback(deployment_completed)
+                
         except Exception as exc:
             _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
                           instance._supervisor_base_url, exc)
