@@ -302,20 +302,26 @@ class SshClient:
 
     async def async_put_file(self, local_path: str | Path, remote_path: str) -> None:
         """Upload a single file via SCP."""
-        conn = await self._connect()
+        local_path = Path(local_path)
+        
+        # Read file content asynchronously to avoid blocking
         try:
-            async with conn.start_sftp_client() as sftp:
-                # sftp.put is already async in asyncssh, just await it directly
-                await sftp.put(str(local_path), remote_path)
-        except asyncssh.Error as exc:
-            raise SshCommandError(f"put {local_path}", 1, str(exc)) from exc
+            file_data = await asyncio.to_thread(local_path.read_bytes)
+        except OSError as exc:
+            raise SshCommandError(f"read {local_path}", 1, str(exc)) from exc
+            
+        # Upload using the bytes method to avoid blocking file operations
+        await self.async_put_bytes(file_data, remote_path)
 
     async def async_put_bytes(self, data: bytes, remote_path: str) -> None:
         """Upload bytes as a file (useful for in-memory content)."""
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
+        import io
+        
+        conn = await self._connect()
         try:
-            await self.async_put_file(tmp_path, remote_path)
-        finally:
-            os.unlink(tmp_path)
+            async with conn.start_sftp_client() as sftp:
+                # Use putfo (put from file object) with BytesIO to avoid temp files
+                bytes_io = io.BytesIO(data)
+                await sftp.putfo(bytes_io, remote_path)
+        except asyncssh.Error as exc:
+            raise SshCommandError(f"put bytes to {remote_path}", 1, str(exc)) from exc

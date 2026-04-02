@@ -419,7 +419,8 @@ class Deployer:
                 _LOGGER.info("Base isolator service started successfully")
             except SshCommandError as exc:
                 # Base service failure should not block dashboard deployment
-                _LOGGER.warning("Base isolator service failed to start (this is often expected): %s", exc)
+                # This is expected during initial deployment before network config is complete
+                _LOGGER.info("Base isolator service failed to start (expected during initial setup): %s", exc)
                 _LOGGER.info("Continuing deployment - dashboard can run independently")
         
         # Check if dashboard service exists before trying to restart it
