@@ -406,13 +406,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
             
         try:
-            # Add timeout to prevent hanging forever
-            await asyncio.wait_for(
-                self._websocket_message_loop(),
-                timeout=30.0
-            )
-        except asyncio.TimeoutError:
-            _LOGGER.warning("WebSocket event loop timed out after 30 seconds")
+            # No timeout - websockets can be idle for long periods
+            await self._websocket_message_loop()
         except Exception as exc:
             _LOGGER.warning("WebSocket event loop error: %s", exc)
         finally:
