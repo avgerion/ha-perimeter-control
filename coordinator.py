@@ -523,6 +523,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _auto_deploy_supervisor(self) -> None:
         """Automatically deploy supervisor if not available during initial setup."""
         try:
+            # Check for concurrent deployment to prevent race conditions
+            if self._deploy_in_progress:
+                _LOGGER.warning("Auto-deployment skipped - deployment already in progress for %s", self._entry.data[CONF_HOST])
+                return
+                
             _LOGGER.warning("Auto-deployment started for %s", self._entry.data[CONF_HOST])
             
             # Use the existing deploy method but only log the key phases

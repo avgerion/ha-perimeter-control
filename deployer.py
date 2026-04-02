@@ -99,12 +99,13 @@ class Deployer:
 
     async def async_deploy(self) -> bool:
         """Run all deploy phases. Returns True on success."""
-        _LOGGER.warning("=== DEPLOYMENT STARTED ===")
-        _LOGGER.warning("async_deploy() method called - deployment is being triggered")
+        deployment_id = id(self)  # Unique ID for this deployment instance
+        _LOGGER.warning("=== DEPLOYMENT STARTED === (ID: %s)", deployment_id)
+        _LOGGER.warning("async_deploy() method called - deployment is being triggered (ID: %s)", deployment_id)
         self._emit(PHASE_PREFLIGHT, "Starting deployment process...", 0)
         
         try:
-            _LOGGER.warning("Starting deployment phases...")
+            _LOGGER.warning("Starting deployment phases... (ID: %s)", deployment_id)
             await self._phase_preflight()
             await self._phase_upload()
             await self._phase_install()
@@ -114,13 +115,13 @@ class Deployer:
             await self._phase_test_dashboard()
             await self._phase_restart()
             await self._phase_verify()
-            _LOGGER.warning("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
+            _LOGGER.warning("=== DEPLOYMENT COMPLETED SUCCESSFULLY === (ID: %s)", deployment_id)
         except SshCommandError as exc:
-            _LOGGER.error(f"SSH command failed during deployment: {exc}")
+            _LOGGER.error(f"SSH command failed during deployment (ID: %s): {exc}", deployment_id)
             self._emit_error(exc.command[:40], str(exc))
             return False
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.error(f"Unexpected deployment error: {exc}")
+            _LOGGER.error(f"Unexpected deployment error (ID: %s): {exc}", deployment_id)
             self._emit_error("deploy", f"Unexpected error: {exc}")
             return False
         return True
