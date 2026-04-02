@@ -277,10 +277,18 @@ class Deployer:
         # Install pip deps
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         # Activate venv and install as root (matches systemd service user)
-        await self._client.async_run(
-            f"sudo bash -c 'source {REMOTE_VENV}/bin/activate && "
-            f"pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado pandas'"
+        # Install pip dependencies with debugging
+        self._emit(PHASE_VENV, "Installing pip dependencies...", 71)
+        pip_cmd = (
+            f"sudo bash -c '"
+            f"echo VENV_BEFORE: && which python3 && python3 --version && "
+            f"source {REMOTE_VENV}/bin/activate && "
+            f"echo VENV_AFTER: && which python3 && python3 --version && "
+            f"pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado pandas && "
+            f"echo PIP_DONE: && pip list | grep pandas"
+            f"'"
         )
+        await self._client.async_run(pip_cmd)
 
         # Pack supervisor/ into tar and upload
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
