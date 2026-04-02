@@ -212,10 +212,10 @@ sudo ls -la /opt/isolator/supervisor
     Assert-LastExitCode "Install supervisor service unit"
 
     # Install new pip dependencies into the shared venv
-    Write-Host "Installing supervisor pip dependencies into venv ..."
-    $pipCmd = "set -e; sudo /opt/isolator/venv/bin/pip install --quiet aiohttp psutil python-json-logger; echo PIP_OK"
+    Write-Host "Installing supervisor and dashboard pip dependencies into venv ..."
+    $pipCmd = "set -e; sudo /opt/isolator/venv/bin/pip install --quiet aiohttp psutil python-json-logger bokeh pandas pyyaml tornado; echo PIP_OK"
     ssh -i $key $remote $pipCmd
-    Assert-LastExitCode "pip install supervisor deps"
+    Assert-LastExitCode "pip install supervisor and dashboard deps"
 
     # Read system_deps from local service descriptors and install what's needed
     $localServicesDir = Join-Path $root "config/services"
