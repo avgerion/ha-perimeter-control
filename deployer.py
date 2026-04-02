@@ -363,6 +363,7 @@ class Deployer:
         
         # Make sure log directory is writable
         await self._client.async_run("sudo mkdir -p /var/log/isolator")
+        await self._client.async_run("sudo mkdir -p /opt/isolator/state")
         await self._client.async_run("sudo chmod 755 /var/log/isolator")
         
         # Test if all required files are present
@@ -683,6 +684,7 @@ def _build_install_script() -> str:
         f"sudo mkdir -p {REMOTE_CONF_DIR}",
         f"sudo mkdir -p {REMOTE_SERVICES_DIR}",
         f"sudo mkdir -p /var/log/isolator",
+        f"sudo mkdir -p /opt/isolator/state",
         f"sudo mkdir -p /mnt/isolator",
         # Set proper ownership for log directories
         "sudo chown root:root /var/log/isolator",
