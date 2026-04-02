@@ -99,7 +99,12 @@ class Deployer:
 
     async def async_deploy(self) -> bool:
         """Run all deploy phases. Returns True on success."""
+        self._logger.info("=== DEPLOYMENT STARTED ===")
+        self._logger.info("async_deploy() method called - deployment is being triggered")
+        self._emit(PHASE_PREFLIGHT, "Starting deployment process...", 0)
+        
         try:
+            self._logger.info("Starting deployment phases...")
             await self._phase_preflight()
             await self._phase_upload()
             await self._phase_install()
@@ -109,10 +114,13 @@ class Deployer:
             await self._phase_test_dashboard()
             await self._phase_restart()
             await self._phase_verify()
+            self._logger.info("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
         except SshCommandError as exc:
+            self._logger.error(f"SSH command failed during deployment: {exc}")
             self._emit_error(exc.command[:40], str(exc))
             return False
         except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Unexpected deployment error: {exc}")
             self._emit_error("deploy", f"Unexpected error: {exc}")
             return False
         return True
@@ -278,17 +286,31 @@ class Deployer:
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         # Activate venv and install as root (matches systemd service user)
         # Install pip dependencies with debugging
-        self._emit(PHASE_VENV, "Installing pip dependencies...", 71)
+        self._emit(PHASE_VENV, "Starting pip dependency installation...", 71)
+        
         pip_cmd = (
             f"sudo bash -c '"
-            f"echo VENV_BEFORE: && which python3 && python3 --version && "
+            f"echo 'DEPLOY_DEBUG: Starting pip install process' && "
+            f"echo 'VENV_BEFORE:' && which python3 && python3 --version && "
             f"source {REMOTE_VENV}/bin/activate && "
-            f"echo VENV_AFTER: && which python3 && python3 --version && "
+            f"echo 'VENV_AFTER:' && which python3 && python3 --version && "
+            f"echo 'DEPLOY_DEBUG: Running pip install...' && "
             f"pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado pandas && "
-            f"echo PIP_DONE: && pip list | grep pandas"
+            f"echo 'PIP_SUCCESS: Installation completed' && "
+            f"echo 'PANDAS_CHECK:' && pip list | grep pandas && "
+            f"echo 'DEPLOY_DEBUG: All pip operations completed successfully'"
             f"'"
         )
-        await self._client.async_run(pip_cmd)
+        
+        try:
+            self._logger.info(f"Executing pip install command: {pip_cmd}")
+            result = await self._client.async_run(pip_cmd)
+            self._logger.info(f"Pip install completed successfully")
+            self._emit(PHASE_VENV, "Pip dependencies installed successfully", 72)
+        except Exception as e:
+            self._logger.error(f"Pip install failed: {e}")
+            self._emit(PHASE_VENV, f"Pip install failed: {e}", 72)
+            raise
 
         # Pack supervisor/ into tar and upload
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
