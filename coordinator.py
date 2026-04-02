@@ -102,7 +102,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await instance._start_websocket_listener()
             _LOGGER.info("Connected to Supervisor API at %s", instance._supervisor_base_url)
         except Exception as exc:
-            _LOGGER.warning("Supervisor API not available at %s: %s. Will attempt auto-deployment.", 
+            _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
                           instance._supervisor_base_url, exc)
             
             # Try auto-deployment if supervisor is not available
@@ -111,8 +111,25 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await instance._client.async_run("echo 'SSH test'")
                 _LOGGER.info("SSH connection successful. Starting automatic deployment...")
                 
-                # Trigger automatic deployment in background
-                instance.hass.async_create_task(instance._auto_deploy_supervisor())
+                # Trigger automatic deployment in background with explicit task tracking
+                deploy_task = instance.hass.async_create_task(
+                    instance._auto_deploy_supervisor(),
+                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                )
+                
+                # Add task done callback for debugging
+                def deployment_completed(task):
+                    try:
+                        if task.exception():
+                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
+                                        task.exception(), exc_info=task.exception())
+                        else:
+                            _LOGGER.debug("Auto-deployment task completed successfully")
+                    except Exception as callback_exc:
+                        _LOGGER.error("Error in deployment callback: %s", callback_exc)
+                
+                deploy_task.add_done_callback(deployment_completed)
+                
             except Exception as ssh_exc:
                 _LOGGER.error("Cannot auto-deploy: SSH connection failed: %s", ssh_exc)
         
@@ -427,14 +444,15 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 _LOGGER.error("Automatic supervisor deployment failed. Please check the integration logs and try manual deployment.")
         except Exception as exc:
-            _LOGGER.error("Error during automatic supervisor deployment: %s", exc)
+            _LOGGER.error("Error during automatic supervisor deployment: %s", exc, exc_info=True)
 
     async def async_deploy(self) -> bool:
         """Start a deploy in the background; progress dispatched via coordinator updates."""
         if self._deploy_in_progress:
             _LOGGER.warning("Deploy already in progress for %s", self._entry.data[CONF_HOST])
-            return
+            return False
 
+        _LOGGER.info("Starting deployment for %s", self._entry.data[CONF_HOST])
         self._deploy_in_progress = True
         self._deploy_log = []
         current_data = self.data or {}
@@ -459,7 +477,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             progress_cb=_on_progress,
         )
         try:
+            _LOGGER.debug("Calling deployer.async_deploy()...")
             success = await deployer.async_deploy()
+            _LOGGER.info("Deployer finished with success=%s", success)
+            return success
+        except Exception as exc:
+            _LOGGER.error("Deployment failed with exception: %s", exc, exc_info=True)
+            return False
         finally:
             self._deploy_in_progress = False
             current_data = self.data or {}
@@ -468,8 +492,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 KEY_DEPLOY_IN_PROGRESS: False,
                 KEY_DEPLOY_PROGRESS: list(self._deploy_log),
             })
-        await self.async_refresh()
-        return success
+            await self.async_refresh()
 
     # ------------------------------------------------------------------
     # Shutdown
