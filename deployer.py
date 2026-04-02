@@ -277,7 +277,7 @@ class Deployer:
         # Install pip deps
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         await self._client.async_run(
-            f"sudo {REMOTE_VENV}/bin/pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado"
+            f"sudo {REMOTE_VENV}/bin/pip install --quiet aiohttp psutil python-json-logger bokeh pyyaml tornado pandas"
         )
 
         # Pack supervisor/ into tar and upload
