@@ -298,8 +298,9 @@ class Deployer:
                                 retry_delay *= 2  # Exponential backoff
                                 continue
                             else:
-                                _LOGGER.error(f"Apt lock persists after {max_retries} attempts - giving up on apt packages")
-                                raise
+                                # Persistent apt lock - skip apt packages and proceed with pip 
+                                _LOGGER.warning(f"Apt lock persists after {max_retries} attempts - skipping apt packages and proceeding with pip installation")
+                                break  # Skip this apt group but continue deployment
                         else:
                             # Different error, re-raise immediately
                             raise
