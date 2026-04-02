@@ -99,12 +99,12 @@ class Deployer:
 
     async def async_deploy(self) -> bool:
         """Run all deploy phases. Returns True on success."""
-        _LOGGER.info("=== DEPLOYMENT STARTED ===")
-        _LOGGER.info("async_deploy() method called - deployment is being triggered")
+        _LOGGER.warning("=== DEPLOYMENT STARTED ===")
+        _LOGGER.warning("async_deploy() method called - deployment is being triggered")
         self._emit(PHASE_PREFLIGHT, "Starting deployment process...", 0)
         
         try:
-            _LOGGER.info("Starting deployment phases...")
+            _LOGGER.warning("Starting deployment phases...")
             await self._phase_preflight()
             await self._phase_upload()
             await self._phase_install()
@@ -114,7 +114,7 @@ class Deployer:
             await self._phase_test_dashboard()
             await self._phase_restart()
             await self._phase_verify()
-            _LOGGER.info("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
+            _LOGGER.warning("=== DEPLOYMENT COMPLETED SUCCESSFULLY ===")
         except SshCommandError as exc:
             _LOGGER.error(f"SSH command failed during deployment: {exc}")
             self._emit_error(exc.command[:40], str(exc))
@@ -303,9 +303,9 @@ class Deployer:
         )
         
         try:
-            _LOGGER.info(f"Executing pip install command: {pip_cmd}")
+            _LOGGER.warning(f"Executing pip install command: {pip_cmd}")
             result = await self._client.async_run(pip_cmd)
-            _LOGGER.info(f"Pip install completed successfully")
+            _LOGGER.warning(f"Pip install completed successfully")
             self._emit(PHASE_VENV, "Pip dependencies installed successfully", 72)
         except Exception as e:
             _LOGGER.error(f"Pip install failed: {e}")

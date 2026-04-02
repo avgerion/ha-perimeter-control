@@ -523,13 +523,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _auto_deploy_supervisor(self) -> None:
         """Automatically deploy supervisor if not available during initial setup."""
         try:
-            _LOGGER.info("Auto-deployment started for %s", self._entry.data[CONF_HOST])
+            _LOGGER.warning("Auto-deployment started for %s", self._entry.data[CONF_HOST])
             
             # Use the existing deploy method but only log the key phases
             success = await self.async_deploy()
             
             if success:
-                _LOGGER.info("Auto-deployment completed successfully")
+                _LOGGER.warning("Auto-deployment completed successfully")
                 
                 # Try to connect to the newly deployed supervisor
                 try:
