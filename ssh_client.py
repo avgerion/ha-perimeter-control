@@ -301,28 +301,27 @@ class SshClient:
     # ------------------------------------------------------------------
 
     async def async_put_file(self, local_path: str | Path, remote_path: str) -> None:
-        """Upload a single file via SCP."""
-        local_path = Path(local_path)
-        
-        # Read file content asynchronously to avoid blocking
+        """Upload a single file via SFTP."""
+        conn = await self._connect()
         try:
-            file_data = await asyncio.to_thread(local_path.read_bytes)
-        except OSError as exc:
-            raise SshCommandError(f"read {local_path}", 1, str(exc)) from exc
-            
-        # Upload using the bytes method to avoid blocking file operations
-        await self.async_put_bytes(file_data, remote_path)
+            async with conn.start_sftp_client() as sftp:
+                # Create a BytesIO buffer from file content
+                local_path = Path(local_path)
+                file_data = await asyncio.to_thread(local_path.read_bytes)
+                
+                # Write to remote using SFTP write operations
+                async with sftp.open(remote_path, 'wb') as remote_file:
+                    await remote_file.write(file_data)
+        except asyncssh.Error as exc:
+            raise SshCommandError(f"put {local_path}", 1, str(exc)) from exc
 
     async def async_put_bytes(self, data: bytes, remote_path: str) -> None:
         """Upload bytes as a file (useful for in-memory content)."""
-        # Create a temporary file asynchronously to avoid blocking operations
-        def write_temp_file():
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                tmp.write(data)
-                return tmp.name
-        
-        tmp_path = await asyncio.to_thread(write_temp_file)
+        conn = await self._connect()
         try:
-            await self.async_put_file(tmp_path, remote_path)
-        finally:
-            await asyncio.to_thread(os.unlink, tmp_path)
+            async with conn.start_sftp_client() as sftp:
+                # Write bytes directly to remote file
+                async with sftp.open(remote_path, 'wb') as remote_file:
+                    await remote_file.write(data)
+        except asyncssh.Error as exc:
+            raise SshCommandError(f"put bytes to {remote_path}", 1, str(exc)) from exc
