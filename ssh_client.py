@@ -315,13 +315,14 @@ class SshClient:
 
     async def async_put_bytes(self, data: bytes, remote_path: str) -> None:
         """Upload bytes as a file (useful for in-memory content)."""
-        import io
+        # Create a temporary file asynchronously to avoid blocking operations
+        def write_temp_file():
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                tmp.write(data)
+                return tmp.name
         
-        conn = await self._connect()
+        tmp_path = await asyncio.to_thread(write_temp_file)
         try:
-            async with conn.start_sftp_client() as sftp:
-                # Use putfo (put from file object) with BytesIO to avoid temp files
-                bytes_io = io.BytesIO(data)
-                await sftp.putfo(bytes_io, remote_path)
-        except asyncssh.Error as exc:
-            raise SshCommandError(f"put bytes to {remote_path}", 1, str(exc)) from exc
+            await self.async_put_file(tmp_path, remote_path)
+        finally:
+            await asyncio.to_thread(os.unlink, tmp_path)
