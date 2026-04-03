@@ -669,7 +669,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         await self._supervisor_get("/health")
                         
                         # Try to activate selected services in the Supervisor
+                        _LOGGER.warning("About to call _activate_supervisor_services")
                         await self._activate_supervisor_services()
+                        _LOGGER.warning("Finished calling _activate_supervisor_services")
                         
                         await self._start_websocket_listener()
                         _LOGGER.info("Successfully connected to deployed supervisor API (attempt %d)", attempt + 1)

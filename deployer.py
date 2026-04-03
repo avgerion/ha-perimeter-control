@@ -521,7 +521,7 @@ fi
         
         # Split packages into fast and slow groups for better progress feedback
         essential_packages = ["aiohttp", "psutil", "python-json-logger", "pyyaml"]
-        heavy_packages = ["bokeh", "tornado", "pandas"]
+        heavy_packages = ["bokeh", "tornado", "pandas", "bleak"]
         
         # Install essential packages first (fast)
         essential_cmd = (
