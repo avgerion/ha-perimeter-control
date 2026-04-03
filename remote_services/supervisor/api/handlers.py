@@ -1,5 +1,5 @@
 """
-Tornado REST API handlers for the Isolator Supervisor.
+Tornado REST API handlers for the PerimeterControl Supervisor.
 
 Route map
 ---------

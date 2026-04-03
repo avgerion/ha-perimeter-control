@@ -1,0 +1,653 @@
+openapi: 3.0.3
+info:
+  title: PerimeterControl Supervisor API
+  description: |
+    REST API for the PerimeterControl Supervisor running on Pi devices.
+
+    This API provides:
+    - Dynamic entity discovery and state management
+    - Capability deployment and lifecycle management
+    - Service configuration and access control
+    - Real-time event streaming via WebSocket
+    - Health monitoring and metrics collection
+
+    **Base URL:** `http://pi-device:8080`
+    **Authentication:** None (localhost-only by default)
+  version: 0.1.0
+  contact:
+    name: PerimeterControl Project
+    url: https://github.com/avgerion/ha-perimeter-control
+
+servers:
+  - url: http://localhost:8080
+    description: Local Pi device (default)
+  - url: http://192.168.50.47:8080
+    description: Example Pi device IP
+
+paths:
+  /api/v1/node/info:
+    get:
+      summary: Get node information
+      description: Returns basic information about the Pi node (hostname, platform,
+        versions)
+      operationId: getNodeInfo
+      tags: [ Node ]
+      responses:
+        "200":
+          description: Node information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeInfo"
+
+  /api/v1/node/features:
+    get:
+      summary: Get node hardware features
+      description: Returns available hardware features (cameras, BLE, GPIO, etc.)
+      operationId: getNodeFeatures
+      tags: [ Node ]
+      responses:
+        "200":
+          description: Node hardware features
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeFeatures"
+
+  /api/v1/entities:
+    get:
+      summary: List all entities
+      description: Returns all entities from all active capabilities
+      operationId: listEntities
+      tags: [ Entities ]
+      responses:
+        "200":
+          description: List of entities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Entity"
+                  count:
+                    type: integer
+
+  /api/v1/entities/{id}:
+    get:
+      summary: Get entity state
+      description: Returns current state of a specific entity
+      operationId: getEntityState
+      tags: [ Entities ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "network_isolation:status"
+      responses:
+        "200":
+          description: Entity state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entity"
+        "404":
+          description: Entity not found
+
+  /api/v1/entities/states/query:
+    post:
+      summary: Bulk query entity states
+      description: Query multiple entity states in a single request
+      operationId: queryEntityStates
+      tags: [ Entities ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entity_ids:
+                  type: array
+                  items:
+                    type: string
+                  example: [ "network_isolation:status", "ble_gatt_repeater:scale_demo:weight" ]
+      responses:
+        "200":
+          description: Entity states
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/Entity"
+
+  /api/v1/capabilities:
+    get:
+      summary: List active capabilities
+      description: Returns all registered capabilities and their deployment status
+      operationId: listCapabilities
+      tags: [ Capabilities ]
+      responses:
+        "200":
+          description: List of capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capabilities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Capability"
+                  count:
+                    type: integer
+
+  /api/v1/capabilities/{id}/deploy:
+    post:
+      summary: Deploy capability
+      description: Deploy and activate a capability with given configuration
+      operationId: deployCapability
+      tags: [ Capabilities ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "ble_gatt_repeater"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                config:
+                  type: object
+                  description: Capability-specific configuration
+      responses:
+        "200":
+          description: Deployment successful
+        "400":
+          description: Invalid configuration
+        "409":
+          description: Resource conflict
+
+  /api/v1/capabilities/{id}/actions/{action}:
+    post:
+      summary: Execute capability action
+      description: Trigger a capability-specific action
+      operationId: executeCapabilityAction
+      tags: [ Capabilities ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "photo_booth"
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "take_photo"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Action-specific parameters
+      responses:
+        "200":
+          description: Action executed
+        "404":
+          description: Capability or action not found
+        "409":
+          description: Action failed
+
+  /api/v1/services:
+    get:
+      summary: List available services
+      description: Returns all service descriptors (both active and inactive)
+      operationId: listServices
+      tags: [ Services ]
+      responses:
+        "200":
+          description: List of services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Service"
+
+  /api/v1/services/{id}/config:
+    get:
+      summary: Get service configuration
+      description: Returns current configuration for a service
+      operationId: getServiceConfig
+      tags: [ Services ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service configuration
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      summary: Update service configuration
+      description: Updates configuration for a service
+      operationId: updateServiceConfig
+      tags: [ Services ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Configuration updated
+        "400":
+          description: Invalid configuration
+
+  /api/v1/services/{id}/access:
+    get:
+      summary: Get service access profile
+      description: Returns access control settings for a service
+      operationId: getServiceAccess
+      tags: [ Services ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service access profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceAccess"
+    put:
+      summary: Update service access profile
+      description: Updates access control settings for a service
+      operationId: updateServiceAccess
+      tags: [ Services ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceAccess"
+      responses:
+        "200":
+          description: Access profile updated
+
+  /api/v1/health:
+    get:
+      summary: Health check
+      description: Returns overall health status of the supervisor
+      operationId: getHealth
+      tags: [ Monitoring ]
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /api/v1/metrics:
+    get:
+      summary: Prometheus metrics
+      description: Returns metrics in Prometheus text format
+      operationId: getMetrics
+      tags: [ Monitoring ]
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/ha/integration:
+    get:
+      summary: Home Assistant integration data
+      description: Returns combined schema and states for HA integration
+      operationId: getHAIntegration
+      tags: [ HomeAssistant ]
+      responses:
+        "200":
+          description: HA integration data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HAIntegration"
+
+  /api/v1/ha/dashboard-urls:
+    get:
+      summary: Get dashboard URLs for HA
+      description: Returns URLs for service dashboards accessible from HA
+      operationId: getHADashboardUrls
+      tags: [ HomeAssistant ]
+      responses:
+        "200":
+          description: Dashboard URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+
+  /api/v1/deployments:
+    get:
+      summary: List deployment history
+      description: Returns history of capability deployments
+      operationId: listDeployments
+      tags: [ Deployments ]
+      responses:
+        "200":
+          description: Deployment history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deployment"
+    post:
+      summary: Bulk deployment
+      description: Deploy multiple capabilities in sequence
+      operationId: bulkDeploy
+      tags: [ Deployments ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deployments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      capability_id:
+                        type: string
+                      config:
+                        type: object
+      responses:
+        "200":
+          description: Bulk deployment initiated
+
+  /api/v1/events:
+    get:
+      summary: WebSocket event stream
+      description: |
+        WebSocket connection for real-time events.
+
+        **Usage:** `ws://pi-device:8080/api/v1/events`
+
+        **Events:**
+        - `entity_updated` - Entity state changed
+        - `capability_deployed` - Capability deployment completed
+        - `service_started` - Service became available
+        - `health_check_failed` - Health check failure
+      operationId: connectEventStream
+      tags: [ Events ]
+      responses:
+        "101":
+          description: WebSocket connection established
+
+components:
+  schemas:
+    NodeInfo:
+      type: object
+      properties:
+        node_id:
+          type: string
+          example: "pi_efa70485c9db"
+        hostname:
+          type: string
+          example: "perimeterNode1"
+        platform:
+          type: string
+          example: "linux"
+        arch:
+          type: string
+          example: "aarch64"
+        python_version:
+          type: string
+          example: "3.13.5"
+        supervisor_version:
+          type: string
+          example: "0.1.0"
+
+    NodeFeatures:
+      type: object
+      properties:
+        cameras:
+          type: object
+          properties:
+            available:
+              type: boolean
+            devices:
+              type: array
+              items:
+                type: string
+        bluetooth:
+          type: object
+          properties:
+            available:
+              type: boolean
+            version:
+              type: string
+        gstreamer:
+          type: object
+          properties:
+            available:
+              type: boolean
+            version:
+              type: string
+
+    Entity:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "network_isolation:status"
+        type:
+          type: string
+          enum: [ sensor, binary_sensor, button, switch, number, select ]
+        friendly_name:
+          type: string
+          example: "Network Isolation Status"
+        capability:
+          type: string
+          example: "network_isolation"
+        state:
+          anyOf:
+            - type: string
+            - type: number
+            - type: boolean
+        unit_of_measurement:
+          type: string
+        device_class:
+          type: string
+        icon:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+
+    Capability:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "network_isolation"
+        name:
+          type: string
+          example: "Network Isolation"
+        version:
+          type: string
+        status:
+          type: string
+          enum: [ inactive, deploying, active, error ]
+        config:
+          type: object
+        config_hash:
+          type: string
+        last_deployed_at:
+          type: string
+          format: date-time
+        consecutive_failures:
+          type: integer
+
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "photo_booth"
+        name:
+          type: string
+          example: "Photo Booth"
+        version:
+          type: string
+          example: "1.0.0"
+        status:
+          type: string
+          enum: [ inactive, active, error ]
+        dashboard_url:
+          type: string
+        port:
+          type: integer
+        access_mode:
+          type: string
+          enum: [ localhost, upstream, bridge ]
+
+    ServiceAccess:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [ localhost, upstream, bridge ]
+        allowed_hosts:
+          type: array
+          items:
+            type: string
+        auth_required:
+          type: boolean
+        rate_limit:
+          type: object
+          properties:
+            requests_per_minute:
+              type: integer
+
+    Deployment:
+      type: object
+      properties:
+        id:
+          type: string
+        capability_id:
+          type: string
+        status:
+          type: string
+          enum: [ pending, running, completed, failed ]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        error_message:
+          type: string
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ ok, degraded, error ]
+        capabilities:
+          type: object
+          additionalProperties:
+            type: string
+        uptime:
+          type: number
+        memory_usage:
+          type: object
+          properties:
+            used_mb:
+              type: number
+            total_mb:
+              type: number
+
+    HAIntegration:
+      type: object
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entity"
+        entity_states:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Entity"
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/Service"
+        node_info:
+          $ref: "#/components/schemas/NodeInfo"
+        config_version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+tags:
+  - name: Node
+    description: Pi node information and features
+  - name: Entities
+    description: Dynamic entity management and state queries
+  - name: Capabilities
+    description: Capability deployment and lifecycle
+  - name: Services
+    description: Service configuration and access control
+  - name: Monitoring
+    description: Health checks and metrics
+  - name: HomeAssistant
+    description: Home Assistant integration endpoints
+  - name: Deployments
+    description: Deployment management and history
+  - name: Events
+    description: Real-time event streaming

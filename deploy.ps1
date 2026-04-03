@@ -1,21 +1,21 @@
 # Quick Deploy Script for Windows
-# Copies Network Isolator files to Raspberry Pi and runs setup
+# Copies PerimeterControl files to Raspberry Pi and runs setup
 #
 # Usage:
 #   .\deploy.ps1
 #   .\deploy.ps1 -PiIP "192.168.69.11" -PiUser "paul" -KeyFile "./y"
 
 param(
-    [string]$PiIP = "192.168.69.11",
+    [string]$PiIP = "192.168.50.47",
     [string]$PiUser = "paul",
     [string]$KeyFile = "./y",
-    [string]$ConfigFile = "config/isolator.conf.yaml"
+    [string]$ConfigFile = "config/perimeterControl.conf.yaml"
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   Network Isolator - Quick Deploy to Raspberry Pi         ║" -ForegroundColor Cyan
+Write-Host "║   Perimeter Control - Quick Deploy to Raspberry Pi         ║" -ForegroundColor Cyan
 Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 

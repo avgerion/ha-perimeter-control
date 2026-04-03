@@ -28,7 +28,7 @@ Your project is now ready for GitHub with:
 
 ```bash
 # Initialize git (if not already done)
-cd "C:\\Users\\avger\\Offline\\Documents\\NetworkIsolator"
+cd "C:\\Users\\avger\\Offline\\Documents\\PerimeterControl"
 git init
 
 # Add all files (respecting .gitignore)

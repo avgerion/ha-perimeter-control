@@ -1,0 +1,95 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Add markers for test organization
+markers = [
+    "unit: Unit tests (fast, no external dependencies)",
+    "integration: Integration tests (may require external services)",
+    "ssh: Tests requiring SSH connection",
+    "api: API endpoint tests",
+    "slow: Slow tests (> 1 second)",
+    "supervisor: Tests for supervisor components",
+    "ha_integration: Home Assistant integration tests",
+]
+
+# Asyncio configuration
+asyncio_mode = "auto"
+
+# Test discovery and execution
+addopts = [
+    "--strict-markers",        # Require markers to be defined
+    "--strict-config",         # Require valid configuration
+    "--tb=short",              # Short traceback format
+    "--cov=custom_components.perimeter_control",  # Coverage for moved integration
+    "--cov=remote_services.supervisor",           # Coverage for supervisor
+    "--cov-report=html:tests/coverage_html",      # HTML coverage report
+    "--cov-report=term-missing",                  # Terminal coverage with missing lines
+    "--cov-report=xml:tests/coverage.xml",       # XML coverage for CI
+    "--junitxml=tests/pytest_results.xml",       # JUnit XML for CI
+]
+
+# Timeout configuration
+timeout = 300
+timeout_method = "thread"
+
+# Filtering
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning:homeassistant.*",  # Suppress HA warnings in tests
+]
+
+# Test paths and imports
+pythonpath = [
+    ".",
+    "custom_components",
+    "remote_services",
+]
+
+# Logging configuration for tests
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Coverage configuration
+[tool.coverage.run]
+source = [
+    ".",
+    "remote_services/supervisor"
+]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/.*",
+    "setup.py",
+    "conftest.py"
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+    "class .*\\bProtocol\\b.*:",
+]
+show_missing = true
+precision = 2
+
+[tool.coverage.html]
+directory = "tests/coverage_html"
+title = "PerimeterControl Test Coverage"
+
+[tool.coverage.xml]
+output = "tests/coverage.xml"

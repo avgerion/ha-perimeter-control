@@ -44,7 +44,7 @@ The Home Assistant integration uses SSH to deploy services to the Pi, then commu
 
 ```
 ha-perimeter-control/
-├── 📦 custom_components/perimeter_control/  # Main HA Integration
+├── 📦 *.py, manifest.json                  # Main HA Integration (root level)
 │   ├── deployer.py                        # GUI deployment from HA
 │   ├── coordinator.py                     # Optimized API client
 │   ├── dynamic_entity.py                  # Auto-discovery system
