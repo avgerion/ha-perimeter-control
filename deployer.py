@@ -239,6 +239,7 @@ fi
             if cpu_cores < total_cpu_required:
                 raise SshCommandError(
                     "resource_check",
+                    1,
                     f"Insufficient CPU cores: available {cpu_cores}, required {total_cpu_required:.1f}"
                 )
             
@@ -247,6 +248,7 @@ fi
             if memory_mb < total_memory_required:
                 raise SshCommandError(
                     "resource_check", 
+                    1,
                     f"Insufficient memory: available {memory_mb:.0f}MB, required {total_memory_required:.0f}MB"
                 )
             
@@ -256,6 +258,7 @@ fi
             if tmp_space_mb < upload_space_required:
                 raise SshCommandError(
                     "resource_check",
+                    1,
                     f"Insufficient /tmp space: available {tmp_space_mb:.0f}MB, required {upload_space_required}MB"
                 )
             
@@ -264,6 +267,7 @@ fi
             if opt_space_mb < total_disk_required:
                 raise SshCommandError(
                     "resource_check",
+                    1,
                     f"Insufficient /opt space: available {opt_space_mb:.0f}MB, required {total_disk_required:.0f}MB"
                 )
             
@@ -278,6 +282,7 @@ fi
             if resources.get('SYSTEMD') != 'available':
                 raise SshCommandError(
                     "resource_check",
+                    1,
                     "systemctl command not available. This system may not use systemd."
                 )
             
@@ -296,7 +301,7 @@ fi
             raise
         except Exception as exc:
             # Convert other exceptions to SSH command errors for consistent handling
-            raise SshCommandError("resource_check", f"Resource check failed: {exc}") from exc
+            raise SshCommandError("resource_check", 1, f"Resource check failed: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Phase 1: Preflight
