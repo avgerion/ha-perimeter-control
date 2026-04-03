@@ -8,6 +8,6 @@
     "requirements": [
         "asyncssh==2.22.0"
     ],
-    "version": "0.4.17",
+    "version": "0.4.18",
     "icon": "icon.svg"
 }

@@ -76,7 +76,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as exc:
         _LOGGER.error("Failed to create coordinator for %s: %s", entry.data.get("host"), exc)
         # Create a placeholder coordinator that can retry later
-        from .coordinator import PerimeterControlCoordinator
         coordinator = PerimeterControlCoordinator(hass, entry)
         hass.data[DOMAIN][entry.entry_id] = coordinator
         _LOGGER.info("Created placeholder coordinator, will retry connection later")
