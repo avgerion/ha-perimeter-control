@@ -52,8 +52,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         sidebar_title="Perimeter Control",
         sidebar_icon="mdi:shield-outline",
         module_url=f"{URL_BASE}/ha-integration.js",
-        config_panel_domain=DOMAIN,
-        embed_iframe=True,
+        embed_iframe=False,
         require_admin=False,
     )
     

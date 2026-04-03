@@ -84,9 +84,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         instance = cls(hass, entry)
         
         # Load service descriptors asynchronously now that we're in async context
-        descriptors_dir = Path(__file__).parent / "service_descriptors"
-        descriptors = await load_service_descriptors(descriptors_dir, instance._selected_services)
-        instance._service_descriptors = {d.id: d for d in descriptors}
+        try:
+            descriptors_dir = Path(__file__).parent / "service_descriptors"
+            descriptors = await load_service_descriptors(descriptors_dir, instance._selected_services)
+            instance._service_descriptors = {d.id: d for d in descriptors}
+            _LOGGER.debug("Loaded %d service descriptors", len(instance._service_descriptors))
+        except Exception as exc:
+            _LOGGER.warning("Failed to load service descriptors: %s", exc)
+            instance._service_descriptors = {}
         
         instance._client = SshClient(
             host=entry.data[CONF_HOST],

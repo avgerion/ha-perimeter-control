@@ -48,23 +48,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_data_redacted["ssh_key"] = f"<redacted, len={len(key) if key else 0}>"
     _LOGGER.info("Setting up Perimeter Control for %s", entry_data_redacted.get("host"))
 
-    # Create coordinator with dynamic entity discovery
-    coordinator = await PerimeterControlCoordinator.create(hass, entry)
-    
-    hass.data[DOMAIN][entry.entry_id] = coordinator
-
-    # Register services on first setup (regardless of coordinator connection status)
-    if len(hass.data[DOMAIN]) == 1:
+    # Register services FIRST - this ensures they're available even if coordinator fails
+    if len(hass.data[DOMAIN]) == 0:  # Only on first integration setup
         await _register_services(hass)
+        _LOGGER.info("Registered Perimeter Control services")
         
-    # Register frontend panel
-    await async_register_panel(hass)
-
-    # Try initial refresh but don't fail setup if it doesn't work
+    # Register frontend panel early
     try:
-        await coordinator.async_config_entry_first_refresh()
+        await async_register_panel(hass)
+        _LOGGER.info("Registered Perimeter Control frontend panel")
     except Exception as exc:
-        _LOGGER.warning("Initial coordinator refresh failed: %s. Integration services still available.", exc)
+        _LOGGER.warning("Failed to register frontend panel: %s", exc)
+
+    # Try to create coordinator, but don't fail if it doesn't work initially
+    try:
+        coordinator = await PerimeterControlCoordinator.create(hass, entry)
+        hass.data[DOMAIN][entry.entry_id] = coordinator
+        _LOGGER.info("Successfully created coordinator for %s", entry.data.get("host"))
+        
+        # Try initial refresh but don't fail setup if it doesn't work
+        try:
+            await coordinator.async_config_entry_first_refresh()
+            _LOGGER.info("Initial coordinator refresh succeeded")
+        except Exception as exc:
+            _LOGGER.warning("Initial coordinator refresh failed: %s. Will retry later.", exc)
+            
+    except Exception as exc:
+        _LOGGER.error("Failed to create coordinator for %s: %s", entry.data.get("host"), exc)
+        # Create a placeholder coordinator that can retry later
+        from .coordinator import PerimeterControlCoordinator
+        coordinator = PerimeterControlCoordinator(hass, entry)
+        hass.data[DOMAIN][entry.entry_id] = coordinator
+        _LOGGER.info("Created placeholder coordinator, will retry connection later")
 
     # Set up platforms with dynamic entity discovery
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
