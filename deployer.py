@@ -41,6 +41,7 @@ from .const import (
     REMOTE_VENV,
     REMOTE_WEB_DIR,
     SYSTEMD_DASHBOARD,
+    SYSTEMD_SERVICE_PREFIX,
     SYSTEMD_SUPERVISOR,
     get_install_directories,
     get_remote_path_config,
