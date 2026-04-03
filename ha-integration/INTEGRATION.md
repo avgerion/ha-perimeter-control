@@ -1,403 +1,282 @@
-# Isolator Home Assistant Integration — Complete Reference
+# Perimeter Control Integration — Technical Overview
 
-This directory contains all Home Assistant integration components for the Isolator Supervisor platform.
-
-## Overview
-
-The integration provides three layers of functionality:
-
-1. **Service Access Editor** — Component for editing individual service access profiles
-2. **Fleet View** — Dashboard for managing multiple Pi nodes and their hardware features
-3. **Home Assistant Card Wrapper** — Integration scaffolding for HA's custom card system
-
-## Components
-
-### 1. Service Access Editor (`service-access-editor.ts`)
-
-**Standalone web component** for editing access profiles.
-
-```typescript
-// Direct usage (outside HA)
-const editor = document.createElement('perimeter-control-service-access-editor');
-editor.apiBaseUrl = 'http://192.168.69.11:8080';
-editor.serviceId = 'photo_booth';
-document.body.appendChild(editor);
-```
-
-**Features:**
-- Edit mode (isolated/upstream/passthrough)
-- Port configuration
-- TLS/authentication settings
-- CORS origins management
-- Material Design UI
-- Real-time validation
-- Success/error feedback
-
-**API Used:**
-- `GET /api/v1/services/{service_id}/access`
-- `PUT /api/v1/services/{service_id}/access`
-
-### 2. Fleet View (`fleet-view.ts`)
-
-**Dashboard component** for managing multiple Isolator nodes.
-
-```typescript
-// In Home Assistant YAML
-type: custom:perimeter-control-fleet-view
-nodes:
-  - url: http://192.168.69.11:8080
-    name: "Primary Pi"
-  - url: http://pi-2.local:8080
-    name: "Secondary Pi"
-autoRefresh: true
-refreshInterval: 30000
-```
-
-**Features:**
-- Multi-node node list with status indicators
-- Real-time online/offline status
-- Hardware feature inventory display
-  - GPIO chips
-  - I2C buses
-  - Audio cards
-  - GStreamer availability
-  - Device tree configuration
-- Service listing per node
-- Integrated Service Access Editor for each service
-- Auto-refresh capability
-
-**APIs Used:**
-- `GET /api/v1/node/features`
-- `GET /api/v1/services`
-- `PUT /api/v1/services/{service_id}/access` (via embedded editor)
-
-### 3. HA Card Wrapper (`home-assistant-card.ts`)
-
-**Home Assistant custom card** registration and configuration.
-
-```yaml
-# In HA Lovelace dashboard
-type: custom:perimeter-control-card
-service_id: photo_booth
-api_base_url: http://192.168.69.11:8080
-```
-
-Configuration options:
-- `service_id` (required) — Service identifier
-- `api_base_url` (optional) — Supervisor API URL (default: `http://localhost:8080`)
-
-## Installation & Setup
-
-### Quick Start (5 minutes)
-
-```bash
-cd ha-integration
-npm install
-npm run build
-
-# Copy to HA
-cp dist/home-assistant-card.js ~/.homeassistant/www/isolator/
-
-# Add to configuration.yaml
-# frontend:
-#   extra_module_url:
-#     - /local/isolator/home-assistant-card.js
-```
-
-### Full Install (with HACS)
-
-1. Open Home Assistant
-2. Go to HACS → Frontend
-3. Add repository: `https://github.com/avgerion/ha-perimeter-control`
-4. Install "Perimeter Control"
-5. Restart Home Assistant
-6. Add cards to Lovelace dashboard
-
-### Development Setup
-
-```bash
-npm install
-npm run dev
-# Visit http://localhost:8000/index.html
-```
-
-## Build & Distribution
-
-### Build Output
-
-```
-dist/
-├── service-access-editor.js
-├── fleet-view.js
-└── home-assistant-card.js
-```
-
-Each file is:
-- Minified (production ready)
-- Type-safe (compiled from TypeScript)
-- With source maps for debugging
-- ES2020 module compatible
-
-### Build Commands
-
-```bash
-npm run build          # Compile TypeScript
-npm run watch         # Watch mode
-npm run dev           # Development server with hot reload
-npm run lint          # ESLint check
-npm clean             # Remove dist/
-```
+This document details the **native Home Assistant integration** architecture for managing Isolator Pi edge nodes.
 
 ## Architecture
 
-### Component Hierarchy
+### Integration Components
+
+The Perimeter Control integration consists of several key components:
 
 ```
-home-assistant-card (wrapper)
-└── service-access-editor (embedded)
-
-fleet-view (dashboard)
-├── node-list (sidebar)
-└── service-access-editor (embedded per service)
+Home Assistant Core
+├── Perimeter Control Integration (custom_components/perimeter_control/)
+│   ├── Config Flow (device setup & SSH management)  
+│   ├── Coordinator (API communication & data refresh)
+│   ├── Services (6 HA services for Pi management)
+│   ├── Frontend Panel (integrated UI in HA sidebar)
+│   └── Entities (device discovery & state tracking)
+└── Target Pi Devices
+    └── Isolator Supervisor (API server on port 8080)
 ```
 
 ### Data Flow
 
 ```
 ┌─────────────────────────────────────────┐
-│  Home Assistant Lovelace Dashboard      │
+│  Home Assistant Server                  │
 ├─────────────────────────────────────────┤
 │                                         │
-│  Fleet View Component                   │
+│  Perimeter Control Integration          │
 │  ┌─────────────────────────────────┐   │
-│  │ Node List      │ Content Panel   │   │
-│  │                │                 │   │
-│  │ [Pi-1] ────────► Features View   │   │
-│  │ [Pi-2] ────────► Services View   │   │
-│  │                │  ┌────────────┐ │   │
-│  │                │  │ Service    │ │   │
-│  │                │  │ Editor     │ │   │
-│  │                │  │ (settings) │ │   │
-│  │                │  └────────────┘ │   │
+│  │ Config Flow    │ Coordinator    │   │ 
+│  │ (Setup/SSH)    │ (API Client)   │   │
+│  │                │                │   │
+│  │ Frontend Panel │ Services       │   │
+│  │ (UI)           │ (deploy, etc.) │   │
 │  └─────────────────────────────────┘   │
 │                    ↓                    │
-│  HTTP API Calls (fetch)                 │
-│  GET /api/v1/node/features              │
+│  SSH Deploy + HTTP API Calls            │
+│  POST /api/v1/deploy                    │
 │  GET /api/v1/services                   │
-│  PUT /api/v1/services/{id}/access       │
+│  POST /capabilities/{id}/actions        │
 │                    ↓                    │
 │  JSON Request/Response                  │
 │                                         │
-│  Supervisor (Python Tornado)            │
-│  /api/v1/node/features → NodeFeatures   │
-│  /api/v1/services → ServiceList         │
-│  /api/v1/services/{id}/access → modify  │
+│  Target Pi Device (192.168.50.47)      │
+│  ├── Isolator Supervisor (port 8080)   │
+│  ├── Service Runtime (capabilities)    │
+│  └── SSH Server (deployment target)    │
 │                                         │
 └─────────────────────────────────────────┘
 ```
 
+## Integration Features
+
+### 1. Native HA Integration
+
+- **Domain**: `perimeter_control`
+- **Configuration Flow**: Guided setup via HA UI
+- **Device Management**: Appears in Settings → Devices & Services
+- **Service Discovery**: Automatic entity creation based on Pi capabilities  
+- **State Management**: Persistent device connection and status tracking
+
+### 2. Service Registration
+
+The integration registers 6 native Home Assistant services:
+
+```python
+# Available in Developer Tools → Services
+perimeter_control.deploy              # Deploy supervisor to Pi
+perimeter_control.start_capability    # Start a Pi service  
+perimeter_control.stop_capability     # Stop a Pi service
+perimeter_control.trigger_capability  # Trigger capability actions
+perimeter_control.reload_config       # Reload Pi configuration
+perimeter_control.get_device_info     # Get Pi hardware details
+```
+
+### 3. Frontend Panel
+
+- **Automatic Registration**: Panel appears in HA sidebar after setup
+- **Static Asset Serving**: Integration serves its own CSS/JS resources
+- **No Manual Setup**: No configuration.yaml or www/ directory management
+- **Responsive Design**: Mobile-friendly interface
+
+### 4. SSH Management
+
+- **Secure Key Storage**: SSH keys stored encrypted in HA config
+- **Multi-line Support**: Full PEM/OpenSSH key format support
+- **Connection Testing**: Automatic SSH connectivity validation
+- **Error Handling**: Detailed SSH error reporting and troubleshooting
+
 ## Configuration Examples
 
-### Single Service (Basic)
+### Adding a Pi Device
+
+Via Home Assistant UI (Settings → Devices & Services → Add Integration):
 
 ```yaml
-type: custom:perimeter-control-card
-service_id: photo_booth
+# Integration will prompt for:
+host: "192.168.50.47"           # Pi IP or hostname
+port: 22                        # SSH port
+username: "paul"                # SSH username  
+ssh_key: !secret perimeter_key  # SSH private key
+supervisor_port: 8080           # Supervisor API port
 ```
 
-### Single Node with Fleet View
+### Service Automation Examples
 
 ```yaml
-type: custom:perimeter-control-fleet-view
-nodes:
-  - url: http://192.168.69.11:8080
-    name: "Main Pi"
+# Automation: Deploy on HA start
+automation:
+  - trigger:
+      platform: homeassistant
+      event: start
+    action:
+      service: perimeter_control.deploy
+      data:
+        force: true
+
+# Script: Emergency stop all services
+script:
+  emergency_stop:
+    sequence:
+      - service: perimeter_control.stop_capability
+        data:
+          capability: photo_booth
+      - service: perimeter_control.stop_capability  
+        data:
+          capability: ble_scanner
+
+# Scene: Configuration for different modes
+scene:
+  - name: "Party Mode"
+    entities:
+      script.deploy_party_config: "on"
+    action:
+      service: perimeter_control.trigger_capability
+      data:
+        capability: photo_booth
+        action: party_mode
+        config: '{"duration": 7200}'
 ```
 
-### Multi-Node Network
+## API Integration
 
-```yaml
-type: custom:perimeter-control-fleet-view
-nodes:
-  - url: http://pi-1.local:8080
-    name: "Living Room"
-  - url: http://pi-2.local:8080
-    name: "Kitchen"
-  - url: http://pi-3.local:8080
-    name: "Garage"
-  - url: http://pi-4.local:8080
-    name: "Bedroom"
-autoRefresh: true
-refreshInterval: 30000
-```
+### Supervisor REST API
 
-### Themed Integration
+The integration communicates with the Isolator Supervisor API on each Pi:
 
-```yaml
-# home-assistant/themes/isolator.yaml
-isolator_manager:
-  --primary-color: '#00796b'
-  --error-color: '#c62828'
-  --success-color: '#2e7d32'
-```
-
-## API Contract
-
-All communication is with the Supervisor REST API.
-
-### Node Features Endpoint
-
-```
-GET /api/v1/node/features
-```
-
-Response:
-```json
-{
-  "node_features": {
-    "gpio": { "chips": [...], "available": true },
-    "i2c": { "buses": [...], "available": true },
-    "audio": { "cards": [...], "available": true },
-    "ble_adapters": [...],
-    "uart": { "ports": [...], "available": true },
-    "cameras": [],
-    "spi": { "devices": [...], "available": false },
-    "pwm": { "chips": [...], "available": false },
-    "gstreamer": { "available": true, "version": "1.0.21", "key_elements": [...] },
-    "hardware_config": { "dt_overlays": [...], "dt_params": {...} },
-    "storage": [...]
-  }
-}
-```
-
-### Services Endpoint
-
-```
+```bash
+# Service Discovery
 GET /api/v1/services
-```
-
-Response:
-```json
 {
   "services": [
-    {
-      "id": "photo_booth",
-      "name": "Photo Booth",
-      "version": "1.0.0",
-      "descriptor_file": "/mnt/isolator/conf/services/photo_booth.service.yaml",
-      "runtime": "python_module",
-      "config_file": "/mnt/isolator/conf/photo-booth.yaml"
-    },
+    {"id": "photo_booth", "name": "Photo Booth", "status": "running"},
+    {"id": "ble_scanner", "name": "BLE Scanner", "status": "stopped"},
     ...
-  ],
-  "count": 5
+  ]
 }
-```
 
-### Access Profile Endpoint
-
-```
-GET /api/v1/services/{service_id}/access
-```
-
-Response:
-```json
+# Device Capabilities  
+GET /api/v1/node/features
 {
-  "service_id": "photo_booth",
-  "access_profile": {
-    "mode": "upstream",
-    "bind_address": "",
-    "port": 8093,
-    "tls_mode": "self_signed",
-    "cert_file": "/etc/isolator/tls/fullchain.pem",
-    "key_file": "/etc/isolator/tls/privkey.pem",
-    "auth_mode": "token",
-    "allowed_origins": [],
-    "exposure_scope": "lan_only"
-  }
+  "gpio": {"available": true, "chips": [...]},
+  "i2c": {"available": true, "buses": [...]},
+  "audio": {"available": true, "cards": [...]},
+  ...
 }
-```
 
-```
-PUT /api/v1/services/{service_id}/access
-Content-Type: application/json
-
-Request body:
+# Capability Actions
+POST /api/v1/capabilities/{id}/actions/{action}
 {
-  "mode": "upstream",
-  "bind_address": "",
-  "port": 8093,
-  "tls_mode": "self_signed",
-  "auth_mode": "token",
-  "allowed_origins": ["https://example.com"],
-  "exposure_scope": "lan_only"
+  "action": "start_scan",
+  "config": {"duration": 30}
 }
 ```
 
-## Extending the Integration
+### Entity Creation
 
-### Adding a New Component
+The integration automatically creates Home Assistant entities for:
 
-1. Create `src/my-component.ts`
-2. Export from `src/index.ts`
-3. Build: `npm run build`
-4. Test in `index.html` dev environment
+- **Device**: Each Pi becomes an HA device with model/SW info
+- **Sensors**: Service status, device capabilities, connection state
+- **Buttons**: Quick actions for deploy/start/stop operations
+- **Binary Sensors**: Online/offline status, service health checks
 
-### Custom Styling
+## Development
 
-Override CSS custom properties:
+### Frontend Build Process
 
-```html
-<style>
-  isolator-fleet-view {
-    --primary: #0066cc;
-    --success: #00aa00;
-    --error: #ff0000;
-  }
-</style>
+The integration includes a modern frontend build system:
+
+```bash
+cd ha-integration/
+npm install                    # Install dependencies
+npm run build                  # Build frontend resources 
+npm run dev                    # Development server
+
+# Output: dist/ha-integration.js → integration/frontend/
 ```
 
-### Conditional Rendering
+### File Structure
 
-Components support conditional logic:
+```
+NetworkIsolator/                    # Integration root
+├── manifest.json                   # Integration manifest  
+├── __init__.py                     # Integration setup
+├── config_flow.py                  # Device setup flow
+├── coordinator.py                  # API communication
+├── frontend_panel.py               # Panel registration
+├── services.yaml                   # Service definitions
+├── const.py                        # Constants
+└── ha-integration/                 # Frontend build
+    ├── package.json                # NPM dependencies
+    ├── src/                        # TypeScript source
+    └── dist/                       # Built assets
+```
 
-```typescript
-// Only show if node is online
-if (node.status === 'online') {
-  this.loadNodeFeatures(node);
-}
+### Installation for Development
+
+```bash
+# Development install 
+cd NetworkIsolator/
+ln -s $(pwd) ~/.homeassistant/custom_components/perimeter_control
+
+# Or manual copy for testing
+cp -r . ~/.homeassistant/custom_components/perimeter_control/
+
+# Restart HA and add integration via UI
 ```
 
 ## Troubleshooting
 
-### Component Not Loading
+### Common Issues
 
-1. Check browser console: `F12 → Console`
-2. Verify API reachability: `curl http://192.168.69.11:8080/api/v1/services`
-3. Check HA logs: Settings → Logs
-4. Clear browser cache: `Ctrl+Shift+Delete`
+**Integration not found:**
+- Verify files in `custom_components/perimeter_control/`
+- Check HA logs: `grep perimeter_control home-assistant.log`
+- Restart Home Assistant after file changes
 
-### API Connection Issues
+**SSH connection fails:**
+- Test manually: `ssh user@192.168.50.47`
+- Verify SSH key format (PEM/OpenSSH with BEGIN/END lines)
+- Check firewall/network connectivity
 
-- **Port closed**: Check firewall rules
-- **DNS resolution**: Use IP instead of hostname
-- **CORS errors**: Ensure Supervisor listens on accessible network interface
-- **Timeout**: Add `?timeout=30` to API URL
+**API communication errors:**
+- Verify supervisor running: `systemctl status isolator-supervisor`
+- Test API: `curl http://192.168.50.47:8080/api/v1/services`
+- Check supervisor logs for errors
 
-### Build Errors
+**Frontend panel missing:**
+- Clear browser cache and reload
+- Check browser console for JS errors
+- Verify frontend assets built correctly
 
-```bash
-# Clear and rebuild
-rm -rf node_modules dist
-npm install
-npm run build
+### Debug Logging
+
+Enable detailed logging in HA `configuration.yaml`:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.perimeter_control: debug
+    custom_components.perimeter_control.coordinator: debug
 ```
 
-## Contributing
+## Security Considerations
 
-See [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
+- **SSH Keys**: Stored encrypted in HA database
+- **API Communication**: HTTP-only, intended for local network  
+- **Network Isolation**: Pi devices should be on isolated VLAN
+- **Access Control**: Integration requires HA admin privileges
+- **Audit Trail**: All deploy actions logged with timestamps
 
-## License
+## Performance
 
-MIT — See [LICENSE](../../LICENSE)
-
+- **Polling Frequency**: 30-second default update interval
+- **Resource Usage**: Minimal; single coordinator per device
+- **Concurrent Operations**: SSH/API calls are async and non-blocking
+- **Caching**: Device info and service lists cached between polls
+- **Error Handling**: Exponential backoff for failed API calls

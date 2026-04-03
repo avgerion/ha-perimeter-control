@@ -68,7 +68,7 @@ test_ha_endpoints.py
 # Keep ha-integration/ - it contains the CLI deployment system
 # Only exclude build artifacts
 ha-integration/node_modules/
-ha-integration/dist/
+
 
 # Temporary files
 *.tmp

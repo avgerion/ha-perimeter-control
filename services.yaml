@@ -1,0 +1,79 @@
+deploy:
+  name: Deploy to Device
+  description: Deploy supervisor and services to the target device
+  fields:
+    force:
+      name: Force Deployment
+      description: Force deployment even if services are already running
+      required: false
+      default: false
+      selector:
+        boolean:
+
+trigger_capability:
+  name: Trigger Capability Action
+  description: Execute an action on a deployed capability
+  fields:
+    capability:
+      name: Capability
+      description: ID of the target capability (e.g., network_isolation, ble_gatt_repeater)
+      required: true
+      example: "network_isolation"
+      selector:
+        text:
+    action:
+      name: Action
+      description: Action to perform on the capability
+      required: true
+      example: "start"
+      selector:
+        text:
+    config:
+      name: Configuration
+      description: Optional configuration data for the action (JSON)
+      required: false
+      selector:
+        text:
+          multiline: true
+
+reload_config:
+  name: Reload Configuration
+  description: Reload configuration from the target device
+  fields: {}
+
+get_device_info:
+  name: Get Device Information
+  description: Retrieve current device status and hardware information
+  fields: {}
+
+start_capability:
+  name: Start Capability
+  description: Start a specific capability on the device
+  fields:
+    capability:
+      name: Capability
+      description: ID of the capability to start
+      required: true
+      example: "ble_gatt_repeater"
+      selector:
+        select:
+          options:
+            - "network_isolation"
+            - "ble_gatt_repeater"
+            - "photo_booth"
+
+stop_capability:
+  name: Stop Capability
+  description: Stop a specific capability on the device
+  fields:
+    capability:
+      name: Capability
+      description: ID of the capability to stop
+      required: true
+      example: "ble_gatt_repeater"
+      selector:
+        select:
+          options:
+            - "network_isolation"
+            - "ble_gatt_repeater"
+            - "photo_booth"

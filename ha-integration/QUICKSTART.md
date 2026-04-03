@@ -1,102 +1,139 @@
 # Quick Start — Perimeter Control HA Integration
 
-Get the Service Access Editor working in 5 minutes.
+Get the Perimeter Control integration working in 5 minutes.
 
-## 1. Install Dependencies
+## 1. Install the Integration
 
-```bash
-cd ha-integration
-npm install
-```
+### Option A: HACS (Easiest)
 
-## 2. Build
+1. Go to **HACS → Integrations**
+2. Click **⋮ Menu → Custom repositories**  
+3. Add repository: `https://github.com/avgerion/ha-perimeter-control`
+4. Category: `Integration`
+5. Install **Perimeter Control**
+6. **Restart Home Assistant**
 
-```bash
-npm run build
-```
-
-Output: `dist/ha-integration.js`
-
-## 3. Deploy to Home Assistant
-
-
-### Manual Integration Install (if not using HACS)
-
-To install the Perimeter Control integration manually, copy the integration folder to your Home Assistant config:
+### Option B: Manual Install
 
 ```bash
-# Copy integration files to HA custom_components directory
-scp -r *.py manifest.json user@homeassistant:/config/custom_components/perimeter_control/
+# Copy integration to Home Assistant
+cd NetworkIsolator  # This repository root
+cp -r . /path/to/homeassistant/config/custom_components/perimeter_control/
 ```
 
-After copying, restart Home Assistant and add the integration via Settings → Devices & Services.
+**Restart Home Assistant** after copying files.
 
-#### SSH Key Input (secrets.yaml recommended)
+## 2. Add Your Pi Device
 
-When adding a Pi node, you will be prompted for an SSH private key. **Multi-line keys are now fully supported.**
+1. In Home Assistant: **Settings → Devices & Services**
+2. Click **"Add Integration"** 
+3. Search for **"Perimeter Control"**
+4. Enter your Pi details:
+   - **Host**: `192.168.50.47` (your Pi's IP)
+   - **Port**: `22` (SSH port)  
+   - **Username**: `paul` (SSH username)
+   - **SSH Key**: Your private key (see below)
+   - **Supervisor Port**: `8080`
 
-- **Best practice:** Store your SSH key in `secrets.yaml` and reference it in the integration setup (e.g. `!secret perimeter_control_ssh_key`).
-- You can also paste the full multi-line key directly in the UI if needed.
-- The key must be in standard PEM or OpenSSH format, including the `-----BEGIN ...-----` and `-----END ...-----` lines.
+### SSH Key Setup
 
-**Troubleshooting:**
-- If the UI only shows a single-line input, update Home Assistant to the latest version or use `secrets.yaml`.
-- If you see a parsing error, check for extra spaces, missing header/footer, or line breaks.
-
-Example `secrets.yaml` entry:
+**Recommended:** Use `secrets.yaml` for your SSH key:
 
 ```yaml
-perimeter_control_ssh_key: |
-   -----BEGIN OPENSSH PRIVATE KEY-----
-   ...
-   -----END OPENSSH PRIVATE KEY-----
+# In secrets.yaml
+perimeter_ssh_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ...
+  -----END OPENSSH PRIVATE KEY-----
 ```
 
-Then in the integration setup, use:
+During setup, enter: `!secret perimeter_ssh_key`
 
-```
-!secret perimeter_control_ssh_key
-```
+**Alternative:** Paste the key directly (multiline supported).
 
-### Option A: Upload via UI (Easiest)
+## 3. Verify Installation
 
-Home Assistant does not always create `www` by default. If it is missing, create it.
+After setup completes:
 
-1. Create this folder in your HA config directory if it does not already exist:
-   - `/config/www/perimeter-control/` (HA OS / Supervised / most Container installs)
-   - `~/.homeassistant/www/perimeter-control/` (HA Core venv installs)
-2. Copy `dist/ha-integration.js` to that folder
-3. Add to `configuration.yaml`:
-   ```yaml
-   frontend:
-     extra_module_url:
-            - /local/perimeter-control/ha-integration.js
-   ```
+### Check the Panel
+- **"Perimeter Control"** should appear in your HA sidebar
+- Click it to access the device management interface
 
-### Option B: SSH/SCP (Advanced)
+### Check Services  
+- Go to **Developer Tools → Services**
+- Search for `perimeter_control` — you should see 6 services:
+  - `perimeter_control.deploy`
+  - `perimeter_control.start_capability` 
+  - `perimeter_control.stop_capability`
+  - `perimeter_control.trigger_capability`
+  - `perimeter_control.reload_config`
+  - `perimeter_control.get_device_info`
 
-```bash
-scp dist/ha-integration.js user@homeassistant:/config/www/perimeter-control/
-```
+## 4. Deploy to Your Pi
 
-## 4. Add to Dashboard
+### From the UI Panel
+1. Click **"Perimeter Control"** in the HA sidebar
+2. Click **"Deploy"** next to your Pi device
+3. Wait for deployment to complete
 
-Before creating the card, make sure the Perimeter Control Supervisor API is running and reachable.
-
-You have two supported deployment paths:
-
-- HA-native (recommended): use the Perimeter Control integration deploy panel in Home Assistant. This does not require PowerShell.
-- Script-based (optional): use `scripts/deploy-dashboard-web.ps1` from this repo. Supervisor deployment is included by default unless you pass `-SkipSupervisor`.
-
-Quick check from a machine that can reach your Pi:
-
-```bash
-curl http://<pi-ip>:8080/api/v1/services
+### From Services
+```yaml
+# In Developer Tools → Services
+service: perimeter_control.deploy  
+data:
+  force: true  # Optional: force redeploy
 ```
 
-If this does not return JSON, deploy/start the supervisor service on the Pi first.
+## 5. Manage Services
 
-Discover available service IDs from that response (for example: `network_isolator`, `wildlife_monitor`, `photo_booth`).
+Once deployed, you can:
+
+- **Start services**: Use `perimeter_control.start_capability`
+- **Stop services**: Use `perimeter_control.stop_capability`  
+- **View device info**: Check device capabilities and hardware
+- **Monitor status**: Real-time service status in the UI
+
+### Example Service Calls
+
+```yaml
+# Start photo booth service
+service: perimeter_control.start_capability
+data:
+  capability: photo_booth
+
+# Trigger BLE scan  
+service: perimeter_control.trigger_capability
+data:
+  capability: ble_scanner
+  action: start_scan  
+  config: '{"duration": 30}'
+```
+
+## Troubleshooting
+
+**Integration not found after restart:**
+- Verify files are in `config/custom_components/perimeter_control/`
+- Check Home Assistant logs for errors
+
+**SSH connection fails:**  
+- Verify Pi is reachable: `ping 192.168.50.47`
+- Test SSH manually: `ssh paul@192.168.50.47`
+- Check SSH key format (include BEGIN/END lines)
+
+**Supervisor API unreachable:**
+- SSH to Pi and check: `systemctl status isolator-supervisor`  
+- Test API: `curl http://192.168.50.47:8080/api/v1/services`
+
+**Panel doesn't appear:**
+- Refresh browser (F5)
+- Check browser console for errors
+- Restart Home Assistant
+
+## Next Steps
+
+- Read [Full Documentation](README.md) for advanced features
+- Check [Integration Details](INTEGRATION.md) for technical information
+- Review [Safety Guidelines](SAFE-DEPLOYMENT.md) for production use
 
 ### If you only know `pi_host` right now (deploy-only bootstrap)
 

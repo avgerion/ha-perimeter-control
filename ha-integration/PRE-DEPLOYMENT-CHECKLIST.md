@@ -1,152 +1,231 @@
 # Pre-Deployment Configuration Checklist
 
-> **Before deploying to Home Assistant**, verify this checklist item by item. Each unchecked item is a risk.
+> **Before setting up the Perimeter Control integration**, verify this checklist item by item. Each unchecked item is a potential issue.
 
 ---
 
-## Section 1: Supervisor Discovery & Accessibility
+## Section 1: Home Assistant Prerequisites
 
-### 1.1: Find Supervisor IP/Hostname
+### 1.1: Home Assistant Version
 
-- [ ] **SSH to Pi and get IP**
+- [ ] **HA Version 2024.1.0 or newer**
   ```bash
-  ssh pi@<your-pi-ip>
-  hostname -I
-  # Output: 192.168.69.11 (write this down)
+  # In HA, check Settings → System → Home Assistant Core
+  # Or via SSH:
+  ha core info
+  # Should be >= 2024.1.0
   ```
 
-- [ ] **Verify hostname is accessible via mDNS (Optional but Recommended)**
+- [ ] **Custom Components directory exists**
   ```bash
-  # On Pi:
-  hostnamectl status
-  # Should show hostname
-
-  # From HA machine:
-  ping <hostname>.local
-  # Should respond (if mDNS working)
+  # Check if custom_components exists:
+  ls -la /config/custom_components/
+  # If not found, create it:
+  mkdir -p /config/custom_components/
   ```
 
-- [ ] **Choose ONE URL format for your setup**:
-  - [ ] IP address (e.g., `192.168.69.11:8080`) — fastest, DHCP-dependent
-  - [ ] mDNS(e.g., `isolator-pi.local:8080`) — stable, recommended ✅
-  - [ ] Public domain (e.g., `isolator.example.com:8443`) — remote access, requires HTTPS
-
-### 1.2: Verify Supervisor Process
-
-- [ ] **Check Supervisor is running**
+- [ ] **SSH access to HA (if doing manual install)**
   ```bash
-  ssh pi@<pi-ip>
+  # Should be able to SSH to HA server:
+  ssh user@homeassistant.local
+  # Or however you access your HA system
+  ```
+
+### 1.2: Network Prerequisites
+
+- [ ] **HA can reach Pi devices**
+  ```bash
+  # From HA server, ping your Pi:
+  ping 192.168.50.47
+  # Should respond
+  ```
+
+- [ ] **SSH access from HA to Pi**
+  ```bash
+  # From HA server:
+  ssh paul@192.168.50.47
+  # Should connect
+  ```
+
+---
+
+## Section 2: Pi Device Prerequisites
+
+### 2.1: Isolator Supervisor Setup
+
+- [ ] **Supervisor is deployed on Pi**
+  ```bash
+  ssh paul@192.168.50.47
   sudo systemctl status isolator-supervisor
   # Should show: Active: active (running)
   ```
 
-- [ ] **Check Supervisor is listening on expected port**
+- [ ] **Supervisor API is responding**
   ```bash
-  ssh pi@<pi-ip>
-  sudo netstat -tlnp | grep python3
-  # Look for: tcp  ...  0.0.0.0:8080  ... LISTEN ...python3
-  # Verify port (default 8080, might be different)
+  # From HA server or any machine that can reach Pi:
+  curl http://192.168.50.47:8080/api/v1/services
+  # Should return JSON with services list
   ```
 
-- [ ] **Check Supervisor has not stopped recently**
+- [ ] **SSH key for deployment ready**
   ```bash
-  ssh pi@<pi-ip>
-  sudo systemctl status isolator-supervisor
-  # Check "Active for:" duration — should be > current session
+  # Ensure you have SSH private key for the Pi
+  # Either as file or ready to paste into HA setup
+  cat ~/.ssh/id_rsa  # Or whatever key you use
+  ```
+
+### 2.2: Network Configuration
+
+- [ ] **Firewall allows supervisor port**
+  ```bash
+  ssh paul@192.168.50.47
+  sudo ufw status
+  # Port 8080 should be allowed, or firewall disabled
+  # If needed: sudo ufw allow 8080
+  ```
+
+- [ ] **Pi has stable IP or hostname**
+  - [ ] Static IP configured: `192.168.50.47`
+  - [ ] Or mDNS working: `hostname.local`
+  - [ ] DHCP reservation configured (recommended)
+
+---
+
+## Section 3: Integration Installation
+
+### 3.1: Choose Installation Method
+
+- [ ] **Method A: HACS (Recommended)**
+  - [ ] HACS installed in Home Assistant
+  - [ ] Plan to add custom repository
+  - [ ] Will restart HA after install
+
+- [ ] **Method B: Manual Install**
+  - [ ] Have access to HA filesystem
+  - [ ] Can copy files to `/config/custom_components/`
+  - [ ] Will restart HA after install
+
+### 3.2: SSH Key Preparation
+
+- [ ] **SSH key format verified**
+  ```bash
+  head -1 ~/.ssh/id_rsa
+  # Should start with: -----BEGIN OPENSSH PRIVATE KEY-----
+  # Or: -----BEGIN RSA PRIVATE KEY-----
+  ```
+
+- [ ] **Key stored in secrets.yaml (recommended)**
+  ```yaml
+  # Add to /config/secrets.yaml:
+  perimeter_ssh_key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjE...
+    -----END OPENSSH PRIVATE KEY-----
   ```
 
 ---
 
-## Section 2: Network Connectivity & Firewall
+## Section 4: Post-Installation Verification
 
-### 2.1: Verify Network Path
+### 4.1: Integration Setup
 
-- [ ] **Ping from HA to Pi**
-  ```bash
-  # From HA machine:
-  ping <your-pi-ip>
-  # Should respond (no timeout, no "unreachable")
-  ```
+- [ ] **Integration appears in HA**
+  - Go to Settings → Devices & Services
+  - Click "Add Integration"
+  - Search for "Perimeter Control" - should appear
 
-- [ ] **Check firewall allows port 8080**
-  ```bash
-  # On Pi:
-  sudo ufw status numbered
-  # If UFW enabled, verify port 8080 is NOT blocked
-  # If blocked:
-  sudo ufw allow 8080
-  ```
+- [ ] **Device configuration works**
+  - [ ] Host: Your Pi IP/hostname
+  - [ ] Port: 22 (SSH port)
+  - [ ] Username: SSH username
+  - [ ] SSH Key: Paste or reference `!secret perimeter_ssh_key`
+  - [ ] Supervisor Port: 8080
 
-- [ ] **If HA and Pi on different networks, verify routing**
-  ```bash
-  # From HA machine:
-  traceroute <pi-ip>
-  # Verify path reaches Pi (< 15 hops)
-  ```
+### 4.2: Verify Integration Functions
 
-- [ ] **If behind corporate/school network, check CORS restrictions**
-  - [ ] CORS is explicitly blocked (you'll see CORS errors in browser console)
-  - [ ] If yes, configure Supervisor CORS or use reverse proxy
+- [ ] **Panel appears in sidebar**
+  - "Perimeter Control" should be visible in HA sidebar
+  - Click it to open management interface
 
-### 2.2: Test API Baseline
+- [ ] **Services registered**
+  - Go to Developer Tools → Services
+  - Search "perimeter_control" - should show 6 services
+  - Try `perimeter_control.get_device_info` to test
 
-- [ ] **Test API is accessible from wherever you are**
-  ```bash
-  # From HA machine:
-  curl -v http://<your-pi-ip>:8080/api/v1/services
-  
-  # Expected:
-  # HTTP/1.1 200 OK
-  # Content-Type: application/json
-  # { "services": { "photo_booth": {...}, ... } }
-  
-  # If you get:
-  # "Connection refused" → Firewall/routing issue, port wrong
-  # "Connection timeout" → Network unreachable or no route
-  # "404 Not Found" → API path different, verify Supervisor version
-  # "Unauthorized" → Authentication required (future feature)
-  ```
-
-- [ ] **Save API response for reference**
-  ```bash
-  curl http://<your-pi-ip>:8080/api/v1/services > /tmp/api-baseline.json
-  cat /tmp/api-baseline.json  # Should show all services
-  ```
+- [ ] **Device appears in device registry**
+  - Settings → Devices & Services → Perimeter Control
+  - Should show your Pi device with model/software info
 
 ---
 
-## Section 3: Single vs Multi-Pi Configuration
+## Section 5: Functional Testing
 
-### 3.1: Determine Your Topology
+### 5.1: Basic Operations
 
-- [ ] **Single Pi (Most Common)**
-  - [ ] All cards use `api_base_url: "http://<pi-ip>:8080"`
-  - [ ] All services on same Pi share same port
-  - Goes to **Section 4.1 (Single Pi Deployment)**
-
-- [ ] **Multiple Pis (Fleet)**
-  - [ ] First Pi: `http://pi-1.local:8080`
-  - [ ] Second Pi: `http://pi-2.local:8080` (DIFFERENT IP, NOT different port!)
-  - [ ] Third Pi: `http://pi-3.local:8080` (each Pi is different)
-  - Goes to **Section 4.2 (Multi-Pi Deployment)**
-
-- [ ] **If Multiple Pis**: Verify each is accessible
-  ```bash
-  # For each Pi:
-  curl http://<pi-ip>:8080/api/v1/services
-  # Should return JSON from THAT specific Pi
+- [ ] **Deploy function works**
+  ```yaml
+  # In Developer Tools → Services:
+  service: perimeter_control.deploy
+  data:
+    force: true
   ```
+
+- [ ] **Device info retrieval**
+  ```yaml
+  service: perimeter_control.get_device_info
+  # Should return Pi hardware details in logs
+  ```
+
+- [ ] **Service management**
+  ```yaml
+  # Start a service:
+  service: perimeter_control.start_capability
+  data:
+    capability: photo_booth
+  ```
+
+### 5.2: Error Scenarios
+
+- [ ] **SSH failure handling**
+  - Try with wrong SSH key - should show clear error
+  - Try with unreachable IP - should timeout gracefully
+
+- [ ] **API failure handling**
+  - Stop supervisor on Pi: `sudo systemctl stop isolator-supervisor`
+  - Try operations - should show "connection refused" errors
+  - Restart supervisor: `sudo systemctl start isolator-supervisor`
 
 ---
 
-## Section 4: Configuration File Preparation
+## Troubleshooting Guide
 
-### 4.1: Single Pi Configuration
+### Integration Not Found
+```bash
+# Check files copied correctly:
+ls -la /config/custom_components/perimeter_control/
+# Should show: __init__.py, manifest.json, etc.
 
-- [ ] **Create lovelace view YAML** (or update existing)
-  - [ ] Replace `SUPERVISOR_IP` with your Pi's IP or mDNS hostname
-  - [ ] Replace `8080` if using different port
-  - [ ] Verify syntax (proper indentation, no quotes around URLs)
+# Check HA logs:
+grep -i perimeter /config/home-assistant.log
+```
+
+### SSH Connection Issues
+```bash
+# Test SSH manually:
+ssh -i ~/.ssh/id_rsa paul@192.168.50.47
+
+# Check key format:
+head -1 ~/.ssh/id_rsa | grep "BEGIN"
+```
+
+### API Connection Issues
+```bash
+# Test supervisor API:
+curl http://192.168.50.47:8080/api/v1/services
+
+# Check supervisor status:
+ssh paul@192.168.50.47 "sudo systemctl status isolator-supervisor"
+```
 
   ```yaml
   - type: custom:perimeter-control-card

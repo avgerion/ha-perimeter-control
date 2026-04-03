@@ -4,225 +4,183 @@
 
 ---
 
-## 🚀 I'm about to deploy — where do I start?
+## 🚀 I want to install the integration — where do I start?
 
 **Your exact sequence**:
 
-1. [ROBUSTNESS-SUMMARY.md](ROBUSTNESS-SUMMARY.md) — 2 min read
-   - Understand what issues were fixed
-   - Overview of all documentation
+1. [QUICKSTART.md](QUICKSTART.md) — 5 min setup
+   - Quick installation via HACS or manual
+   - Add Pi device via HA UI
+   - Basic verification steps
 
-2. [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) — 10 min read if single Pi, 20 if multi-Pi
-   - Understand the port-sharing architecture
-   - Find your Supervisor IP or hostname
-   - Decide on IP vs mDNS vs public domain
+2. [README.md](README.md) — Complete overview
+   - Full feature list and capabilities
+   - Installation options
+   - Usage examples and automation
 
-3. [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) — 15-30 min, MUST do
-   - Work through all 13 sections
-   - **Don't skip any section**
-   - This prevents 95% of deployment issues
+3. [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) — 15-20 min verification
+   - Verify HA prerequisites 
+   - Check Pi device requirements
+   - Network connectivity validation
+   - **Recommended before setup**
 
-4. [SAFE-DEPLOYMENT.md](SAFE-DEPLOYMENT.md) — Follow phases during actual deployment
-   - Phase 1: Deploy to HACS or manual install
-   - Phase 2: Verify card loads
-   - Phase 3: Test functionality
-   - Phase 4: Add more cards (if desired)
-   - **Reference Rollback Procedures if something breaks**
-
-5. [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) — Optional, builds confidence
-   - Understand the three-layer protection
-   - Learn what can't break even if card fails
+4. [INTEGRATION.md](INTEGRATION.md) — Technical deep dive
+   - Architecture and data flow
+   - Service registration details  
+   - API integration specifics
+   - Development information
 
 ---
 
-## 🔍 Something broke — where do I look?
+## 🔧 I want to configure/manage Pi devices
+
+**Your options**:
+
+1. **Via HA Interface** (Recommended):
+   - Use "Perimeter Control" panel in HA sidebar
+   - Access deploy, start/stop, configuration functions
+   - Real-time device status and service management
+
+2. **Via HA Services**:
+   - Developer Tools → Services → `perimeter_control.*`
+   - Use in automations and scripts
+   - Available services: deploy, start_capability, stop_capability, etc.
+
+3. **Manual SSH** (Advanced):
+   - Direct SSH to Pi devices
+   - Manual supervisor API calls
+   - Use when integration troubleshooting needed
+
+---
+
+## 🔍 Something's not working — where do I look?
 
 **Your exact sequence**:
 
 1. [DIAGNOSTICS.md](DIAGNOSTICS.md) — START HERE
-   - Find your error type (e.g., "Cannot reach API")
-   - Follow diagnosis steps (will take 2-5 minutes)
-   - See exact commands to run
-   - Get quick fix
+   - Common integration issues
+   - Step-by-step troubleshooting  
+   - Connection and service problems
 
-2. If DIAGNOSTICS.md doesn't solve it:
-   - [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) Troubleshooting section
-   - [SAFE-DEPLOYMENT.md](SAFE-DEPLOYMENT.md) Emergency Rollback Procedures
+2. [INTEGRATION.md](INTEGRATION.md) — Technical troubleshooting
+   - Check logging configuration
+   - Verify SSH connectivity
+   - API communication debugging
 
-3. If still stuck:
+3. **HA Built-in Tools**:
+   - Settings → System → Logs (search "perimeter")
+   - Developer Tools → Services (test `perimeter_control.*`)
+   - Settings → Devices & Services → Perimeter Control (device status)
+
+4. If still stuck:
    - Gather info from DIAGNOSTICS.md "When Nothing Else Works"
    - Create GitHub issue with details
 
 ---
 
-## 📋 Building Custom Configuration
+## 📚 I want to understand the architecture
 
-**Choose your scenario**:
+**Background reading**:
 
-### Single Raspberry Pi (most common)
-1. [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) → "Pattern 1: Single Pi"
-2. [example-lovelace-view.yaml](example-lovelace-view.yaml) → Copy single-Pi section
-3. [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) → Section 4.1
-4. Follow SAFE-DEPLOYMENT.md phases
+1. [INTEGRATION.md](INTEGRATION.md) — Integration architecture
+   - How HA communicates with Pi devices
+   - Service registration and entity creation
+   - Frontend panel and static asset serving
 
-### Multiple Pis (Fleet)
-1. [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) → "Pattern 2: Multiple Pis"
-2. [example-fleet-card.yaml](example-fleet-card.yaml) → Fleet view setup
-3. [example-lovelace-view.yaml](example-lovelace-view.yaml) → Multi-Pi cards section
-4. [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) → Section 4.2
-5. Follow SAFE-DEPLOYMENT.md phases
+2. [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) — Network design
+   - Pi supervisor API structure
+   - Multi-device communication patterns
+   - Security and isolation concepts
 
-### Remote Access via VPN or Public Domain
-1. [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) → "HTTP vs HTTPS Section"
-2. [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) → Section 8
-3. Configure CORS in Supervisor (NETWORK-ARCHITECTURE.md section 6.2)
-4. Deploy with HTTPS and certificate
+3. [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) — Safety design
+   - Error handling and recovery
+   - Integration failure isolation
+   - Rollback and debugging capabilities
+
+---
+
+## 📋 Managing Multiple Pi Devices
+
+**Scaling to multiple devices**:
+
+### Single Pi Setup (most common)
+1. Add one Pi device via integration setup
+2. Use "Perimeter Control" panel to manage
+3. Deploy and manage services via HA interface
+
+### Multiple Pi Fleet Management
+1. Add each Pi as separate integration instance
+2. Each Pi appears as separate device in HA
+3. Use automations to coordinate across devices
+4. Monitor all devices through single HA interface
+
+### Example Multi-Pi Automation
+```yaml
+# Deploy to all Pi devices
+automation:
+  - trigger:
+      platform: time
+      at: "02:00:00"
+    action:
+      service: perimeter_control.deploy
+      data:
+        force: true
+```
+
+---
+
+## 🚀 Advanced Usage
+
+**Power user guides**:
+
+- **Automation Integration**: Use `perimeter_control.*` services in automations  
+- **Service Orchestration**: Coordinate multiple capabilities across devices
+- **Custom Deployment**: Direct supervisor API usage for custom capabilities
+- **Fleet Monitoring**: Monitor multiple Pi devices from single HA dashboard
+
+**Development**:
+- [Frontend build process](README.md#development)
+- [Service registration](INTEGRATION.md#service-registration)  
+- [Entity creation patterns](INTEGRATION.md#entity-creation)
+- [Custom frontend components](../ha-integration/src/)
 
 ---
 
 ## 🛡️ Understanding the Safety Systems
 
-**Want to understand what protects your HA instance?**
+**Integration reliability features**:
 
-1. [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) — Complete
-   - Layer 1: Error Boundary component
-   - Layer 2: Safe Loader with timeouts
-   - Layer 3: Graceful degradation
+1. [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) — Complete safety overview
+   - Error isolation and recovery
+   - Connection timeout handling  
+   - Graceful degradation patterns
 
-2. [src/error-boundary.ts](src/error-boundary.ts) — Component code (170 lines)
-3. [src/safe-loader.ts](src/safe-loader.ts) — Component code (280 lines)
-
----
-
-## 📖 General Documentation
-
-| Document | When to Read | Time |
-|----------|--------------|------|
-| [README.md](README.md) | First time, overview | 10 min |
-| [QUICKSTART.md](QUICKSTART.md) | Quick install walkthrough | 5 min |
-| [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) | Before deployment, multi-Pi setup | 10-20 min |
-| [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) | **MUST do before HA deployment** | 15-30 min |
-| [SAFE-DEPLOYMENT.md](SAFE-DEPLOYMENT.md) | During actual HA deployment | 20-30 min |
-| [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) | Want to understand protection | 15 min |
-| [DIAGNOSTICS.md](DIAGNOSTICS.md) | If something breaks | 5-10 min |
-| [ROBUSTNESS-SUMMARY.md](ROBUSTNESS-SUMMARY.md) | Overview of what was fixed | 5 min |
+2. **Built-in Protections**:
+   - SSH connection timeouts and retries
+   - API error handling and exponential backoff
+   - Integration failure isolation (won't break HA)
+   - Automatic entity cleanup on device disconnect
 
 ---
 
-## 💡 Quick Reference
+## 📖 Reference Documentation
 
-### Find Supervisor IP
-```bash
-ssh pi@<your-pi-ip>
-hostname -I
-# Use output in api_base_url
-```
-
-### Verify API Works
-```bash
-curl http://<pi-ip>:8080/api/v1/services
-# Should return JSON
-```
-
-### Required YAML Fields
-```yaml
-- type: custom:perimeter-control-card
-  service_id: photo_booth             # ← Required (from curl above)
-  api_base_url: "http://192.168.69.11:8080"  # ← Required
-  api_timeout_ms: 10000               # Optional, default 10000
-  enable_error_details: false         # Optional, for debugging
-```
-
-### Common Errors & Quick Fixes
-
-| Error | Solution |
-|-------|----------|
-| "Cannot reach API" | Check IP, run `curl http://<ip>:8080/api/v1/services`, check firewall |
-| "Connection Timeout" | Network slow? Increase `api_timeout_ms: 20000` |
-| "CORS error" | HA and Pi on different machines? Configure CORS on Supervisor |
-| "Invalid Configuration" | Run YAML validator at yamllint.com, check syntax |
-| "Card renders but no data" | Wrong `service_id`? Check curl response for exact names |
+| Document | Purpose | Read Time |
+|----------|---------|-----------|
+| [README.md](README.md) | Complete feature overview | 5 min |
+| [QUICKSTART.md](QUICKSTART.md) | Installation walkthrough | 5 min |
+| [INTEGRATION.md](INTEGRATION.md) | Technical architecture | 15 min |
+| [PRE-DEPLOYMENT-CHECKLIST.md](PRE-DEPLOYMENT-CHECKLIST.md) | Setup verification | 20 min |
+| [DIAGNOSTICS.md](DIAGNOSTICS.md) | Troubleshooting guide | As needed |
+| [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md) | Network design | 10 min |
+| [SAFETY-ARCHITECTURE.md](SAFETY-ARCHITECTURE.md) | Safety systems | 10 min |
 
 ---
 
-## 🎯 Decision Tree
+## 💡 Quick Navigation
 
-```
-Start here
-    ↓
-Have you read README.md?
-    ├─ No → Read README.md (10 min)
-    └─ Yes ↓
-    
-Ready to deploy?
-    ├─ No, setting up first → Run through examples, customize
-    │   ├─ Single Pi? → See example-lovelace-view.yaml
-    │   └─ Multi-Pi? → See example-fleet-card.yaml
-    │
-    └─ Yes ↓
-    
-Run PRE-DEPLOYMENT-CHECKLIST.md (MUST DO)
-    ├─ Found issue? → Fix it, repeat checklist
-    └─ All ✅? ↓
-    
-Follow SAFE-DEPLOYMENT.md phases
-    ├─ Something breaks? → Go to DIAGNOSTICS.md
-    │   ├─ Still broken? → Check NETWORK-ARCHITECTURE.md
-    │   └─ Create GitHub issue with debug info
-    │
-    └─ Success! ✅
-```
-
----
-
-## 🚨 Critical Path for Single HA Instance
-
-**These are non-negotiable if you have ONE HA instance:**
-
-1. ✅ Backup configuration.yaml before deployment
-2. ✅ Read SAFETY-ARCHITECTURE.md to understand protection layers
-3. ✅ Run full PRE-DEPLOYMENT-CHECKLIST.md (all 13 sections)
-4. ✅ Deploy incrementally (one card at a time)
-5. ✅ Monitor logs first week
-6. ✅ Keep DIAGNOSTICS.md bookmarked
-7. ✅ All rollback procedures verified BEFORE deployment
-
-**If you skip any of these, you risk breaking your home automation. Don't skip.**
-
----
-
-## 📞 Getting Help
-
-**Before creating an issue, provide**:
-
-1. Output of: `curl http://<pi-ip>:8080/api/v1/services`
-2. Browser console errors (F12 → Console)
-3. HA logs snippet (Settings → Developer Tools → Logs)
-4. Your network setup (single Pi, multi-Pi, VPN, etc.)
-5. Supervisor version: `ssh pi@<ip> cat /opt/isolator/VERSION`
-6. HA version: Settings → System → About
-
-**Send debug output to**:
-https://github.com/avgerion/ha-perimeter-control/issues
-
----
-
-## 📚 Related Docs in Repo
-
-- Supervisor docs: `/docs/`
-- Supervisor deployment: `/scripts/deploy-dashboard-web.ps1`
-- API reference: Generated by Supervisor (`/api/v1/docs`)
-- Service descriptors: `/server/`
-
----
-
-## ✨ You're Ready!
-
-- ✅ Architecture understood
-- ✅ Safety systems in place
-- ✅ Documentation comprehensive
-- ✅ Diagnostics available
-- ✅ Rollback procedures ready
-
-**Deploy with confidence.** Your home automation is protected. 🛡️🚀
-
+- **Just getting started?** → [QUICKSTART.md](QUICKSTART.md)
+- **Installation issues?** → [DIAGNOSTICS.md](DIAGNOSTICS.md)  
+- **Want technical details?** → [INTEGRATION.md](INTEGRATION.md)
+- **Setting up automation?** → [README.md](README.md#service-automation-examples)
+- **Managing multiple Pis?** → [Multiple Pi Fleet Management](#multiple-pi-fleet-management)

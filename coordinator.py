@@ -96,7 +96,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Initialize HTTP session for Supervisor API
         instance._http_session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=10),
-            connector=aiohttp.TCPConnector(limit=10),
+            connector=aiohttp.TCPConnector(
+                limit=10,
+                ssl=False,  # Explicitly disable SSL for HTTP connections
+                force_close=True,  # Ensure connections are closed properly
+            ),
         )
         
         # Check if supervisor is available before starting WebSocket
@@ -106,16 +110,19 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Also check if dashboard is healthy by testing a simple HTTP request
             try:
-                async with instance._http_session.get(f"http://{instance._entry.data[CONF_HOST]}:{instance._entry.data.get('dashboard_port', 8080)}/") as resp:
-                    if resp.status == 200:
-                        _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
-                        # Start WebSocket connection after successful health checks  
-                        instance.hass.async_create_task(
-                            instance._delayed_websocket_start(),
-                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                        )
-                    else:
-                        raise Exception(f"Dashboard returned HTTP {resp.status}")
+                if not instance._http_session.closed:
+                    async with instance._http_session.get(f"http://{instance._entry.data[CONF_HOST]}:{instance._entry.data.get('dashboard_port', 8080)}/") as resp:
+                        if resp.status == 200:
+                            _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
+                            # Start WebSocket connection after successful health checks  
+                            instance.hass.async_create_task(
+                                instance._delayed_websocket_start(),
+                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                            )
+                        else:
+                            raise Exception(f"Dashboard returned HTTP {resp.status}")
+                else:
+                    raise Exception("HTTP session is closed")
             except Exception as dashboard_exc:
                 _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
                 # Trigger deployment even though supervisor is working - but don't block startup
@@ -228,8 +235,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _supervisor_get(self, endpoint: str) -> dict[str, Any]:
         """Make GET request to Supervisor API endpoint."""
-        if not self._http_session:
-            raise UpdateFailed("HTTP session not initialized")
+        if not self._http_session or self._http_session.closed:
+            raise UpdateFailed("HTTP session not initialized or closed")
         
         url = f"{self._supervisor_base_url}{endpoint}"
         try:
@@ -247,8 +254,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     
     async def _supervisor_post(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
         """Make POST request to Supervisor API endpoint."""
-        if not self._http_session:
-            raise UpdateFailed("HTTP session not initialized")
+        if not self._http_session or self._http_session.closed:
+            raise UpdateFailed("HTTP session not initialized or closed")
         
         url = f"{self._supervisor_base_url}{endpoint}"
         try:
@@ -414,7 +421,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _start_websocket_listener(self) -> None:
         """Start WebSocket connection for real-time events."""
         # Skip if already starting or websocket already exists
-        if self._websocket_starting or self._websocket or not self._http_session or not self._running:
+        if self._websocket_starting or self._websocket or not self._http_session or self._http_session.closed or not self._running:
             return
             
         # Set flag to prevent concurrent starts    

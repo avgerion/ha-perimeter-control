@@ -1,102 +1,132 @@
 # Perimeter Control — Home Assistant Integration
 
-A reusable **Lit web component** for Home Assistant that enables end-to-end editing of service access profiles on a remote **Pi target device** running the Isolator Supervisor.
+A **native Home Assistant integration** that provides complete management of **Isolator Pi edge nodes** through a clean, integrated user interface.
 
 ## Architecture
 
-This integration connects your **Home Assistant server** to a **remote Raspberry Pi target device**:
+This integration connects your **Home Assistant server** to **remote Raspberry Pi target devices** running the Isolator Supervisor:
 
 ```
 Home Assistant Server ──SSH Deploy──► Pi Target (192.168.50.47)
                       ◄─────API────── Supervisor (port 8080)
 ```
 
-The integration handles:
-- SSH deployment of supervisor and services to the Pi target
-- Real-time communication with the Pi's supervisor API  
-- UI components for managing Pi services from HA
+The integration provides:
+- **Native HA Integration**: Appears in Settings → Devices & Services
+- **Automated Setup**: No manual configuration.yaml editing required
+- **Frontend Panel**: Integrated UI panel in HA sidebar
+- **Service Discovery**: Automatic detection of Pi devices and their capabilities
+- **SSH Deployment**: Deploy services directly from Home Assistant
+- **Real-time Monitoring**: Live device status and service management
 
 ## Features
 
-- 🎛️ **Edit Access Profiles**: Mode, port, TLS settings, authentication, exposure scope
-- 🔗 **CORS Origins Management**: Add/remove allowed origins with live preview
-- 🎨 **Material Design**: Clean, accessible UI matching HA standards
-- 📱 **Responsive**: Works on desktop and mobile clients
-- ✅ **Validation**: Type-safe form inputs with field hints
-- 🔄 **Real-time Sync**: Reflects server changes immediately
-- 🚀 **Zero Dependencies**: Built with Lit, no heavy frameworks
+- 🏠 **Native HA Integration**: Full integration with Home Assistant's device & service management
+- 📡 **Multi-Device Support**: Manage multiple Pi targets from one HA instance  
+- 🚀 **One-Click Deployment**: Deploy and manage Pi services directly from HA
+- 📊 **Service Management**: Start, stop, configure, and monitor Pi services
+- 🔧 **Device Discovery**: Automatic detection of device capabilities and hardware
+- ⚙️ **Configuration Flow**: Guided setup with SSH key management
+- 📱 **Responsive UI**: Clean, mobile-friendly interface integrated into HA
 
 ## Installation
 
 ### Option 1: HACS (Recommended)
 
-1. Add repository to HACS:
+1. Add custom repository to HACS:
    ```yaml
    custom_repositories:
      - repository: https://github.com/avgerion/ha-perimeter-control
-       category: lovelace
+       category: integration
    ```
 
 2. Install "Perimeter Control" from HACS
-3. Add to your Lovelace dashboard (see Usage below)
+3. Restart Home Assistant
+4. Go to Settings → Devices & Services → Add Integration
+5. Search for "Perimeter Control" and follow the setup
 
 ### Option 2: Manual Installation
 
-```bash
-# Clone and build
-git clone https://github.com/avgerion/ha-perimeter-control.git
-cd ha-integration
-npm install
-npm run build
+1. Download/clone this repository
+2. Copy the entire project directory to your Home Assistant custom_components:
+   ```bash
+   # Copy integration files
+   cp -r /path/to/NetworkIsolator /config/custom_components/perimeter_control/
+   ```
+3. Restart Home Assistant
+4. Go to Settings → Devices & Services → Add Integration
+5. Search for "Perimeter Control" and configure
 
-# Copy dist/ to your Home Assistant config
-# .../config/www/isolator-service-access/
-ls -la dist/
-# dist/ha-integration.js
-```
+## Setup
 
-Then in your HA `configuration.yaml`:
+### Adding a Pi Device
+
+1. In Home Assistant, go to **Settings → Devices & Services**
+2. Click **"Add Integration"**
+3. Search for **"Perimeter Control"**
+4. Enter your Pi device details:
+   - **Host**: IP address or hostname (e.g., `192.168.50.47`)
+   - **Port**: SSH port (usually `22`)
+   - **Username**: SSH username (e.g., `pi` or `paul`)
+   - **SSH Key**: Your private key (multiline supported)
+   - **Supervisor Port**: API port (usually `8080`)
+
+### SSH Key Configuration
+
+**Recommended approach** - use `secrets.yaml`:
 
 ```yaml
-frontend:
-  extra_module_url:
-    - /local/isolator-service-access/ha-integration.js
+# secrets.yaml
+perimeter_ssh_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAA...
+  -----END OPENSSH PRIVATE KEY-----
 ```
+
+Then reference it during setup: `!secret perimeter_ssh_key`
 
 ## Usage
 
-### Basic Card Configuration
+### Accessing the Interface
 
-Add to your Lovelace dashboard YAML:
+Once configured:
+
+1. **Perimeter Control** will appear as a **panel in your HA sidebar**
+2. Click it to access the management interface
+3. View all your configured Pi devices and their services
+4. Deploy, start, stop, and configure services with one click
+
+### Available Services
+
+The integration registers these services in **Developer Tools → Services**:
+
+- `perimeter_control.deploy` - Deploy supervisor and services to Pi
+- `perimeter_control.trigger_capability` - Trigger specific capability actions
+- `perimeter_control.start_capability` - Start a capability/service
+- `perimeter_control.stop_capability` - Stop a capability/service  
+- `perimeter_control.reload_config` - Reload device configuration
+- `perimeter_control.get_device_info` - Get device hardware information
+
+### Example Service Calls
 
 ```yaml
-type: custom:perimeter-control-card
-service_id: photo_booth
-api_base_url: http://192.168.69.11:8080
+# Deploy to all configured devices
+service: perimeter_control.deploy
+data:
+  force: true
+
+# Start the photo booth service
+service: perimeter_control.start_capability 
+data:
+  capability: photo_booth
+
+# Trigger a BLE scan
+service: perimeter_control.trigger_capability
+data:
+  capability: ble_scanner
+  action: start_scan
+  config: '{"duration": 30}'
 ```
-
-### Multi-Service Fleet View (Advanced)
-
-Create a view showing all services across multiple Pi instances:
-
-```yaml
-type: vertical-stack
-cards:
-  - type: heading
-    heading: Service Fleet Configuration
-
-  - type: entities
-    title: Network Isolator Nodes
-    entities:
-      - entity_id: sensor.isolator_node_1_status
-
-  - type: custom:layout-card
-    layout_type: grid
-    columns: 2
-    cards:
-      - type: custom:perimeter-control-card
-        service_id: photo_booth
-        api_base_url: http://pi-1.local:8080
 
       - type: custom:perimeter-control-card
         service_id: wildlife_monitor
