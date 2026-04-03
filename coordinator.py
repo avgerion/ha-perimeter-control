@@ -301,14 +301,26 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch all integration data using the efficient HA endpoint."""
         try:
             result = await self._supervisor_get("/ha/integration")
+            _LOGGER.warning("Supervisor API /ha/integration response: %s", result)
             
             # Also fetch dashboard URLs for convenience
             dashboard_urls = await self.get_dashboard_urls()
             
+            # Log what we're extracting
+            entities = result.get("entities", [])
+            services = result.get("services", [])
+            capabilities = result.get("capabilities", [])
+            node_info = result.get("node_info", {})
+            
+            _LOGGER.warning("Extracted from API - entities: %d, services: %d, capabilities: %d", 
+                        len(entities), len(services), len(capabilities))
+            _LOGGER.warning("Node info: %s", node_info)
+            _LOGGER.warning("Services: %s", services)
+            
             # Transform to match expected format
             return {
                 "supervisor_active": result.get("health", {}).get("status") == "healthy",
-                "supervisor_entities": result.get("entities", []),
+                "supervisor_entities": entities,
                 "entity_states": result.get("states", {}),
                 "services_config": result.get("services", {}),
                 "config_changes": result.get("config_changes", {}),
@@ -599,6 +611,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Use new HA integration endpoint for efficient data fetching
         supervisor_data = await self._fetch_ha_integration_data()
         
+        _LOGGER.warning("Coordinator update - supervisor_entities count: %d", 
+                    len(supervisor_data.get("supervisor_entities", [])))
+        _LOGGER.warning("Selected services in coordinator: %s", self._selected_services)
+        _LOGGER.warning("Service descriptors loaded: %s", list(self._service_descriptors.keys()))
+        
         # Legacy service status via SSH (fallback for deploy operations)
         service_status = {}
         try:
@@ -650,6 +667,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # On first attempt wait 1s, then exponential backoff
                         await asyncio.sleep(1 if attempt == 0 else min(10, 2 ** attempt))
                         await self._supervisor_get("/health")
+                        
+                        # Try to activate selected services in the Supervisor
+                        await self._activate_supervisor_services()
+                        
                         await self._start_websocket_listener()
                         _LOGGER.info("Successfully connected to deployed supervisor API (attempt %d)", attempt + 1)
 
@@ -721,6 +742,38 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Shutdown
     # ------------------------------------------------------------------
 
+    async def _activate_supervisor_services(self) -> None:
+        """Activate selected services in the Supervisor via API deployment."""
+        if not self._selected_services:
+            _LOGGER.warning("No services selected for activation")
+            return
+            
+        _LOGGER.warning("Activating selected services in Supervisor: %s", self._selected_services)
+        
+        # Build deployment payload for selected services
+        deployment_payload = {}
+        for service_id in self._selected_services:
+            if service_id in self._service_descriptors:
+                desc = self._service_descriptors[service_id]
+                # Create basic capability config for deployment
+                deployment_payload[service_id] = {
+                    "name": desc.name,
+                    "type": service_id,
+                    "version": desc.version,
+                    "enabled": True,
+                }
+        
+        if deployment_payload:
+            try:
+                _LOGGER.warning("Deploying capabilities to Supervisor: %s", list(deployment_payload.keys()))
+                result = await self._supervisor_post("/deployments", {
+                    "capabilities": deployment_payload,
+                    "dry_run": False
+                })
+                _LOGGER.warning("Supervisor deployment result: %s", result)
+            except Exception as exc:
+                _LOGGER.warning("Failed to activate services in Supervisor: %s", exc)
+    
     async def async_shutdown(self) -> None:
         """Clean shutdown of coordinator resources."""
         # Stop reconnection attempts
