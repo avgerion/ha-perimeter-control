@@ -98,6 +98,74 @@
       "problemMatcher": []
     },
     {
+      "label": "Build HA Integration",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/ha-integration"
+      },
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "tab": "HA Build"
+      },
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+)\\s+(warning|error)\\s+(TS\\d+):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "code": 5,
+            "message": 6
+          }
+        }
+      ]
+    },
+    {
+      "label": "Watch HA Integration",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "watch"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/ha-integration"
+      },
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "tab": "HA Watch"
+      },
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+)\\s+(warning|error)\\s+(TS\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^rollup",
+          "endsPattern": "(created|updated)\\s+.*\\.js"
+        }
+      }
+    },
+    {
       "label": "Tunnel + Open Browser",
       "dependsOrder": "sequence",
       "dependsOn": [

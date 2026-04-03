@@ -494,7 +494,7 @@ actions:
 # Resource requirements
 resources:
   cpu_cores: 0.1
-  memory_mb: 64
+  ram_mb: 64
   disk_mb: 10
 
 # Dependencies
@@ -636,7 +636,7 @@ def get_resource_requirements(self) -> Dict[str, Any]:
     \"\"\"Return resource requirements for this capability.\"\"\"
     return {
         "cpu_cores": 0.1 * self.max_devices,  # Scale with device count
-        "memory_mb": 64 + (self._device_count * 8),
+        "ram_mb": 64 + (self._device_count * 8),
         "disk_mb": 10 + (self._device_count * 2),
         "network_bandwidth_kbps": 100 if self._device_count > 0 else 0,
     }

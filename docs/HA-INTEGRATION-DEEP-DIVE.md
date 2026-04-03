@@ -6,7 +6,7 @@ Detailed guide for HA discovery, entity translation, automation examples, and fl
 
 This integration operates across **two separate devices**:
 
-1. **Home Assistant Server**: Runs the custom integration (custom_components/perimeter_control/)
+1. **Home Assistant Server**: Runs the custom integration (root level HA integration files)
 2. **Raspberry Pi Target Device(s)**: Remote Pi(s) where services are deployed (e.g., `192.168.50.47`)
 
 Communication flow:

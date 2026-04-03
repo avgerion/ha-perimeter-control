@@ -187,6 +187,10 @@ npm clean
 npm run lint
 ```
 
+**VS Code Integration:**
+- **Ctrl+Shift+P → "Tasks: Run Task" → "Build HA Integration"** for one-time builds
+- **Ctrl+Shift+P → "Tasks: Run Task" → "Watch HA Integration"** for auto-rebuild during development
+
 Build output goes to `dist/`:
 - `ha-integration.js` — Bundled HA card + editor component
 

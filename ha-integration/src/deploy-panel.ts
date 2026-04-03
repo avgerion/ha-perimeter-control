@@ -199,7 +199,7 @@ export class DeployPanel extends LitElement {
                     <details class="setup-hint">
                         <summary>Setup instructions</summary>
                         <ol>
-                            <li>Install the <strong>Perimeter Control</strong> integration via HACS or manually into <code>custom_components/perimeter_control/</code>.</li>
+                            <li>Install the <strong>Perimeter Control</strong> integration via HACS or manually copy <code>*.py, manifest.json</code> to <code>/config/custom_components/perimeter_control/</code>.</li>
                             <li>In HA go to <strong>Settings → Devices &amp; Services → Add Integration</strong> and search for <em>Perimeter Control</em>.</li>
                             <li>Complete the Add Device wizard (host, SSH key, services).</li>
                             <li>Copy the entry ID from the device page and add <code>entry_id: &lt;id&gt;</code> to this card's YAML.</li>

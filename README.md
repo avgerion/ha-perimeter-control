@@ -110,7 +110,7 @@ Both methods can set up a **fresh Pi target device with just Pi OS + SSH**:
 ### Manual Installation
 
 1. **Download** the latest release
-2. **Extract** `custom_components/perimeter_control/` to your HA config directory
+2. **Extract** integration files (`*.py`, `manifest.json`) to your HA config directory under `custom_components/perimeter_control/`
 3. **Restart** Home Assistant
 4. **Add Integration** via Settings > Devices & Services
 
@@ -245,8 +245,31 @@ ssh -i keyfile user@pi-ip 'sudo systemctl status isolator-supervisor'
 1. **Fork** the repository
 2. **Create** a feature branch
 3. **Make** your changes
-4. **Test** thoroughly
-5. **Submit** a pull request
+4. **Build** if needed:
+   ```bash
+   # For HA integration TypeScript changes
+   cd ha-integration
+   npm install
+   npm run build
+   ```
+5. **Test** thoroughly
+6. **Submit** a pull request
+
+## 🔧 Development Tasks
+
+**VS Code Tasks (Ctrl+Shift+P → "Tasks: Run Task"):**
+- **Build HA Integration** - Compile TypeScript to JavaScript
+- **Watch HA Integration** - Auto-rebuild on file changes  
+- **Deploy Dashboard** - Deploy to Pi device
+- **Open SSH Tunnel** - Create secure connection to Pi
+
+**Manual Build Commands:**
+```bash
+cd ha-integration
+npm run build      # One-time build
+npm run watch      # Watch mode for development
+npm run dev        # Development server
+```
 
 ## 📄 License
 

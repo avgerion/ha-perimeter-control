@@ -9,7 +9,7 @@ The Perimeter Control system operates across **two separate networked devices**:
 ### 🏠 Home Assistant Server
 - **Purpose**: Runs the custom integration that provides UI and orchestration
 - **Location**: Your existing Home Assistant installation (any device)  
-- **Software**: `custom_components/perimeter_control/` integration
+- **Software**: HA integration files (manifest.json, *.py in root directory)
 - **Network Role**: SSH client, HTTP API client
 
 ### 🥧 Raspberry Pi Target Device  

@@ -227,9 +227,9 @@ fi
             for service_id in self._selected_services:
                 if service_id in self._service_descriptors:
                     service_desc = self._service_descriptors[service_id]
-                    service_resources = service_desc.resources or {}
+                    service_resources = service_desc.raw.get('spec', {}).get('resources', {})
                     total_cpu_required += service_resources.get('cpu_cores', 0.1)
-                    total_memory_required += service_resources.get('memory_mb', 64)
+                    total_memory_required += service_resources.get('ram_mb', 64)  # Note: it's ram_mb in YAML
                     total_disk_required += service_resources.get('disk_mb', 20)
             
             self._emit(PHASE_PREFLIGHT, "Validating resource requirements...", 3)

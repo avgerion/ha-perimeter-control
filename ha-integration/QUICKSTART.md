@@ -25,7 +25,8 @@ Output: `dist/ha-integration.js`
 To install the Perimeter Control integration manually, copy the integration folder to your Home Assistant config:
 
 ```bash
-scp -r custom_components/perimeter_control user@homeassistant:/config/custom_components/
+# Copy integration files to HA custom_components directory
+scp -r *.py manifest.json user@homeassistant:/config/custom_components/perimeter_control/
 ```
 
 After copying, restart Home Assistant and add the integration via Settings → Devices & Services.
