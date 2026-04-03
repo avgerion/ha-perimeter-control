@@ -755,11 +755,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for service_id in self._selected_services:
             if service_id in self._service_descriptors:
                 desc = self._service_descriptors[service_id]
+                # Get version from descriptor metadata, default to "1.0.0"
+                version = desc.raw.get("metadata", {}).get("version", "1.0.0")
                 # Create basic capability config for deployment
                 deployment_payload[service_id] = {
                     "name": desc.name,
                     "type": service_id,
-                    "version": desc.version,
+                    "version": version,
                     "enabled": True,
                 }
         
