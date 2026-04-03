@@ -61,6 +61,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._running = True
         self._reconnect_attempts = 0
         self._websocket_task: Optional[asyncio.Task] = None
+        self._websocket_starting = False
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -412,9 +413,12 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     
     async def _start_websocket_listener(self) -> None:
         """Start WebSocket connection for real-time events."""
-        if not self._http_session or not self._running:
+        # Skip if already starting or websocket already exists
+        if self._websocket_starting or self._websocket or not self._http_session or not self._running:
             return
             
+        # Set flag to prevent concurrent starts    
+        self._websocket_starting = True
         try:
             # Add timeout to websocket connection
             self._websocket = await asyncio.wait_for(
@@ -448,6 +452,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as exc:
             _LOGGER.warning("Failed to start WebSocket listener: %s", exc)
             self._websocket = None
+        finally:
+            # Always clear the starting flag
+            self._websocket_starting = False
     
     async def _websocket_event_loop(self) -> None:
         """Listen for WebSocket events and trigger coordinator updates."""
@@ -495,7 +502,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _websocket_message_loop(self) -> None:
         """Process websocket messages in a loop with timeout handling."""
         try:
-            while not self._websocket.closed and self._running:
+            while self._websocket and not self._websocket.closed and self._running:
                 try:
                     # Use wait_for with timeout to prevent indefinite blocking
                     msg = await asyncio.wait_for(
@@ -519,7 +526,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except asyncio.TimeoutError:
                     # Timeout on receive - this is normal for idle connections
                     # Send a ping to keep connection alive
-                    if not self._websocket.closed:
+                    if self._websocket and not self._websocket.closed:
                         try:
                             await self._websocket.ping()
                             _LOGGER.debug("WebSocket ping sent (keepalive)")
@@ -695,6 +702,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Clean shutdown of coordinator resources."""
         # Stop reconnection attempts
         self._running = False
+        
+        # Clear websocket starting flag
+        self._websocket_starting = False
         
         # Cancel websocket background task
         if self._websocket_task and not self._websocket_task.done():
