@@ -60,12 +60,13 @@ _SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
 _CONFIG_DIR = _COMPONENT_DIR / "config"
 
 
-def _render_service_template(template_path: Path) -> str:
+async def _render_service_template(template_path: Path) -> str:
     """Render a systemd service template with configurable paths."""
     if not template_path.exists():
         raise FileNotFoundError(f"Service template not found: {template_path}")
     
-    template_content = template_path.read_text(encoding="utf-8")
+    # Use asyncio.to_thread to read file without blocking event loop
+    template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
     path_config = get_remote_path_config()
     
     try:
@@ -504,25 +505,52 @@ fi
         # Install pip deps
         self._emit(PHASE_SUPERVISOR, "Installing pip dependencies...", 70)
         # Activate venv and install as root (matches systemd service user)
-        # Install pip dependencies with debugging
-        self._emit(PHASE_SUPERVISOR, "Starting pip dependency installation...", 71)
+        # Install pip dependencies with optimizations for Pi performance
         
-        pip_cmd = (
+        # Split packages into fast and slow groups for better progress feedback
+        essential_packages = ["aiohttp", "psutil", "python-json-logger", "pyyaml"]
+        heavy_packages = ["bokeh", "tornado", "pandas"]
+        
+        # Install essential packages first (fast)
+        essential_cmd = (
             f"sudo bash -c '"
             f"source {REMOTE_VENV}/bin/activate && "
-            f"pip install aiohttp psutil python-json-logger bokeh pyyaml tornado pandas"
+            f"pip install --no-cache-dir --prefer-binary {' '.join(essential_packages)}"
             f"'"
         )
         
         try:
-            _LOGGER.warning(f"Executing pip install command: {pip_cmd}")
-            result = await self._client.async_run(pip_cmd)
-            _LOGGER.warning(f"Pip install completed successfully")
-            self._emit(PHASE_SUPERVISOR, "Pip dependencies installed successfully", 72)
+            _LOGGER.info(f"Installing essential packages: {essential_packages}")
+            self._emit(PHASE_SUPERVISOR, "Installing essential packages (aiohttp, psutil, etc)...", 71)
+            await self._client.async_run(essential_cmd)
+            _LOGGER.info("Essential packages installed successfully")
+            self._emit(PHASE_SUPERVISOR, "Essential packages installed", 71.5)
         except Exception as e:
-            _LOGGER.error(f"Pip install failed: {e}")
-            self._emit(PHASE_SUPERVISOR, f"Pip install failed: {e}", 72)
+            _LOGGER.error(f"Essential packages install failed: {e}")
+            self._emit(PHASE_SUPERVISOR, f"Essential packages install failed: {e}", 71.5)
             raise
+        
+        # Install heavy packages one by one with progress feedback  
+        for i, package in enumerate(heavy_packages):
+            progress = 71.6 + (i * 0.13)  # Spread across remaining progress
+            heavy_cmd = (
+                f"sudo bash -c '"
+                f"source {REMOTE_VENV}/bin/activate && "
+                f"pip install --no-cache-dir --prefer-binary {package}"
+                f"'"
+            )
+            
+            try:
+                _LOGGER.info(f"Installing heavy package: {package}")
+                self._emit(PHASE_SUPERVISOR, f"Installing {package} (may take 2-3 minutes on Pi)...", progress)
+                await self._client.async_run(heavy_cmd)
+                _LOGGER.info(f"Package {package} installed successfully")
+            except Exception as e:
+                _LOGGER.warning(f"Package {package} install failed, but continuing: {e}")
+                # Don't fail deployment for heavy packages - they might not be critical
+                self._emit(PHASE_SUPERVISOR, f"Warning: {package} install failed, continuing anyway", progress)
+
+        self._emit(PHASE_SUPERVISOR, "Pip dependencies installation completed", 72)
 
         # Pack supervisor/ into tar and upload
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
@@ -532,15 +560,23 @@ fi
         # Generate systemd service file from template
         service_template = _COMPONENT_DIR / "PerimeterControl-supervisor.service.template"
         if service_template.exists():
-            service_content = _render_service_template(service_template)
-            # Write to temporary file and upload
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.service') as f:
-                f.write(service_content)
-                temp_service_file = f.name
+            service_content = await _render_service_template(service_template)
+            # Write to temporary file and upload using async operations
+            import tempfile
+            import os
+            
+            # Create temp file path
+            temp_fd, temp_service_file = await asyncio.to_thread(tempfile.mkstemp, suffix='.service')
             try:
+                # Write content to temp file
+                await asyncio.to_thread(os.write, temp_fd, service_content.encode('utf-8'))
+                await asyncio.to_thread(os.close, temp_fd)
+                
+                # Upload the file
                 await self._client.async_put_file(Path(temp_service_file), f"{REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service")
             finally:
-                Path(temp_service_file).unlink(missing_ok=True)
+                # Clean up temp file
+                await asyncio.to_thread(Path(temp_service_file).unlink, missing_ok=True)
         else:
             # Fallback to static file if template doesn't exist
             service_unit = _COMPONENT_DIR / "PerimeterControl-supervisor.service"
