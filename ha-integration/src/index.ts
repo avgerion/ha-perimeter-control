@@ -21,6 +21,7 @@ import './service-access-editor';
 import './fleet-view';
 import './deploy-panel';
 import './home-assistant-card';
+import './panel';
 
 export { ErrorBoundary } from './error-boundary';
 export { SafeLoader } from './safe-loader';
@@ -28,3 +29,4 @@ export { ServiceAccessEditor } from './service-access-editor';
 export { FleetView } from './fleet-view';
 export { DeployPanel } from './deploy-panel';
 export { ServiceAccessCard } from './home-assistant-card';
+export { PerimeterControlPanel } from './panel';
