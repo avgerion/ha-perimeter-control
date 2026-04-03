@@ -612,42 +612,85 @@ fi
 
     async def _phase_system_services(self) -> None:
         """Deploy systemd service unit files from system_services/ directory."""
-        if not _SYSTEM_SERVICES_DIR.exists():
-            _LOGGER.warning("system_services/ directory not found, skipping service units")
-            return
-
         self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 82)
         
-        # Find all .service files in system_services/
-        service_files = await asyncio.to_thread(lambda: list(_SYSTEM_SERVICES_DIR.glob("*.service")))
-        if not service_files:
-            _LOGGER.info("No .service files found in system_services/")
-            return
+        # Handle dashboard service template first
+        dashboard_template = _COMPONENT_DIR / "PerimeterControl-dashboard.service.template"
+        if dashboard_template.exists():
+            _LOGGER.info("Generating dashboard service from template")
+            dashboard_content = await _render_service_template(dashboard_template)
+            
+            # Write to temporary file and upload
+            import tempfile
+            import os
+            
+            temp_fd, temp_dashboard_file = await asyncio.to_thread(tempfile.mkstemp, suffix='.service')
+            try:
+                await asyncio.to_thread(os.write, temp_fd, dashboard_content.encode('utf-8'))
+                await asyncio.to_thread(os.close, temp_fd)
+                
+                # Upload the dashboard service file
+                await self._client.async_put_file(Path(temp_dashboard_file), f"{REMOTE_TEMP_ROOT}/{SYSTEMD_DASHBOARD}.service")
+                
+                # Install dashboard service  
+                await self._client.async_run(
+                    f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{SYSTEMD_DASHBOARD}.service {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_DASHBOARD}.service"
+                )
+                _LOGGER.info("Installed dashboard service: %s", SYSTEMD_DASHBOARD)
+                
+            finally:
+                await asyncio.to_thread(Path(temp_dashboard_file).unlink, missing_ok=True)
+        else:
+            _LOGGER.warning("Dashboard service template not found: %s", dashboard_template)
 
-        for service_file in service_files:
-            # Upload service file
-            await self._client.async_put_file(service_file, f"{REMOTE_TEMP_ROOT}/{service_file.name}")
-            
-            # Install to /etc/systemd/system/
-            await self._client.async_run(
-                f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{service_file.name} {REMOTE_SYSTEMD_ROOT}/{service_file.name}"
-            )
-            
-            _LOGGER.debug("Installed systemd service: %s", service_file.name)
+        # Handle other system services from system_services/ directory
+        if _SYSTEM_SERVICES_DIR.exists():
+            # Find all .service files in system_services/
+            service_files = await asyncio.to_thread(lambda: list(_SYSTEM_SERVICES_DIR.glob("*.service")))
+            if service_files:
+                for service_file in service_files:
+                    # Skip files that match our new naming (to avoid conflicts)
+                    if service_file.name.startswith(SYSTEMD_SERVICE_PREFIX):
+                        _LOGGER.debug("Skipping %s (conflicts with new naming)", service_file.name)
+                        continue
+                        
+                    # Upload service file
+                    await self._client.async_put_file(service_file, f"{REMOTE_TEMP_ROOT}/{service_file.name}")
+                    
+                    # Install to /etc/systemd/system/
+                    await self._client.async_run(
+                        f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{service_file.name} {REMOTE_SYSTEMD_ROOT}/{service_file.name}"
+                    )
+                    
+                    _LOGGER.debug("Installed systemd service: %s", service_file.name)
+            else:
+                _LOGGER.info("No additional .service files found in system_services/")
+        else:
+            _LOGGER.warning("system_services/ directory not found, skipping legacy service units")
 
         # Reload systemd to pick up new service files
         await self._client.async_run("sudo systemctl daemon-reload")
         
-        # Enable services (but skip template units which end with @.service)
-        for service_file in service_files:
-            service_name = service_file.name
-            if "@." in service_name:
-                # Skip template units - they can't be enabled directly
-                _LOGGER.debug("Skipping template unit (cannot enable): %s", service_name)
-                continue
-            await self._client.async_run(f"sudo systemctl enable {service_name}")
-            _LOGGER.debug("Enabled systemd service: %s", service_name)
+        # Enable dashboard service
+        await self._client.async_run(f"sudo systemctl enable {SYSTEMD_DASHBOARD}.service")
+        _LOGGER.info("Enabled dashboard service: %s", SYSTEMD_DASHBOARD)
+        
+        # Enable other services (but skip template units which end with @.service)
+        if _SYSTEM_SERVICES_DIR.exists():
+            service_files = await asyncio.to_thread(lambda: list(_SYSTEM_SERVICES_DIR.glob("*.service")))
+            for service_file in service_files:
+                service_name = service_file.name
+                # Skip template units and new naming conflicts
+                if "@." in service_name or service_name.startswith(SYSTEMD_SERVICE_PREFIX):
+                    _LOGGER.debug("Skipping service enable for: %s", service_name)
+                    continue
+                try:
+                    await self._client.async_run(f"sudo systemctl enable {service_name}")
+                    _LOGGER.debug("Enabled systemd service: %s", service_name)
+                except Exception as e:
+                    _LOGGER.warning("Failed to enable service %s: %s", service_name, e)
             
+        self._emit(PHASE_SUPERVISOR, "Systemd services installed and enabled", 85)
         self._emit(PHASE_SUPERVISOR, "Systemd service units installed", 85)
 
     async def _phase_test_dashboard(self) -> None:
