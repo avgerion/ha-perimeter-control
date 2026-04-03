@@ -643,16 +643,26 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if success:
                 _LOGGER.warning("Auto-deployment completed successfully")
                 
-                # Try to connect to the newly deployed supervisor
-                try:
-                    await self._supervisor_get("/health")
-                    await self._start_websocket_listener()
-                    _LOGGER.info("Successfully connected to deployed supervisor API")
-                    
-                    # Trigger a coordinator update to refresh all entities
-                    await self.async_request_refresh()
-                except Exception as exc:
-                    _LOGGER.warning("Deployment succeeded but supervisor connection failed: %s", exc)
+                # Try to connect to the newly deployed supervisor, with retries.
+                last_exc = None
+                for attempt in range(6):
+                    try:
+                        # On first attempt wait 1s, then exponential backoff
+                        await asyncio.sleep(1 if attempt == 0 else min(10, 2 ** attempt))
+                        await self._supervisor_get("/health")
+                        await self._start_websocket_listener()
+                        _LOGGER.info("Successfully connected to deployed supervisor API (attempt %d)", attempt + 1)
+
+                        # Trigger a coordinator update to refresh all entities
+                        await self.async_request_refresh()
+                        last_exc = None
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        _LOGGER.debug("Supervisor not ready yet (attempt %d/6): %s", attempt + 1, exc)
+
+                if last_exc is not None:
+                    _LOGGER.warning("Deployment succeeded but supervisor connection failed after retries: %s", last_exc)
             else:
                 _LOGGER.error("Automatic supervisor deployment failed. Please check the integration logs and try manual deployment.")
         except Exception as exc:

@@ -81,7 +81,7 @@ class SshClient:
         port: int,
         user: str,
         private_key: str,
-        connect_timeout: float = 15.0,
+        connect_timeout: float = 30.0,
     ) -> None:
         self._host = host
         self._port = port
@@ -107,6 +107,8 @@ class SshClient:
                     username=self._user,
                     client_keys=[key],
                     known_hosts=None,   # TODO: accept-on-first-connect, store fingerprint
+                    keepalive_interval=30,  # Send keepalive every 30 seconds
+                    keepalive_count_max=3,  # Allow 3 missed keepalives before disconnect
                 ),
                 timeout=self._connect_timeout,
             )
@@ -263,13 +265,31 @@ class SshClient:
         if sudo:
             script = f"sudo bash -c {shlex.quote(script)}"
         _LOGGER.debug("Executing SSH command: %s", script[:100] + ("..." if len(script) > 100 else ""))
-        try:
-            proc = await conn.create_process(script)
-            stdout, stderr = await proc.communicate()
-            exit_status = proc.exit_status
-        except Exception as exc:
-            _LOGGER.warning("SSH command execution failed: %r", exc)
-            raise SshCommandError(script[:80], 1, str(exc)) from exc
+        # Try once, and if the SSH connection was closed mid-run, attempt
+        # to reconnect and retry a single time to mitigate transient drops.
+        last_exc = None
+        for attempt in range(2):
+            try:
+                conn = await self._connect()
+                proc = await conn.create_process(script)
+                stdout, stderr = await proc.communicate()
+                exit_status = proc.exit_status
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                _LOGGER.warning("SSH command execution attempt %d failed: %r", attempt + 1, exc)
+                # Close existing connection object and retry once
+                try:
+                    await self.async_close()
+                except Exception:
+                    pass
+                # Short backoff before retry
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+                continue
+        if last_exc is not None:
+            raise SshCommandError(script[:80], 1, str(last_exc)) from last_exc
         _LOGGER.debug("SSH command completed")
         if exit_status != 0:
             raise SshCommandError(script[:80], exit_status, stderr or "")

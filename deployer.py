@@ -145,18 +145,29 @@ class Deployer:
         
         try:
             _LOGGER.warning("Starting deployment phases... (ID: %s)", deployment_id)
+            _LOGGER.info("Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self._phase_preflight()
+            _LOGGER.info("Phase 2: Upload files (ID: %s)", deployment_id)
             await self._phase_upload()
+            _LOGGER.info("Phase 3: Install files (ID: %s)", deployment_id)
             await self._phase_install()
+            _LOGGER.info("Phase 4: Deploy config (ID: %s)", deployment_id)
             await self._phase_config()
+            _LOGGER.info("Phase 5: Install supervisor (ID: %s)", deployment_id)
             await self._phase_supervisor()
+            _LOGGER.info("Phase 6: Install system services (ID: %s)", deployment_id)
             await self._phase_system_services()
+            _LOGGER.info("Phase 7: Test dashboard (ID: %s)", deployment_id)
             await self._phase_test_dashboard()
+            _LOGGER.info("Phase 8: Restart services (ID: %s)", deployment_id)
             await self._phase_restart()
+            _LOGGER.info("Phase 9: Verify deployment (ID: %s)", deployment_id)
             await self._phase_verify()
             _LOGGER.warning("=== DEPLOYMENT COMPLETED SUCCESSFULLY === (ID: %s)", deployment_id)
         except SshCommandError as exc:
             _LOGGER.error(f"SSH command failed during deployment (ID: %s): {exc}", deployment_id)
+            _LOGGER.error(f"Failed command was: {exc.command}")
+            _LOGGER.error(f"SSH error details: exit_status={exc.exit_status}, stderr={exc.stderr}")
             self._emit_error(exc.command[:40], str(exc))
             return False
         except Exception as exc:  # noqa: BLE001
