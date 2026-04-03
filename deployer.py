@@ -572,8 +572,8 @@ fi
                 await asyncio.to_thread(os.write, temp_fd, service_content.encode('utf-8'))
                 await asyncio.to_thread(os.close, temp_fd)
                 
-                # Upload the file
-                await self._client.async_put_file(Path(temp_service_file), f"{REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service")
+                # Upload the file with correct naming
+                await self._client.async_put_file(Path(temp_service_file), f"{REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service")
             finally:
                 # Clean up temp file
                 await asyncio.to_thread(Path(temp_service_file).unlink, missing_ok=True)
@@ -581,7 +581,7 @@ fi
             # Fallback to static file if template doesn't exist
             service_unit = _COMPONENT_DIR / "PerimeterControl-supervisor.service"
             if service_unit.exists():
-                await self._client.async_put_file(service_unit, f"{REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service")
+                await self._client.async_put_file(service_unit, f"{REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service")
 
         # Extract + install on remote via b64 script
         sup_install_script = _build_supervisor_install_script()
@@ -906,6 +906,27 @@ fi
             # Try to start supervisor
             try:
                 _LOGGER.info("Attempting to start supervisor service...")
+                
+                # First, validate the service file syntax
+                service_validate = await self._client.async_run(
+                    f"sudo systemd-analyze verify {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_SUPERVISOR}.service 2>&1 || echo VALIDATION_FAILED"
+                )
+                if "VALIDATION_FAILED" in service_validate:
+                    _LOGGER.error("Service file validation failed: %s", service_validate)
+                    
+                    # Show the actual service file content for debugging
+                    service_content = await self._client.async_run(
+                        f"cat {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_SUPERVISOR}.service 2>&1 || echo FILE_READ_FAILED"
+                    )
+                    _LOGGER.error("Generated service file content: %s", service_content)
+                else:
+                    _LOGGER.info("Service file validation passed")
+                
+                # Reload systemd to pick up new service file
+                await self._client.async_run("sudo systemctl daemon-reload")
+                _LOGGER.info("Systemd daemon reloaded")
+                
+                # Now try to start the service
                 await self._client.async_run(f"sudo systemctl start {SYSTEMD_SUPERVISOR}")
                 await asyncio.sleep(3)
                 supervisor_status = await self._client.async_run(
@@ -993,11 +1014,11 @@ sudo cp -r {REMOTE_TEMP_ROOT}/supervisor/. {REMOTE_SUPERVISOR_DIR}/
 sudo chown -R root:root {REMOTE_SUPERVISOR_DIR}
 sudo find {REMOTE_SUPERVISOR_DIR} -type f -exec chmod 644 {{}} +
 sudo find {REMOTE_SUPERVISOR_DIR} -type d -exec chmod 755 {{}} +
-[ -f {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service ] && \\
-  sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service \\
-  {REMOTE_SYSTEMD_ROOT}/PerimeterControl-supervisor.service && \\
-  sudo systemctl daemon-reload && \
-  sudo systemctl enable PerimeterControl-supervisor.service || true
+[ -f {REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service ] && \\
+  sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service \\
+  {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_SUPERVISOR}.service && \\
+  sudo systemctl daemon-reload && \\
+  sudo systemctl enable {SYSTEMD_SUPERVISOR}.service || true
 echo SUPERVISOR_INSTALLED
 """
 
