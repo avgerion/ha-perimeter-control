@@ -17,7 +17,9 @@ from .const import (
     CONF_SSH_KEY,
     CONF_SSH_KEY_PATH,
     CONF_SERVICES,
+    CONF_SUPERVISOR_PORT,
     CONF_USER,
+    DEFAULT_API_PORT,
     DEFAULT_SSH_PORT,
     DEFAULT_USER,
     DOMAIN,
@@ -39,6 +41,7 @@ STEP_CONNECTION_SCHEMA = vol.Schema(
         vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_SSH_PORT): int,
         vol.Optional(CONF_USER, default=DEFAULT_USER): str,
+        vol.Optional(CONF_SUPERVISOR_PORT, default=DEFAULT_API_PORT): int,
         vol.Optional(CONF_SSH_KEY_PATH, default=""): str,
         vol.Optional(CONF_SSH_KEY, default=""): str,
     }

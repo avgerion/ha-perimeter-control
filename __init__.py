@@ -50,16 +50,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create coordinator with dynamic entity discovery
     coordinator = await PerimeterControlCoordinator.create(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
-
+    
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Register services on first setup
+    # Register services on first setup (regardless of coordinator connection status)
     if len(hass.data[DOMAIN]) == 1:
         await _register_services(hass)
         
     # Register frontend panel
     await async_register_panel(hass)
+
+    # Try initial refresh but don't fail setup if it doesn't work
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as exc:
+        _LOGGER.warning("Initial coordinator refresh failed: %s. Integration services still available.", exc)
 
     # Set up platforms with dynamic entity discovery
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

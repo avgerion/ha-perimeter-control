@@ -11,6 +11,7 @@ CONF_PORT = "port"
 CONF_USER = "user"
 CONF_SSH_KEY = "ssh_key"       # Private key content (stored in HA secrets)
 CONF_SSH_KEY_PATH = "ssh_key_path"  # Alternative: path on HA host
+CONF_SUPERVISOR_PORT = "supervisor_port"  # Supervisor API port
 CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
 
 DEFAULT_SSH_PORT = 22

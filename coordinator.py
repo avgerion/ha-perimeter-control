@@ -17,6 +17,7 @@ from .const import (
     CONF_PORT,
     CONF_SERVICES,
     CONF_SSH_KEY,
+    CONF_SUPERVISOR_PORT,
     CONF_USER,
     DEFAULT_API_PORT,
     DEFAULT_SSH_PORT,
@@ -53,8 +54,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._client = None  # SSH client for deploys
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._websocket: Optional[aiohttp.ClientWebSocketResponse] = None
-        self._supervisor_base_url = f"http://{entry.data[CONF_HOST]}:{DEFAULT_API_PORT}/api/v1"
-        self._supervisor_ws_url = f"ws://{entry.data[CONF_HOST]}:{DEFAULT_API_PORT}/api/v1/events"
+        self._supervisor_base_url = f"http://{entry.data[CONF_HOST]}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/api/v1"
+        self._supervisor_ws_url = f"ws://{entry.data[CONF_HOST]}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/api/v1/events"
         self._selected_services: list[str] = entry.data.get(CONF_SERVICES, [])
         self._deploy_in_progress = False
         self._deploy_log: list[DeployProgress] = []
