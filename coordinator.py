@@ -99,7 +99,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         # Check if supervisor is available before starting WebSocket
         try:
-            await instance._supervisor_get("/api/v1/health")
+            await instance._supervisor_get("/health")
             _LOGGER.info("Supervisor API is available at %s", instance._supervisor_base_url)
             
             # Also check if dashboard is healthy by testing a simple HTTP request
@@ -452,7 +452,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Check if supervisor is available before starting websocket
             try:
-                await self._supervisor_get("/api/v1/health")
+                await self._supervisor_get("/health")
                 await self._start_websocket_listener()
                 _LOGGER.info("Delayed WebSocket connection established")
             except Exception as exc:
@@ -533,7 +533,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 
                 # Try to connect to the newly deployed supervisor
                 try:
-                    await self._supervisor_get("/api/v1/health")
+                    await self._supervisor_get("/health")
                     await self._start_websocket_listener()
                     _LOGGER.info("Successfully connected to deployed supervisor API")
                     
