@@ -515,9 +515,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             break
                     continue
                     
+        except (ConnectionError, OSError, aiohttp.ClientError) as exc:
+            _LOGGER.debug("WebSocket connection error: %s", exc)
+            return
         except Exception as exc:
-            _LOGGER.debug("WebSocket message loop error: %s", exc)
-            break
+            # Log unexpected errors at warning level - these might be bugs
+            _LOGGER.warning("Unexpected WebSocket message loop error: %s", exc, exc_info=True)
+            return
     
     async def _delayed_websocket_start(self) -> None:
         """Start websocket connection after a delay to avoid blocking coordinator startup."""
