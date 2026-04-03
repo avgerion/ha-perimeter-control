@@ -220,17 +220,32 @@ fi
             _LOGGER.debug("System resources detected: %s", resources)
             
             # Calculate resource requirements for selected services
-            total_cpu_required = 0.5  # Base supervisor requirement
-            total_memory_required = 256  # Base memory in MB
+            total_cpu_required = 0.2  # Reduced base supervisor requirement 
+            total_memory_required = 128  # Reduced base memory requirement in MB
             total_disk_required = 100  # Base disk space in MB
+            
+            _LOGGER.info("Resource calculation for %d selected services: %s", 
+                        len(self._selected_services), self._selected_services)
             
             for service_id in self._selected_services:
                 if service_id in self._service_descriptors:
                     service_desc = self._service_descriptors[service_id]
                     service_resources = service_desc.raw.get('spec', {}).get('resources', {})
-                    total_cpu_required += service_resources.get('cpu_cores', 0.1)
-                    total_memory_required += service_resources.get('ram_mb', 64)  # Note: it's ram_mb in YAML
-                    total_disk_required += service_resources.get('disk_mb', 20)
+                    # Use 75% of specified memory for more realistic calculation
+                    service_cpu = service_resources.get('cpu_cores', 0.1)
+                    service_memory = int(service_resources.get('ram_mb', 64) * 0.75)  # 75% of spec
+                    service_disk = service_resources.get('disk_mb', 20)
+                    
+                    _LOGGER.debug("Service %s: CPU %.2f, Memory %dMB (75%% of %dMB), Disk %dMB", 
+                                service_id, service_cpu, service_memory, 
+                                service_resources.get('ram_mb', 64), service_disk)
+                    
+                    total_cpu_required += service_cpu
+                    total_memory_required += service_memory
+                    total_disk_required += service_disk
+            
+            _LOGGER.info("Total requirements: CPU %.2f cores, Memory %dMB, Disk %dMB", 
+                        total_cpu_required, total_memory_required, total_disk_required)
             
             self._emit(PHASE_PREFLIGHT, "Validating resource requirements...", 3)
             
