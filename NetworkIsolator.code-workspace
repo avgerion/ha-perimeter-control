@@ -6,7 +6,7 @@
   ],
   "settings": {
     "isolator.remote.user": "paul",
-    "isolator.remote.host": "192.168.69.11",
+    "isolator.remote.host": "192.168.50.47",
     "isolator.remote.sshKey": "./y",
     "isolator.dashboard.port": "5006",
     "files.associations": {
@@ -19,6 +19,9 @@
     },
     "[shellscript]": {
       "editor.tabSize": 2
+    },
+    "chat.tools.terminal.autoApprove": {
+      "ssh": true
     }
   }
 }

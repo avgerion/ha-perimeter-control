@@ -1,0 +1,15 @@
+type: ble_gatt_repeater
+name: "BLE GATT Repeater"
+scan_interval_sec: 30
+auto_connect: false
+device_filters:
+  - name_pattern: ".*Scale.*"
+    services: [ "181D" ] # Weight Scale service
+  - name_pattern: ".*Thermo.*"
+    services: [ "1809" ] # Health Thermometer service
+signal_monitoring:
+  enabled: true
+  rssi_threshold: -80
+connection_retry:
+  max_attempts: 3
+  delay_sec: 5

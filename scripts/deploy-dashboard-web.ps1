@@ -6,13 +6,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$remote = "paul@192.168.69.11"
+$remote = "paul@192.168.50.47"
 $key = "./y"
 $root = Split-Path -Parent $PSScriptRoot
-$localDashboard = Join-Path $root "server/web/dashboard.py"
-$localLayouts = Join-Path $root "server/web/layouts.py"
-$localCallbacks = Join-Path $root "server/web/callbacks.py"
-$localDataSources = Join-Path $root "server/web/data_sources.py"
+$localDashboard = Join-Path $root "remote_services/web/dashboard.py"
+$localLayouts = Join-Path $root "remote_services/web/layouts.py"
+$localCallbacks = Join-Path $root "remote_services/web/callbacks.py"
+$localDataSources = Join-Path $root "remote_services/web/data_sources.py"
 $localBleScanner = Join-Path $root "scripts/ble-scanner-v2.py"
 $localBleSniffer = Join-Path $root "scripts/ble-sniffer.py"
 $localBleDebug = Join-Path $root "scripts/ble-debug.sh"
@@ -21,9 +21,9 @@ $localBleMirror = Join-Path $root "scripts/ble-gatt-mirror.py"
 $localApplyRules = Join-Path $root "scripts/apply-rules.py"
 $localNetworkTopology = Join-Path $root "scripts/network-topology.py"
 $localTopologyConfig = Join-Path $root "scripts/topology_config.py"
-$localConfig = Join-Path $root "config/isolator.conf.yaml"
+$localConfig = Join-Path $root "config/perimeterControl.conf.yaml"
 
-$localSupervisorDir = Join-Path $root "supervisor"
+$localSupervisorDir = Join-Path $root "remote_services/supervisor"
 $localSupervisorService = Join-Path $root "server/isolator-supervisor.service"
 
 function Assert-LastExitCode([string]$step) {

@@ -1,22 +1,22 @@
 [Unit]
-Description=Isolator Supervisor
+Description=PerimeterControl Supervisor
 Documentation=https://github.com/isolator/isolator
-After=network.target isolator.service
-Wants=isolator.service
+After=network.target PerimeterControl.service
+Wants=PerimeterControl.service
 
 [Service]
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/opt/isolator
+WorkingDirectory=/opt/PerimeterControl
 Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONPATH=/opt/isolator"
+Environment="PYTHONPATH=/opt/PerimeterControl"
 
 # Supervisor is run as root so it can manage systemd units via subprocess.
 # Future: drop to unprivileged user + sudoers + capability bounding set.
-ExecStart=/opt/isolator/venv/bin/python3 -m supervisor \
-    --config /mnt/isolator/conf \
-    --state  /opt/isolator/state  \
+ExecStart=/opt/PerimeterControl/venv/bin/python3 -m supervisor \
+    --config /mnt/PerimeterControl/conf \
+    --state  /opt/PerimeterControl/state  \
     --port   8080                 \
     --log-level INFO
 

@@ -32,15 +32,22 @@ from ..base import CapabilityModule
 logger = logging.getLogger(__name__)
 
 # systemd unit names managed by this capability
-_ISOLATOR_SERVICE = "isolator.service"
+# Import configurable paths
+import os
+
+_ISOLATOR_SERVICE = "isolator.service"  # Note: this stays as network_isolator per instruction
 _TRAFFIC_SERVICE = "isolator-traffic.service"
 
-# Candidate paths for isolator.conf.yaml that apply-rules.py reads.
-# The first existing path is used unless overridden per deploy via config["config_file"].
+# Configurable base paths
+_PERIMETER_INSTALL_ROOT = os.getenv("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")
+_PERIMETER_STATE_ROOT = os.getenv("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl")
+
+# Candidate paths for perimeterControl.conf.yaml that apply-rules.py reads.
+# Uses configurable paths now instead of hardcoded ones
 _ISOLATOR_CONF_CANDIDATES = (
-    "/mnt/isolator/conf/isolator.conf.yaml",
-    "/opt/isolator/config/isolator.conf.yaml",
-    "/opt/isolator/conf/isolator.conf.yaml",
+    f"{_PERIMETER_STATE_ROOT}/conf/perimeterControl.conf.yaml",
+    f"{_PERIMETER_INSTALL_ROOT}/config/perimeterControl.conf.yaml", 
+    f"{_PERIMETER_INSTALL_ROOT}/conf/perimeterControl.conf.yaml",
 )
 
 

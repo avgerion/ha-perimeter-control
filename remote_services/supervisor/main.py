@@ -47,10 +47,19 @@ def _register_capabilities(supervisor: Supervisor) -> None:
     except ImportError as exc:
         logging.warning("Could not load network_isolation module: %s", exc)
 
+    try:
+        from .capabilities.ble_gatt_repeater import BleGattRepeaterCapability
+        supervisor.register_capability("ble_gatt_repeater", BleGattRepeaterCapability)
+    except ImportError as exc:
+        logging.warning("Could not load ble_gatt_repeater module: %s", exc)
+        
+    try:
+        from .capabilities.photo_booth import PhotoBoothCapability
+        supervisor.register_capability("photo_booth", PhotoBoothCapability)
+    except ImportError as exc:
+        logging.warning("Could not load photo_booth module: %s", exc)
+
     # Future capabilities registered here:
-    #   from .capabilities.ble_gatt_translator import BleGattTranslatorCapability
-    #   supervisor.register_capability("ble_gatt_translator", BleGattTranslatorCapability)
-    #
     #   from .capabilities.pawr_esl_advertiser import PawrEslAdvertiserCapability
     #   supervisor.register_capability("pawr_esl_advertiser", PawrEslAdvertiserCapability)
 

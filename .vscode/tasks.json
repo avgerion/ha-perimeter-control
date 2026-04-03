@@ -5,7 +5,12 @@
       "label": "Deploy Dashboard",
       "type": "shell",
       "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/deploy-dashboard-web.ps1"],
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/deploy-dashboard-web.ps1"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -25,7 +30,13 @@
       "label": "Deploy Dashboard (No Restart)",
       "type": "shell",
       "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/deploy-dashboard-web.ps1", "-NoRestart"],
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/deploy-dashboard-web.ps1",
+        "-NoRestart"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -38,14 +49,16 @@
       "problemMatcher": []
     },
     {
-      "label": "Open SSH Tunnel (port ${config:isolator.dashboard.port})",
+      "label": "Open SSH Tunnel (port ${config:perimeterControl.dashboard.port})",
       "type": "shell",
       "command": "ssh",
       "args": [
-        "-i", "${config:isolator.remote.sshKey}",
+        "-i",
+        "${config:perimeterControl.remote.sshKey}",
         "-N",
-        "-L", "${config:isolator.dashboard.port}:localhost:${config:isolator.dashboard.port}",
-        "${config:isolator.remote.user}@${config:isolator.remote.host}"
+        "-L",
+        "${config:perimeterControl.dashboard.port}:localhost:${config:perimeterControl.dashboard.port}",
+        "${config:perimeterControl.remote.user}@${config:perimeterControl.remote.host}"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -72,7 +85,9 @@
       "label": "Open Dashboard in Browser",
       "type": "shell",
       "command": "Start-Process",
-      "args": ["http://localhost:${config:isolator.dashboard.port}"],
+      "args": [
+        "http://localhost:${config:perimeterControl.dashboard.port}"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -86,7 +101,7 @@
       "label": "Tunnel + Open Browser",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "Open SSH Tunnel (port ${config:isolator.dashboard.port})",
+        "Open SSH Tunnel (port ${config:perimeterControl.dashboard.port})",
         "Open Dashboard in Browser"
       ],
       "group": "none",

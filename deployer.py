@@ -32,13 +32,18 @@ from .const import (
     PHASE_UPLOAD,
     PHASE_VERIFY,
     REMOTE_CONF_DIR,
+    REMOTE_LOG_ROOT,
     REMOTE_SCRIPTS_DIR,
     REMOTE_SERVICES_DIR,
     REMOTE_SUPERVISOR_DIR,
+    REMOTE_SYSTEMD_ROOT,
+    REMOTE_TEMP_ROOT,
     REMOTE_VENV,
     REMOTE_WEB_DIR,
     SYSTEMD_DASHBOARD,
     SYSTEMD_SUPERVISOR,
+    get_install_directories,
+    get_remote_path_config,
 )
 from .service_descriptor import ServiceDescriptor, load_service_descriptors
 from .ssh_client import SshClient, SshCommandError
@@ -53,6 +58,36 @@ _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 _SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
 _SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
 _CONFIG_DIR = _COMPONENT_DIR / "config"
+
+
+def _render_service_template(template_path: Path) -> str:
+    """Render a systemd service template with configurable paths."""
+    if not template_path.exists():
+        raise FileNotFoundError(f"Service template not found: {template_path}")
+    
+    template_content = template_path.read_text(encoding="utf-8")
+    path_config = get_remote_path_config()
+    
+    try:
+        return template_content.format(**path_config)
+    except KeyError as e:
+        raise ValueError(f"Missing template variable {e} in {template_path}")
+
+
+def _get_install_commands() -> list[str]:
+    """Generate installation commands using configurable paths."""
+    dirs = get_install_directories()
+    commands = [f"sudo mkdir -p {d}" for d in dirs]
+    
+    # Add ownership commands for directories that need root ownership
+    path_config = get_remote_path_config()
+    commands.extend([
+        f"sudo chown root:root {path_config['LOG_ROOT']}",
+        f"sudo chown root:root {path_config['STATE_ROOT']}",
+        f"sudo chmod 755 {path_config['LOG_ROOT']}",
+    ])
+    
+    return commands
 
 
 @dataclass
@@ -187,7 +222,7 @@ class Deployer:
             if not src.exists():
                 _LOGGER.warning("Web file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"/tmp/{fname}")
+            await self._client.async_put_file(src, f"{REMOTE_TEMP_ROOT}/{fname}")
             pct = 15 + int(15 * (i + 1) / len(web_files))
             self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
         
@@ -197,7 +232,7 @@ class Deployer:
             if not src.exists():
                 _LOGGER.warning("Script file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"/tmp/{fname}")
+            await self._client.async_put_file(src, f"{REMOTE_TEMP_ROOT}/{fname}")
             pct = 30 + int(15 * (i + 1) / len(script_files))
             self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
 
@@ -220,7 +255,7 @@ class Deployer:
         self._emit(PHASE_INSTALL, "Deploying configuration files...", 57)
         
         # Deploy main config file
-        config_file = _CONFIG_DIR / "isolator.conf.yaml"
+        config_file = _CONFIG_DIR / "perimeterControl.conf.yaml"
         if config_file.exists():
             try:
                 # Verify file is readable
@@ -233,18 +268,18 @@ class Deployer:
                 )
                 _LOGGER.debug("Config file readable, preview: %s...", repr(content_preview))
                 
-                _LOGGER.debug("Uploading config file from %s to /tmp/isolator.conf.yaml", config_file)
+                _LOGGER.debug("Uploading config file from %s to %s/perimeterControl.conf.yaml", config_file, REMOTE_TEMP_ROOT)
                 # Upload to temp location (this is where it's failing)
-                await self._client.async_put_file(config_file, "/tmp/isolator.conf.yaml")
+                await self._client.async_put_file(config_file, f"{REMOTE_TEMP_ROOT}/perimeterControl.conf.yaml")
                 _LOGGER.debug("Config file upload completed successfully")
                 
                 # Ensure target directory exists and move to final location
                 await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
-                await self._client.async_run(f"sudo mv /tmp/isolator.conf.yaml {REMOTE_CONF_DIR}/")
-                await self._client.async_run(f"sudo chown root:root {REMOTE_CONF_DIR}/isolator.conf.yaml")
-                await self._client.async_run(f"sudo chmod 644 {REMOTE_CONF_DIR}/isolator.conf.yaml")
+                await self._client.async_run(f"sudo mv {REMOTE_TEMP_ROOT}/perimeterControl.conf.yaml {REMOTE_CONF_DIR}/")
+                await self._client.async_run(f"sudo chown root:root {REMOTE_CONF_DIR}/perimeterControl.conf.yaml")
+                await self._client.async_run(f"sudo chmod 644 {REMOTE_CONF_DIR}/perimeterControl.conf.yaml")
                 
-                _LOGGER.info("Successfully deployed config file: isolator.conf.yaml")
+                _LOGGER.info("Successfully deployed config file: perimeterControl.conf.yaml")
             except Exception as exc:
                 _LOGGER.error("Failed to deploy config file %s: %s", config_file, exc, exc_info=True)
                 # Don't fail the entire deployment, just log the error and skip config deployment 
@@ -332,12 +367,25 @@ class Deployer:
         # Pack supervisor/ into tar and upload
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 73)
         tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
-        await self._client.async_put_bytes(tar_bytes, "/tmp/supervisor.tar.gz")
+        await self._client.async_put_bytes(tar_bytes, f"{REMOTE_TEMP_ROOT}/supervisor.tar.gz")
 
-        # Upload service unit
-        service_unit = _COMPONENT_DIR / "isolator-supervisor.service"
-        if service_unit.exists():
-            await self._client.async_put_file(service_unit, "/tmp/isolator-supervisor.service")
+        # Generate systemd service file from template
+        service_template = _COMPONENT_DIR / "PerimeterControl-supervisor.service.template"
+        if service_template.exists():
+            service_content = _render_service_template(service_template)
+            # Write to temporary file and upload
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.service') as f:
+                f.write(service_content)
+                temp_service_file = f.name
+            try:
+                await self._client.async_put_file(Path(temp_service_file), f"{REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service")
+            finally:
+                Path(temp_service_file).unlink(missing_ok=True)
+        else:
+            # Fallback to static file if template doesn't exist
+            service_unit = _COMPONENT_DIR / "PerimeterControl-supervisor.service"
+            if service_unit.exists():
+                await self._client.async_put_file(service_unit, f"{REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service")
 
         # Extract + install on remote via b64 script
         sup_install_script = _build_supervisor_install_script()
@@ -362,7 +410,7 @@ class Deployer:
                 continue
             await self._client.async_put_file(src, f"/tmp/{fname}")
             await self._client.async_run(
-                f"sudo install -o root -g root -m 0644 /tmp/{fname} {REMOTE_SERVICES_DIR}/{fname}"
+                f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{fname} {REMOTE_SERVICES_DIR}/{fname}"
             )
         self._emit(PHASE_SUPERVISOR, "Service descriptors deployed", 80)
 
@@ -382,11 +430,11 @@ class Deployer:
 
         for service_file in service_files:
             # Upload service file
-            await self._client.async_put_file(service_file, f"/tmp/{service_file.name}")
+            await self._client.async_put_file(service_file, f"{REMOTE_TEMP_ROOT}/{service_file.name}")
             
             # Install to /etc/systemd/system/
             await self._client.async_run(
-                f"sudo install -o root -g root -m 0644 /tmp/{service_file.name} /etc/systemd/system/{service_file.name}"
+                f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{service_file.name} {REMOTE_SYSTEMD_ROOT}/{service_file.name}"
             )
             
             _LOGGER.debug("Installed systemd service: %s", service_file.name)
@@ -411,9 +459,9 @@ class Deployer:
         self._emit(PHASE_SUPERVISOR, "Testing dashboard startup...", 86)
         
         # Make sure log directory is writable
-        await self._client.async_run("sudo mkdir -p /var/log/isolator")
-        await self._client.async_run("sudo mkdir -p /opt/isolator/state")
-        await self._client.async_run("sudo chmod 755 /var/log/isolator")
+        install_commands = _get_install_commands()
+        for cmd in install_commands:
+            await self._client.async_run(cmd)
         
         # Test if all required files are present
         required_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
@@ -457,20 +505,20 @@ class Deployer:
     # ------------------------------------------------------------------
 
     async def _phase_restart(self) -> None:
-        # Start base isolator service first (dashboard depends on it)
+        # Start base PerimeterControl service first (dashboard depends on it)
         base_service_exists = await self._client.async_run(
-            "systemctl list-unit-files isolator.service 2>/dev/null | grep -c isolator || true"
+            "systemctl list-unit-files PerimeterControl.service 2>/dev/null | grep -c PerimeterControl || true"
         )
         if base_service_exists.strip() != "0":
-            self._emit(PHASE_RESTART, "Starting base isolator service...", 87)
+            self._emit(PHASE_RESTART, "Starting base PerimeterControl service...", 87)
             try:
-                await self._client.async_run("sudo systemctl start isolator.service")
+                await self._client.async_run("sudo systemctl start PerimeterControl.service")
                 await asyncio.sleep(2)
                 _LOGGER.info("Base isolator service started successfully")
             except SshCommandError as exc:
                 # Base service failure should not block dashboard deployment
                 # This is expected during initial deployment before network config is complete
-                _LOGGER.info("Base isolator service failed to start (expected during initial setup): %s", exc)
+                _LOGGER.info("Base PerimeterControl service failed to start (expected during initial setup): %s", exc)
                 _LOGGER.info("Continuing deployment - dashboard can run independently")
         
         # Check if dashboard service exists before trying to restart it
@@ -506,14 +554,14 @@ class Deployer:
     async def _phase_verify(self) -> None:
         self._emit(PHASE_VERIFY, "Verifying service health...", 95)
         
-        # Check base isolator service (but don't fail if it's not running)
+        # Check base PerimeterControl service (but don't fail if it's not running)
         base_status = await self._client.async_run(
-            "systemctl is-active isolator.service || echo INACTIVE"
+            "systemctl is-active PerimeterControl.service || echo INACTIVE"
         )
         if "INACTIVE" in base_status:
-            _LOGGER.info("Base isolator.service is not active (this is often expected for dashboard-only deployments)")
+            _LOGGER.info("Base PerimeterControl.service is not active (this is often expected for dashboard-only deployments)")
         else:
-            _LOGGER.info("Base isolator.service is active: %s", base_status)
+            _LOGGER.info("Base PerimeterControl.service is active: %s", base_status)
         
         # Check dashboard service - this is the main service we care about
         dashboard_status = await self._client.async_run(
@@ -539,7 +587,7 @@ class Deployer:
                 
                 # Check if service unit file exists
                 unit_exists = await self._client.async_run(
-                    f"[ -f /etc/systemd/system/{SYSTEMD_DASHBOARD}.service ] && echo UNIT_EXISTS || echo UNIT_MISSING"
+                    f"[ -f {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_DASHBOARD}.service ] && echo UNIT_EXISTS || echo UNIT_MISSING"
                 )
                 _LOGGER.info("Service unit check: %s", unit_exists.strip())
                 
@@ -630,7 +678,7 @@ class Deployer:
                 
                 # Check if supervisor unit file exists
                 supervisor_unit_exists = await self._client.async_run(
-                    f"[ -f /etc/systemd/system/{SYSTEMD_SUPERVISOR}.service ] && echo UNIT_EXISTS || echo UNIT_MISSING"
+                    f"[ -f {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_SUPERVISOR}.service ] && echo UNIT_EXISTS || echo UNIT_MISSING"
                 )
                 _LOGGER.info("Supervisor service unit check: %s", supervisor_unit_exists.strip())
                 
@@ -725,24 +773,14 @@ def _build_install_script() -> str:
         ("network-topology.py", REMOTE_SCRIPTS_DIR, "0755"),
         ("topology_config.py", REMOTE_SCRIPTS_DIR, "0644"),
     ]
-    lines = [
-        "set -e",
-        # Create all required directories
-        f"sudo mkdir -p {REMOTE_WEB_DIR}",
-        f"sudo mkdir -p {REMOTE_SCRIPTS_DIR}", 
-        f"sudo mkdir -p {REMOTE_CONF_DIR}",
-        f"sudo mkdir -p {REMOTE_SERVICES_DIR}",
-        f"sudo mkdir -p /var/log/isolator",
-        f"sudo mkdir -p /opt/isolator/state",
-        f"sudo mkdir -p /mnt/isolator",
-        # Set proper ownership for log directories
-        "sudo chown root:root /var/log/isolator",
-        "sudo chown root:root /mnt/isolator", 
-    ]
+    
+    # Use the configurable install commands
+    lines = ["set -e"] + _get_install_commands()
+    
     for fname, dest, mode in web_files + script_files:
         lines.append(
-            f"[ -f /tmp/{fname} ] && sudo install -o root -g root -m {mode} "
-            f"/tmp/{fname} {dest}/{fname} || true"
+            f"[ -f {REMOTE_TEMP_ROOT}/{fname} ] && sudo install -o root -g root -m {mode} "
+            f"{REMOTE_TEMP_ROOT}/{fname} {dest}/{fname} || true"
         )
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)
@@ -750,20 +788,20 @@ def _build_install_script() -> str:
 
 def _build_supervisor_install_script() -> str:
     return f"""set -e
-sudo cp -a {REMOTE_SUPERVISOR_DIR} /tmp/isolator-supervisor-backup 2>/dev/null || true
-cd /tmp
-rm -rf /tmp/supervisor
-tar --no-same-permissions --no-same-owner -xzf /tmp/supervisor.tar.gz
+sudo cp -a {REMOTE_SUPERVISOR_DIR} {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor-backup 2>/dev/null || true
+cd {REMOTE_TEMP_ROOT}
+rm -rf {REMOTE_TEMP_ROOT}/supervisor
+tar --no-same-permissions --no-same-owner -xzf {REMOTE_TEMP_ROOT}/supervisor.tar.gz
 sudo mkdir -p {REMOTE_SUPERVISOR_DIR}
-sudo cp -r /tmp/supervisor/. {REMOTE_SUPERVISOR_DIR}/
+sudo cp -r {REMOTE_TEMP_ROOT}/supervisor/. {REMOTE_SUPERVISOR_DIR}/
 sudo chown -R root:root {REMOTE_SUPERVISOR_DIR}
 sudo find {REMOTE_SUPERVISOR_DIR} -type f -exec chmod 644 {{}} +
 sudo find {REMOTE_SUPERVISOR_DIR} -type d -exec chmod 755 {{}} +
-[ -f /tmp/isolator-supervisor.service ] && \
-  sudo install -o root -g root -m 0644 /tmp/isolator-supervisor.service \
-  /etc/systemd/system/isolator-supervisor.service && \
+[ -f {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service ] && \\
+  sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor.service \\
+  {REMOTE_SYSTEMD_ROOT}/PerimeterControl-supervisor.service && \\
   sudo systemctl daemon-reload && \
-  sudo systemctl enable isolator-supervisor.service || true
+  sudo systemctl enable PerimeterControl-supervisor.service || true
 echo SUPERVISOR_INSTALLED
 """
 

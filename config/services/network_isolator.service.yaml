@@ -11,7 +11,7 @@ spec:
     entrypoint: isolator.service
 
   config_file:
-    path: /mnt/isolator/conf/isolator.conf.yaml
+    path: /mnt/isolator/conf/perimeterControl.conf.yaml
     format: yaml
     schema_ref: schema://services/network_isolator/v1
 
@@ -25,9 +25,9 @@ spec:
     exposure_scope: lan_only
 
   placement:
-    can_run_with: [photo_booth, ble_gatt_repeater]
+    can_run_with: [ photo_booth, ble_gatt_repeater ]
     cannot_run_with: []
-    prefers_node_labels: [role=perimeter]
+    prefers_node_labels: [ role=perimeter ]
 
   resources:
     cpu_cores: 1.0
