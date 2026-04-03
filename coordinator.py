@@ -770,11 +770,31 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if deployment_payload:
             try:
                 _LOGGER.warning("Deploying capabilities to Supervisor: %s", list(deployment_payload.keys()))
-                result = await self._supervisor_post("/deployments", {
+                
+                # Use a shorter timeout for deployment to avoid connection drops
+                if not self._http_session or self._http_session.closed:
+                    raise UpdateFailed("HTTP session not initialized or closed")
+                
+                url = f"{self._supervisor_base_url}/deployments"
+                payload = {
                     "capabilities": deployment_payload,
                     "dry_run": False
-                })
-                _LOGGER.warning("Supervisor deployment result: %s", result)
+                }
+                _LOGGER.warning("Posting to URL: %s with payload: %s", url, payload)
+                
+                timeout = aiohttp.ClientTimeout(total=30)  # Shorter timeout for deployment
+                async with self._http_session.post(url, json=payload, timeout=timeout) as response:
+                    _LOGGER.warning("Deployment response status: %s", response.status)
+                    if response.status in (200, 201):
+                        result = await response.json()
+                        _LOGGER.warning("Supervisor deployment result: %s", result)
+                    else:
+                        error_text = await response.text()
+                        _LOGGER.error("Deployment failed with status %s: %s", response.status, error_text)
+                        raise UpdateFailed(f"Supervisor API error {response.status}: {error_text}")
+                
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                _LOGGER.warning("Failed to activate services in Supervisor (connection error): %s", exc)
             except Exception as exc:
                 _LOGGER.warning("Failed to activate services in Supervisor: %s", exc)
     
