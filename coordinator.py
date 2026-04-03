@@ -116,31 +116,53 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         raise Exception(f"Dashboard returned HTTP {resp.status}")
             except Exception as dashboard_exc:
                 _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
-                # Trigger deployment even though supervisor is working
-                await instance._client.async_run("echo 'SSH test'")
-                _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+                # Trigger deployment even though supervisor is working - but don't block startup
+                _LOGGER.info("Scheduling deployment to fix dashboard issues...")
                 
-                deploy_task = instance.hass.async_create_task(
-                    instance._auto_deploy_supervisor(),
-                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                )
-                
-                def deployment_completed(task):
-                    try:
-                        if task.exception():
-                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
-                                        task.exception(), exc_info=task.exception())
-                        else:
-                            _LOGGER.debug("Auto-deployment task completed successfully")
-                            # Start websocket connection after successful deployment
+                def schedule_deployment_after_ssh_test():
+                    """Background task to test SSH and start deployment if successful."""
+                    async def _ssh_test_and_deploy():
+                        try:
+                            await instance._client.async_run("echo 'SSH test'")
+                            _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+                            
+                            deploy_task = instance.hass.async_create_task(
+                                instance._auto_deploy_supervisor(),
+                                name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                            )
+                            
+                            def deployment_completed(task):
+                                try:
+                                    if task.exception():
+                                        _LOGGER.error("Auto-deployment task failed with exception: %s", 
+                                                    task.exception(), exc_info=task.exception())
+                                    else:
+                                        _LOGGER.debug("Auto-deployment task completed successfully")
+                                        # Start websocket connection after successful deployment
+                                        instance.hass.async_create_task(
+                                            instance._delayed_websocket_start(),
+                                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                        )
+                                except Exception as cb_exc:
+                                    _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+                            
+                            deploy_task.add_done_callback(deployment_completed)
+                            
+                        except Exception as ssh_exc:
+                            _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
+                            # Still try to start WebSocket in case services are actually working
                             instance.hass.async_create_task(
                                 instance._delayed_websocket_start(),
                                 name=f"perimeter_control_websocket_{instance._entry.entry_id}"
                             )
-                    except Exception as cb_exc:
-                        _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+                    
+                    return _ssh_test_and_deploy()
                 
-                deploy_task.add_done_callback(deployment_completed)
+                # Schedule SSH test and deployment as background task
+                instance.hass.async_create_task(
+                    schedule_deployment_after_ssh_test(),
+                    name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
+                )
                 
         except Exception as exc:
             _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
@@ -150,37 +172,51 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # WebSocket connection will be attempted later via background task
             
             # Try auto-deployment if supervisor is not available
-            try:
-                # Quick SSH test to see if deployment is possible
-                await instance._client.async_run("echo 'SSH test'")
-                _LOGGER.info("SSH connection successful. Starting automatic deployment...")
-                
-                # Trigger automatic deployment in background with explicit task tracking
-                deploy_task = instance.hass.async_create_task(
-                    instance._auto_deploy_supervisor(),
-                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                )
-                
-                # Add task done callback for debugging
-                def deployment_completed(task):
+            _LOGGER.info("Scheduling auto-deployment check...")
+            
+            def schedule_auto_deployment():
+                """Background task to test SSH and start deployment if successful."""
+                async def _ssh_test_and_auto_deploy():
                     try:
-                        if task.exception():
-                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
-                                        task.exception(), exc_info=task.exception())
-                        else:
-                            _LOGGER.debug("Auto-deployment task completed successfully")
-                            # Start websocket connection after successful deployment
-                            instance.hass.async_create_task(
-                                instance._delayed_websocket_start(),
-                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                            )
-                    except Exception as callback_exc:
-                        _LOGGER.error("Error in deployment callback: %s", callback_exc)
+                        # Quick SSH test to see if deployment is possible
+                        await instance._client.async_run("echo 'SSH test'")
+                        _LOGGER.info("SSH connection successful. Starting automatic deployment...")
+                        
+                        # Trigger automatic deployment in background with explicit task tracking
+                        deploy_task = instance.hass.async_create_task(
+                            instance._auto_deploy_supervisor(),
+                            name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                        )
+                        
+                        # Add task done callback for debugging
+                        def deployment_completed(task):
+                            try:
+                                if task.exception():
+                                    _LOGGER.error("Auto-deployment task failed with exception: %s", 
+                                                task.exception(), exc_info=task.exception())
+                                else:
+                                    _LOGGER.debug("Auto-deployment task completed successfully")
+                                    # Start websocket connection after successful deployment
+                                    instance.hass.async_create_task(
+                                        instance._delayed_websocket_start(),
+                                        name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                    )
+                            except Exception as callback_exc:
+                                _LOGGER.error("Error in deployment callback: %s", callback_exc)
+                        
+                        deploy_task.add_done_callback(deployment_completed)
+                        
+                    except Exception as ssh_exc:
+                        _LOGGER.warning("SSH connection failed during auto-deployment check: %s", ssh_exc)
+                        # Integration will work in monitoring mode only
                 
-                deploy_task.add_done_callback(deployment_completed)
-                
-            except Exception as ssh_exc:
-                _LOGGER.error("Cannot auto-deploy: SSH connection failed: %s", ssh_exc)
+                return _ssh_test_and_auto_deploy()
+            
+            # Schedule SSH test and auto-deployment as background task - don't block startup
+            instance.hass.async_create_task(
+                schedule_auto_deployment(),
+                name=f"perimeter_control_auto_deploy_check_{instance._entry.entry_id}"
+            )
         
         return instance
 
@@ -403,18 +439,28 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _websocket_event_loop(self) -> None:
         """Listen for WebSocket events and trigger coordinator updates."""
         if not self._websocket:
+            _LOGGER.debug("No websocket connection available for event loop")
             return
             
         try:
-            # No timeout - websockets can be idle for long periods
-            await self._websocket_message_loop()
+            # Set a reasonable timeout for the entire event loop
+            await asyncio.wait_for(
+                self._websocket_message_loop(),
+                timeout=300.0  # 5 minutes max, then restart connection
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.debug("WebSocket event loop timeout - restarting connection")
         except Exception as exc:
-            _LOGGER.warning("WebSocket event loop error: %s", exc)
+            _LOGGER.debug("WebSocket event loop error: %s", exc)
         finally:
             # Clean up websocket connection
-            if self._websocket and not self._websocket.closed:
-                await self._websocket.close()
-            self._websocket = None
+            try:
+                if self._websocket and not self._websocket.closed:
+                    await asyncio.wait_for(self._websocket.close(), timeout=5.0)
+            except Exception as close_exc:
+                _LOGGER.debug("WebSocket close error: %s", close_exc)
+            finally:
+                self._websocket = None
             
             # Only attempt reconnection if we're still supposed to be running
             # and this isn't during shutdown
@@ -422,26 +468,55 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._reconnect_attempts = getattr(self, '_reconnect_attempts', 0) + 1
                 if self._reconnect_attempts < 3:  # Limit reconnection attempts
                     _LOGGER.debug("Scheduling WebSocket reconnection attempt %d", self._reconnect_attempts)
-                    await asyncio.sleep(10)  # Shorter delay
+                    # Use exponential backoff for reconnection
+                    delay = min(10 * (2 ** (self._reconnect_attempts - 1)), 60)
+                    await asyncio.sleep(delay)
                     if self._running:  # Check again after delay
-                        await self._start_websocket_listener()
+                        try:
+                            await self._start_websocket_listener()
+                        except Exception as reconnect_exc:
+                            _LOGGER.debug("WebSocket reconnection failed: %s", reconnect_exc)
                 else:
-                    _LOGGER.warning("Max WebSocket reconnection attempts reached, giving up")
+                    _LOGGER.info("Max WebSocket reconnection attempts reached, giving up")
     
     async def _websocket_message_loop(self) -> None:
-        """Process websocket messages in a loop."""
-        async for msg in self._websocket:
-            if msg.type == aiohttp.WSMsgType.TEXT:
+        """Process websocket messages in a loop with timeout handling."""
+        try:
+            while not self._websocket.closed and self._running:
                 try:
-                    event = json.loads(msg.data)
-                    await self._handle_supervisor_event(event)
-                except json.JSONDecodeError:
-                    _LOGGER.debug("Invalid WebSocket JSON: %s", msg.data[:100])
-            elif msg.type == aiohttp.WSMsgType.ERROR:
-                _LOGGER.warning("WebSocket error: %s", self._websocket.exception())
-                break
-            elif msg.type == aiohttp.WSMsgType.CLOSE:
-                _LOGGER.debug("WebSocket closed by server")
+                    # Use wait_for with timeout to prevent indefinite blocking
+                    msg = await asyncio.wait_for(
+                        self._websocket.receive(),
+                        timeout=30.0  # 30 second timeout for each message
+                    )
+                    
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        try:
+                            event = json.loads(msg.data)
+                            await self._handle_supervisor_event(event)
+                        except json.JSONDecodeError:
+                            _LOGGER.debug("Invalid WebSocket JSON: %s", msg.data[:100])
+                    elif msg.type == aiohttp.WSMsgType.ERROR:
+                        _LOGGER.warning("WebSocket error: %s", self._websocket.exception())
+                        break
+                    elif msg.type == aiohttp.WSMsgType.CLOSE:
+                        _LOGGER.debug("WebSocket closed by server")
+                        break
+                        
+                except asyncio.TimeoutError:
+                    # Timeout on receive - this is normal for idle connections
+                    # Send a ping to keep connection alive
+                    if not self._websocket.closed:
+                        try:
+                            await self._websocket.ping()
+                            _LOGGER.debug("WebSocket ping sent (keepalive)")
+                        except Exception as ping_exc:
+                            _LOGGER.debug("WebSocket ping failed: %s", ping_exc)
+                            break
+                    continue
+                    
+        except Exception as exc:
+            _LOGGER.debug("WebSocket message loop error: %s", exc)
                 break
     
     async def _delayed_websocket_start(self) -> None:
