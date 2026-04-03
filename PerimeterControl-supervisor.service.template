@@ -1,8 +1,7 @@
 [Unit]
 Description=PerimeterControl Supervisor
 Documentation=https://github.com/isolator/isolator
-After=network.target {DASHBOARD_SERVICE}.service
-Wants={DASHBOARD_SERVICE}.service
+After=network.target
 
 [Service]
 Type=simple

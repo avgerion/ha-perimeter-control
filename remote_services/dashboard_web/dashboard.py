@@ -32,12 +32,18 @@ from layouts import create_dashboard_layout
 from callbacks import setup_callbacks
 from data_sources import DataManager
 
+import os
+
+# Get log path from environment, with fallback
+LOG_ROOT = os.environ.get('LOG_ROOT', '/var/log/PerimeterControl')
+log_file = os.path.join(LOG_ROOT, 'dashboard.log')
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler('/var/log/isolator/dashboard.log'),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )

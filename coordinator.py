@@ -60,6 +60,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._deploy_log: list[DeployProgress] = []
         self._running = True
         self._reconnect_attempts = 0
+        self._websocket_task: Optional[asyncio.Task] = None
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -426,7 +427,15 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }))
             
             # Start background task to listen for events
-            self.hass.async_create_task(self._websocket_event_loop())
+            # Cancel any existing websocket task to prevent concurrent receive() calls
+            if self._websocket_task and not self._websocket_task.done():
+                self._websocket_task.cancel()
+                try:
+                    await self._websocket_task
+                except asyncio.CancelledError:
+                    pass
+            
+            self._websocket_task = self.hass.async_create_task(self._websocket_event_loop())
             
             _LOGGER.info("WebSocket listener started for Supervisor events")
         except asyncio.TimeoutError:
@@ -682,6 +691,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Clean shutdown of coordinator resources."""
         # Stop reconnection attempts
         self._running = False
+        
+        # Cancel websocket background task
+        if self._websocket_task and not self._websocket_task.done():
+            self._websocket_task.cancel()
+            try:
+                await self._websocket_task
+            except asyncio.CancelledError:
+                pass
         
         # Close WebSocket connection
         if self._websocket and not self._websocket.closed:
