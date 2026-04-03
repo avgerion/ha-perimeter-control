@@ -232,14 +232,16 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         url = f"{self._supervisor_base_url}{endpoint}"
         try:
-            async with self._http_session.get(url) as response:
+            # Add 10-second timeout to prevent hanging
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with self._http_session.get(url, timeout=timeout) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 404:
                     return {}
                 else:
                     raise UpdateFailed(f"Supervisor API error {response.status}: {await response.text()}")
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise UpdateFailed(f"Failed to connect to Supervisor API: {exc}") from exc
     
     async def _supervisor_post(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -249,12 +251,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         url = f"{self._supervisor_base_url}{endpoint}"
         try:
-            async with self._http_session.post(url, json=data) as response:
+            # Add 10-second timeout to prevent hanging
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with self._http_session.post(url, json=data, timeout=timeout) as response:
                 if response.status in (200, 201):
                     return await response.json()
                 else:
                     raise UpdateFailed(f"Supervisor API error {response.status}: {await response.text()}")
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise UpdateFailed(f"Failed to connect to Supervisor API: {exc}") from exc
 
     async def _fetch_supervisor_entities(self) -> list[dict[str, Any]]:
