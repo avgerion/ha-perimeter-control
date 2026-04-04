@@ -187,18 +187,34 @@ class Deployer(BaseDeployer):
                 component_services.append(service_id)
         
         # Check cross-service component conflicts
+        # Some components are designed to be shared infrastructure
+        SHAREABLE_COMPONENTS = {
+            'python_dependencies', 'system_dependencies', 'config_manager', 
+            'data_logging', 'alert_system'
+        }
+        
         all_components = {}
+        exclusive_components = {}
+        
         for service_id in component_services:
             service = self._services[service_id]
             for comp_name, component in service._components.items():
                 if component.config.enabled:
-                    if comp_name in all_components:
-                        existing_service = all_components[comp_name]
-                        all_conflicts.append(
-                            f"Component {comp_name} used by both {existing_service} and {service_id}"
-                        )
+                    if comp_name in SHAREABLE_COMPONENTS:
+                        # Shareable components can be used by multiple services
+                        if comp_name not in all_components:
+                            all_components[comp_name] = [service_id]
+                        else:
+                            all_components[comp_name].append(service_id)
                     else:
-                        all_components[comp_name] = service_id
+                        # Exclusive components (like hardware interfaces) cannot be shared
+                        if comp_name in exclusive_components:
+                            existing_service = exclusive_components[comp_name]
+                            all_conflicts.append(
+                                f"Exclusive component {comp_name} used by both {existing_service} and {service_id}"
+                            )
+                        else:
+                            exclusive_components[comp_name] = service_id
         
         if all_conflicts:
             raise ValueError(f"Component conflicts detected: {'; '.join(all_conflicts)}")
