@@ -36,9 +36,9 @@ class NetworkDeployer(BaseDeployer):
             # Phase 1: Preflight with network-specific resource requirements
             _LOGGER.info("Network Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self.phase_preflight(
-                required_cpu=0.2,      # Network operations are generally lightweight
-                required_memory=96,    # Minimal memory footprint
-                required_disk=30       # Small disk usage
+                required_cpu=0.1,      # Network operations are very lightweight
+                required_memory=48,    # Very minimal memory footprint
+                required_disk=20       # Tiny disk usage
             )
             
             # Phase 2: Upload network-specific files

@@ -36,9 +36,9 @@ class BleDeployer(BaseDeployer):
             # Phase 1: Preflight with BLE-specific resource requirements
             _LOGGER.info("BLE Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self.phase_preflight(
-                required_cpu=0.3,      # BLE scanning can be CPU intensive
-                required_memory=128,   # Base memory requirement
-                required_disk=50       # Moderate disk usage
+                required_cpu=0.15,     # BLE scanning is moderately intensive
+                required_memory=64,    # Conservative memory requirement
+                required_disk=30       # Light disk usage
             )
             
             # Phase 2: Upload BLE-specific files

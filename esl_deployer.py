@@ -36,9 +36,9 @@ class EslDeployer(BaseDeployer):
             # Phase 1: Preflight with ESL-specific resource requirements
             _LOGGER.info("ESL Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self.phase_preflight(
-                required_cpu=0.4,      # ESL management can be CPU intensive
-                required_memory=160,   # Moderate memory for ESL protocol handling
-                required_disk=80       # ESL configuration and label data
+                required_cpu=0.2,      # ESL management moderately intensive
+                required_memory=96,    # Conservative memory for ESL protocol handling
+                required_disk=50       # Moderate ESL configuration and label data
             )
             
             # Phase 2: Upload ESL-specific files

@@ -130,7 +130,7 @@ class BaseDeployer:
         self._cb(p)
         return p
 
-    async def check_system_resources(self, required_cpu: float = 0.2, required_memory: int = 128, required_disk: int = 100) -> None:
+    async def check_system_resources(self, required_cpu: float = 0.1, required_memory: int = 64, required_disk: int = 50) -> None:
         """Check system resources before deployment to prevent failures."""
         self._emit(PHASE_PREFLIGHT, "Checking system resources...", 1)
         
@@ -249,7 +249,7 @@ fi
         except Exception as exc:
             raise SshCommandError("resource_check", 1, f"Resource check failed: {exc}") from exc
 
-    async def phase_preflight(self, required_cpu: float = 0.2, required_memory: int = 128, required_disk: int = 100) -> None:
+    async def phase_preflight(self, required_cpu: float = 0.1, required_memory: int = 64, required_disk: int = 50) -> None:
         """Common preflight checks for all deployers."""
         await self.check_system_resources(required_cpu, required_memory, required_disk)
         
@@ -358,8 +358,7 @@ fi
             try:
                 _LOGGER.info("Installing Python package: %s", package)
                 await self._client.async_run(
-                    f"sudo {REMOTE_VENV}/bin/python3 -m pip install {package}",
-                    timeout=300  # 5 minute timeout for package installation
+                    f"sudo {REMOTE_VENV}/bin/python3 -m pip install {package}"
                 )
                 _LOGGER.info("Successfully installed: %s", package)
             except Exception as exc:

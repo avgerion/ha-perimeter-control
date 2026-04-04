@@ -36,9 +36,9 @@ class CameraDeployer(BaseDeployer):
             # Phase 1: Preflight with camera-specific resource requirements
             _LOGGER.info("Camera Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self.phase_preflight(
-                required_cpu=0.4,      # Image processing can be CPU intensive
-                required_memory=256,   # Image processing requires more memory
-                required_disk=200      # Space for photos and temp files
+                required_cpu=0.2,      # Image processing moderately intensive 
+                required_memory=128,   # Reasonable memory for image processing
+                required_disk=100      # Moderate space for photos and temp files
             )
             
             # Phase 2: Upload camera-specific files

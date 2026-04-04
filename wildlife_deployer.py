@@ -36,9 +36,9 @@ class WildlifeDeployer(BaseDeployer):
             # Phase 1: Preflight with wildlife-specific resource requirements
             _LOGGER.info("Wildlife Phase 1: Preflight checks (ID: %s)", deployment_id)
             await self.phase_preflight(
-                required_cpu=0.3,      # Data analysis can be moderately intensive
-                required_memory=200,   # Data processing requires decent memory
-                required_disk=150      # Space for sensor data and logs
+                required_cpu=0.15,     # Data analysis moderately intensive
+                required_memory=96,    # Conservative memory for data processing
+                required_disk=75       # Reasonable space for sensor data and logs
             )
             
             # Phase 2: Upload wildlife-specific files
