@@ -93,7 +93,12 @@ class NetworkIsolationCapability(CapabilityModule):
     # ------------------------------------------------------------------
 
     def get_entities(self) -> List[Dict[str, Any]]:
-        return list(self.entity_cache.get_by_capability(self.cap_id).values())
+        entities = []
+        for entity_id, entity_data in self.entity_cache.get_by_capability(self.cap_id).items():
+            entity = entity_data.copy()
+            entity["id"] = entity_id
+            entities.append(entity)
+        return entities
 
     # ------------------------------------------------------------------
     # Health probe
