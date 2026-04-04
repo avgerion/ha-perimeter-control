@@ -108,7 +108,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connector=aiohttp.TCPConnector(
                 limit=10,
                 ssl=False,  # Pi supervisor typically uses HTTP not HTTPS
-                force_close=True,
+                force_close=False,  # Allow connection reuse
                 keepalive_timeout=30,
             ),
         )
