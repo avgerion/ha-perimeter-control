@@ -57,7 +57,7 @@ class NetworkDeployer(BaseDeployer):
             
             # Phase 4: Deploy network configuration
             _LOGGER.info("Network Phase 4: Deploy config (ID: %s)", deployment_id)
-            await self.phase_config(['isolator.conf.yaml', 'perimeterControl.conf.yaml'])
+            await self.phase_config(['perimeterControl.conf.yaml'])
             
             # Phase 5: Configure network capabilities
             _LOGGER.info("Network Phase 5: Configure network capabilities (ID: %s)", deployment_id)
