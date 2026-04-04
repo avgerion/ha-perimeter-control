@@ -1,7 +1,12 @@
 # Isolator Supervisor dependencies
 # Install with: pip install -r requirements.txt
 
-# Async web framework (shared with existing dashboard)
+# FastAPI web framework (replacing Tornado)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+
+# Async web framework (legacy - being replaced by FastAPI)
 tornado>=6.4
 
 # Async HTTP client (for http health probes)

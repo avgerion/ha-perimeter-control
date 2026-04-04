@@ -22,7 +22,10 @@ class BleService(BaseService):
         self.add_component(PythonDependencies([
             "bleak", 
             "asyncio-mqtt", 
-            "aiofiles"
+            "aiofiles",
+            "bokeh",
+            "tornado",
+            "jinja2"
         ]), 1)
         
         # Add system dependencies
@@ -49,6 +52,19 @@ devices:
 broker: localhost
 port: 1883
 topic_prefix: "ble"
+""",
+            "dashboard_config.yaml": """
+# BLE GATT Repeater Dashboard Configuration
+server:
+  host: "0.0.0.0"
+  port: 8091
+  type: "bokeh"
+features:
+  device_scanner: true
+  gatt_browser: true
+  characteristic_monitor: true
+  connection_status: true
+data_refresh_interval: 5
 """
         }
         self.add_component(ConfigurationManager(config_files), 3)
@@ -81,8 +97,8 @@ class PhotoBoothService(BaseService):
             "opencv-python-headless",
             "pillow", 
             "numpy",
-            "fastapi",
-            "uvicorn"
+            "bokeh",
+            "tornado"
         ]), 4)
         
         # Add configuration
@@ -104,7 +120,8 @@ storage:
 # Dashboard Configuration
 server:
   host: "0.0.0.0"
-  port: 8081
+  port: 8093
+  type: "bokeh"
 features:
   live_stream: true
   motion_detection: true
@@ -203,7 +220,10 @@ class WildlifeService(BaseService):
             "scipy",
             "RPi.GPIO",
             "adafruit-circuitpython-bme280",
-            "matplotlib"
+            "matplotlib",
+            "bokeh",
+            "tornado",
+            "jinja2"
         ]), 3)
         
         # Add features
@@ -240,6 +260,19 @@ processing:
 visualization:
   charts: [temperature, humidity, motion_events]
   update_interval: 300
+""",
+            "dashboard_config.yaml": """
+# Wildlife Monitor Dashboard Configuration  
+server:
+  host: "0.0.0.0"
+  port: 8094
+  type: "bokeh"
+features:
+  sensor_charts: true
+  motion_timeline: true
+  environmental_data: true
+  wildlife_gallery: true
+data_refresh_interval: 60
 """
         }
         self.add_component(ConfigurationManager(config_files), 7)
@@ -265,7 +298,10 @@ class EslService(BaseService):
             "construct", 
             "cryptography",
             "bluepy",
-            "asyncio-mqtt"
+            "asyncio-mqtt",
+            "bokeh",
+            "tornado",
+            "jinja2"
         ]), 2)
         
         # Add features
@@ -305,6 +341,19 @@ templates:
         format: "code128"
 layouts:
   default: "price_tag"
+""",
+            "dashboard_config.yaml": """
+# ESL AP Dashboard Configuration
+server:
+  host: "0.0.0.0"  
+  port: 8092
+  type: "bokeh"
+features:
+  display_management: true
+  layout_editor: true
+  advertising_status: true
+  connected_displays: true
+data_refresh_interval: 30
 """
         }
         self.add_component(ConfigurationManager(config_files), 5)
