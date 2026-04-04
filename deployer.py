@@ -27,11 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from base_deployer import BaseDeployer
-from base_deployer import DeployProgress, ProgressCallback
-from component_services import create_service, register_service_components, SERVICE_REGISTRY
-from service_framework import ComponentRegistry, hardware_registry
-from const import (
+from .base_deployer import BaseDeployer
+from .base_deployer import DeployProgress, ProgressCallback
+from .component_services import create_service, register_service_components, SERVICE_REGISTRY
+from .service_framework import ComponentRegistry, hardware_registry
+from .const import (
     APT_DEPENDENCY_GROUPS,
     PHASE_PREFLIGHT,
     PHASE_RESTART,
@@ -48,8 +48,8 @@ from const import (
     SYSTEMD_SUPERVISOR,
     get_remote_path_config,
 )
-from service_descriptor import ServiceDescriptor, load_service_descriptors
-from ssh_client import SshClient, SshCommandError
+from .service_descriptor import ServiceDescriptor, load_service_descriptors
+from .ssh_client import SshClient, SshCommandError
 
 _LOGGER = logging.getLogger(__name__)
 

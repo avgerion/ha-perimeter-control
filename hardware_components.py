@@ -5,8 +5,8 @@ import json
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-from service_framework import HardwareInterface, ResourceRequirement, ComponentConfig
-from ssh_client import SshClient
+from .service_framework import HardwareInterface, ResourceRequirement, ComponentConfig
+from .ssh_client import SshClient
 
 
 class BluetoothInterface(HardwareInterface):

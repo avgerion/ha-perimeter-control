@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
 
-from ssh_client import SshClient
+from .ssh_client import SshClient
 
 _LOGGER = logging.getLogger(__name__)
 

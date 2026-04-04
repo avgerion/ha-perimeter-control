@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from const import (
+from .const import (
     CONF_HOST,
     CONF_PORT,
     CONF_SERVICES,
@@ -24,9 +24,9 @@ from const import (
     DEFAULT_SSH_PORT,
     DOMAIN,
 )
-from deployer import DeployProgress, Deployer
-from ssh_client import SshClient, SshConnectionError
-from service_descriptor import ServiceDescriptor, load_service_descriptors
+from .deployer import DeployProgress, Deployer
+from .ssh_client import SshClient, SshConnectionError
+from .service_descriptor import ServiceDescriptor, load_service_descriptors
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
