@@ -127,15 +127,43 @@ class CapabilityModule(ABC):
 
     def _publish_entity(
         self,
-        entity_id: str,
-        state: str,
+        entity_or_id: str | Dict[str, Any],
+        state: Optional[str] = None,
         attributes: Optional[Dict[str, Any]] = None,
         **extra: Any,
     ) -> None:
         """
         Write entity state to the shared entity cache and emit an
         ``entity_updated`` event so WebSocket subscribers see it immediately.
+        
+        Can be called in two ways:
+        1. _publish_entity(entity_id, state, attributes=..., **extra)
+        2. _publish_entity(entity_dict) - where entity_dict contains id, state, etc.
         """
+        if isinstance(entity_or_id, dict):
+            # Called with entity dict - extract fields
+            entity = entity_or_id
+            entity_id = entity["id"]
+            state = entity["state"] 
+            attributes = entity.get("attributes", {})
+            
+            # Copy other fields as extra parameters for the cache
+            extra = {
+                "platform": entity.get("type", "sensor"),
+                "device_class": entity.get("device_class"),
+                "icon": entity.get("icon"),
+                "friendly_name": entity.get("friendly_name"),
+                **{k: v for k, v in entity.items() 
+                   if k not in ["id", "state", "attributes", "capability"]}
+            }
+            # Filter out None values
+            extra = {k: v for k, v in extra.items() if v is not None}
+        else:
+            # Called with individual parameters (legacy)
+            entity_id = entity_or_id
+            if state is None:
+                raise ValueError("state parameter required when passing entity_id as string")
+        
         self.entity_cache.update(
             entity_id,
             state,
