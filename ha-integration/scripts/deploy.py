@@ -36,7 +36,7 @@ try:
     import yaml
 except ImportError:
     print(json.dumps({"step": "startup", "ok": False,
-                      "detail": "PyYAML not installed. Run: pip3 install pyyaml"}), flush=True)
+                      "detail": "PyYAML not installed. Run: python3 -m pip install pyyaml"}), flush=True)
     sys.exit(1)
 
 import subprocess

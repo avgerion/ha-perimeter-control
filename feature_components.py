@@ -34,14 +34,30 @@ class PythonDependencies(ServiceComponent):
                 self.logger.warning("SSH client not available for validation, skipping Python check")
                 return True  # Allow deployment to proceed
             
-            result = await ssh_client.async_run("python3 --version && pip3 --version")
-            has_python = "Python 3" in result and "pip" in result
-            if not has_python:
-                self.logger.warning("Python3 or pip3 not detected, deployment may install them")
-            return True  # Always return True for now, let deployment handle missing dependencies
+            # Check Python3 first (more likely to be present)
+            try:
+                python_result = await ssh_client.async_run("python3 --version 2>/dev/null || echo 'not found'")
+                has_python = "Python 3" in python_result
+                if not has_python:
+                    self.logger.info("Python3 not detected, deployment will install it")
+                    return True  # Let deployment handle Python installation
+            except Exception:
+                self.logger.info("Could not check Python3, deployment will attempt installation")
+                return True
+            
+            # Check pip separately (using python3 -m pip which is most reliable)
+            try:
+                pip_result = await ssh_client.async_run("python3 -m pip --version 2>/dev/null || echo 'not found'")
+                has_pip = "pip" in pip_result and "not found" not in pip_result
+                if not has_pip:
+                    self.logger.info("pip module not detected, deployment will install it")
+            except Exception:
+                self.logger.info("Could not check pip module, deployment will attempt installation")
+            
+            return True  # Always return True, let deployment handle package management setup
         except Exception as e:
-            self.logger.warning(f"Could not validate Python requirements: {e}")
-            return True  # Allow deployment to proceed and handle missing deps during install
+            self.logger.info(f"Python validation skipped: {e}")
+            return True  # Allow deployment to proceed
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
         """Install Python packages."""
