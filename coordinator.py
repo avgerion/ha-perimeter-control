@@ -6,13 +6,14 @@ from datetime import timedelta
 from typing import Any, Optional
 import json
 import asyncio
+from pathlib import Path
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import (
+from const import (
     CONF_HOST,
     CONF_PORT,
     CONF_SERVICES,
@@ -23,9 +24,9 @@ from .const import (
     DEFAULT_SSH_PORT,
     DOMAIN,
 )
-from .deployer import DeployProgress, Deployer
-from .ssh_client import SshClient, SshConnectionError
-from .service_descriptor import ServiceDescriptor, load_service_descriptors
+from deployer import DeployProgress, Deployer
+from ssh_client import SshClient, SshConnectionError
+from service_descriptor import ServiceDescriptor, load_service_descriptors
 from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=_POLL_INTERVAL,
         )
         self._entry = entry
-        self._client = None  # SSH client for deploys
+        self._client: Optional[SshClient] = None  # SSH client for deploys
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._websocket: Optional[aiohttp.ClientWebSocketResponse] = None
         self._supervisor_base_url = f"http://{entry.data[CONF_HOST]}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/api/v1"
@@ -63,6 +64,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._reconnect_attempts = 0
         self._websocket_task: Optional[asyncio.Task] = None
         self._websocket_starting = False
+        self._client_initialized = False  # Track SSH client state
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -73,7 +75,6 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ssh_key_path = entry.data.get("ssh_key_path", "")
         if not private_key and ssh_key_path:
             try:
-                from pathlib import Path
                 private_key = await hass.async_add_executor_job(
                     lambda: Path(ssh_key_path).read_text(encoding="utf-8")
                 )
@@ -99,13 +100,16 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             user=entry.data[CONF_USER],
             private_key=private_key,
         )
-        # Initialize HTTP session for Supervisor API
+        instance._client_initialized = True
+        
+        # Initialize HTTP session for Supervisor API with proper SSL handling
         instance._http_session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=10),
+            timeout=aiohttp.ClientTimeout(total=30),
             connector=aiohttp.TCPConnector(
                 limit=10,
-                ssl=False,  # Explicitly disable SSL for HTTP connections
-                force_close=True,  # Ensure connections are closed properly
+                ssl=False,  # Pi supervisor typically uses HTTP not HTTPS
+                force_close=True,
+                keepalive_timeout=30,
             ),
         )
         
@@ -133,43 +137,49 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
                 # Trigger deployment even though supervisor is working - but don't block startup
                 _LOGGER.info("Scheduling deployment to fix dashboard issues...")
-                
-                def schedule_deployment_after_ssh_test():
-                    """Background task to test SSH and start deployment if successful."""
-                    async def _ssh_test_and_deploy():
-                        try:
-                            await instance._client.async_run("echo 'SSH test'")
-                            _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
-                            
-                            deploy_task = instance.hass.async_create_task(
-                                instance._auto_deploy_supervisor(),
-                                name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                            )
-                            
-                            def deployment_completed(task):
-                                try:
-                                    if task.exception():
-                                        _LOGGER.error("Auto-deployment task failed with exception: %s", 
-                                                    task.exception(), exc_info=task.exception())
-                                    else:
-                                        _LOGGER.debug("Auto-deployment task completed successfully")
-                                        # Start websocket connection after successful deployment
-                                        instance.hass.async_create_task(
-                                            instance._delayed_websocket_start(),
-                                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                                        )
-                                except Exception as cb_exc:
-                                    _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
-                            
-                            deploy_task.add_done_callback(deployment_completed)
-                            
-                        except Exception as ssh_exc:
-                            _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
-                            # Still try to start WebSocket in case services are actually working
-                            instance.hass.async_create_task(
-                                instance._delayed_websocket_start(),
-                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                            )
+                if not instance._client_initialized or not instance._client:
+                    _LOGGER.error("SSH client not initialized, cannot schedule deployment")
+                else:
+                    def schedule_deployment_after_ssh_test():
+                        """Background task to test SSH and start deployment if successful."""
+                        async def _ssh_test_and_deploy():
+                            try:
+                                if not instance._client_initialized or not instance._client:
+                                    _LOGGER.error("SSH client not initialized, cannot test connection")
+                                    return
+                                    
+                                await instance._client.async_run("echo 'SSH test'")
+                                _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+                                
+                                deploy_task = instance.hass.async_create_task(
+                                    instance._auto_deploy_supervisor(),
+                                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                                )
+                                
+                                def deployment_completed(task):
+                                    try:
+                                        if task.exception():
+                                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
+                                                        task.exception(), exc_info=task.exception())
+                                        else:
+                                            _LOGGER.debug("Auto-deployment task completed successfully")
+                                            # Start websocket connection after successful deployment
+                                            instance.hass.async_create_task(
+                                                instance._delayed_websocket_start(),
+                                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                            )
+                                    except Exception as cb_exc:
+                                        _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+                                
+                                deploy_task.add_done_callback(deployment_completed)
+                                
+                            except Exception as ssh_exc:
+                                _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
+                                # Still try to start WebSocket in case services are actually working
+                                instance.hass.async_create_task(
+                                    instance._delayed_websocket_start(),
+                                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                )
                     
                     return _ssh_test_and_deploy()
                 
@@ -193,6 +203,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 """Background task to test SSH and start deployment if successful."""
                 async def _ssh_test_and_auto_deploy():
                     try:
+                        if not instance._client_initialized or not instance._client:
+                            _LOGGER.error("SSH client not initialized, cannot test connection")
+                            return
+                            
                         # Quick SSH test to see if deployment is possible
                         await instance._client.async_run("echo 'SSH test'")
                         _LOGGER.info("SSH connection successful. Starting automatic deployment...")
@@ -608,28 +622,47 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict[str, Any]:
-        # Use new HA integration endpoint for efficient data fetching
-        supervisor_data = await self._fetch_ha_integration_data()
+        """Fetch data from the supervisor API efficiently."""
+        _LOGGER.debug("Polling supervisor API...")
         
-        _LOGGER.warning("Coordinator update - supervisor_entities count: %d", 
-                    len(supervisor_data.get("supervisor_entities", [])))
-        _LOGGER.warning("Selected services in coordinator: %s", self._selected_services)
+        # Get combined status from Supervisor API (fast path)
+        supervisor_data = {}
+        try:
+            status = await self._supervisor_get("/status")
+            supervisor_data = {
+                KEY_SUPERVISOR_ACTIVE: True,
+                KEY_DASHBOARD_ACTIVE: status.get("dashboard", {}).get("active", False),
+                "services": status.get("services", {}),
+                "system_info": status.get("system_info", {}),
+            }
+        except Exception as exc:
+            _LOGGER.debug("Supervisor API not available: %s", exc)
+            supervisor_data = {
+                KEY_SUPERVISOR_ACTIVE: False,
+                KEY_DASHBOARD_ACTIVE: False,
+                "services": {},
+                "system_info": {},
+            }
+        
         _LOGGER.warning("Service descriptors loaded: %s", list(self._service_descriptors.keys()))
         
         # Legacy service status via SSH (fallback for deploy operations)
         service_status = {}
-        try:
-            for service_id, desc in self._service_descriptors.items():
-                # Try to check systemd status for each service
-                sysd_name = f"{service_id}.service"
-                try:
-                    result = await self._client.async_run(f"systemctl is-active {sysd_name} 2>/dev/null || echo inactive")
-                    service_status[service_id] = (result.strip() == "active")
-                except Exception:
-                    service_status[service_id] = False
-        except SshConnectionError:
-            # SSH failure is no longer critical since we have Supervisor API
-            _LOGGER.debug("SSH connection failed, using Supervisor API only")
+        if self._client_initialized and self._client:
+            try:
+                for service_id, desc in self._service_descriptors.items():
+                    # Try to check systemd status for each service
+                    sysd_name = f"{service_id}.service"
+                    try:
+                        result = await self._client.async_run(f"systemctl is-active {sysd_name} 2>/dev/null || echo inactive")
+                        service_status[service_id] = (result.strip() == "active")
+                    except Exception:
+                        service_status[service_id] = False
+            except SshConnectionError:
+                # SSH failure is no longer critical since we have Supervisor API
+                _LOGGER.debug("SSH connection failed, using Supervisor API only")
+        else:
+            _LOGGER.debug("SSH client not initialized, skipping legacy service status")
 
         return {
             # Supervisor API data via efficient combined endpoint
@@ -695,6 +728,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Start a deploy in the background; progress dispatched via coordinator updates."""
         if self._deploy_in_progress:
             _LOGGER.warning("Deploy already in progress for %s", self._entry.data[CONF_HOST])
+            return False
+            
+        if not self._client_initialized or not self._client:
+            _LOGGER.error("SSH client not initialized, cannot start deployment")
             return False
 
         _LOGGER.info("Starting deployment for %s", self._entry.data[CONF_HOST])
@@ -823,4 +860,5 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._http_session.close()
             
         # Close SSH client
-        await self._client.async_close()
+        if self._client_initialized and self._client:
+            await self._client.async_close()

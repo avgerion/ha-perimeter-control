@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .const import (
+from const import (
     PHASE_INSTALL,
     PHASE_PREFLIGHT,
     PHASE_RESTART,
@@ -35,8 +36,8 @@ from .const import (
     get_install_directories,
     get_remote_path_config,
 )
-from .service_descriptor import ServiceDescriptor
-from .ssh_client import SshClient, SshCommandError
+from service_descriptor import ServiceDescriptor
+from ssh_client import SshClient, SshCommandError
 
 _LOGGER = logging.getLogger(__name__)
 

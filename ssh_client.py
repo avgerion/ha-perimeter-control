@@ -345,3 +345,7 @@ class SshClient:
                     await remote_file.write(data)
         except asyncssh.Error as exc:
             raise SshCommandError(f"put bytes to {remote_path}", 1, str(exc)) from exc
+
+    async def upload_file_content(self, content: str, remote_path: str) -> None:
+        """Upload string content as a file (convenience method for text content)."""
+        await self.async_put_bytes(content.encode('utf-8'), remote_path)

@@ -25,12 +25,13 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from .base_deployer import BaseDeployer, DeployProgress, ProgressCallback
-from .ble_deployer import BleDeployer
-from .camera_deployer import CameraDeployer
-from .const import (
+from base_deployer import BaseDeployer
+from base_deployer import DeployProgress, ProgressCallback
+from component_services import create_service, register_service_components, SERVICE_REGISTRY
+from service_framework import ComponentRegistry, hardware_registry
+from const import (
     APT_DEPENDENCY_GROUPS,
     PHASE_PREFLIGHT,
     PHASE_RESTART,
@@ -47,11 +48,8 @@ from .const import (
     SYSTEMD_SUPERVISOR,
     get_remote_path_config,
 )
-from .esl_deployer import EslDeployer
-from .network_deployer import NetworkDeployer
-from .service_descriptor import ServiceDescriptor, load_service_descriptors
-from .ssh_client import SshClient, SshCommandError
-from .wildlife_deployer import WildlifeDeployer
+from service_descriptor import ServiceDescriptor, load_service_descriptors
+from ssh_client import SshClient, SshCommandError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,6 +78,18 @@ async def _render_service_template(template_path: Path) -> str:
         raise ValueError(f"Missing template variable {e} in {template_path}")
 
 
+def get_install_directories() -> list[str]:
+    """Get list of directories to create during installation."""
+    path_config = get_remote_path_config()
+    return [
+        path_config['CONF_DIR'],
+        path_config['SCRIPTS_DIR'],
+        path_config['SUPERVISOR_DIR'],
+        path_config['LOG_ROOT'],
+        path_config['STATE_ROOT'],
+    ]
+
+
 def _get_install_commands() -> list[str]:
     """Generate installation commands using configurable paths."""
     dirs = get_install_directories()
@@ -96,43 +106,31 @@ def _get_install_commands() -> list[str]:
     return commands
 
 
-@dataclass
-class DeployProgress:
-    phase: str
-    message: str
-    percent: int = 0
-    error: str | None = None
-
-    @property
-    def is_error(self) -> bool:
-        return self.error is not None
-
-
-ProgressCallback = Callable[[DeployProgress], None]
-
-
 class Deployer(BaseDeployer):
-    """Service-aware deployer orchestrating specialized service deployers."""
+    """Component-based deployer orchestrating service composition."""
 
     def __init__(
         self,
         client: SshClient,
         selected_services: list[str],
         service_descriptors: dict[str, ServiceDescriptor] | None = None,
-        progress_cb: ProgressCallback | None = None,
+        progress_cb: Optional[ProgressCallback] = None,
     ) -> None:
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
         self._service_descriptors = service_descriptors or {}
         
-        # Initialize service-specific deployers
-        self._service_deployers = {
-            'ble_gatt_repeater': BleDeployer(client, progress_cb),
-            'network_isolator': NetworkDeployer(client, progress_cb),
-            'photo_booth': CameraDeployer(client, progress_cb),
-            'wildlife_monitor': WildlifeDeployer(client, progress_cb),
-            'esl_ap': EslDeployer(client, progress_cb),
-        }
+        # Register component types
+        register_service_components()
+        
+        # Create component-based services
+        self._services = {}
+        for service_id in selected_services:
+            if service_id in SERVICE_REGISTRY:
+                self._services[service_id] = create_service(service_id)
+                _LOGGER.info(f"Created component-based service: {service_id}")
+            else:
+                _LOGGER.warning(f"No component service for {service_id}, will use legacy deployment")
 
     async def async_deploy(self) -> bool:
         """Run service-aware deployment using specialized deployers."""
@@ -170,53 +168,86 @@ class Deployer(BaseDeployer):
             return False
 
     async def _phase_service_selection(self) -> None:
-        """Validate service selection and check for conflicts."""
+        """Validate service selection and check for conflicts using component architecture."""
         self._emit(PHASE_PREFLIGHT, "Validating service selection...", 5)
         
         if not self._selected_services:
             raise ValueError("No services selected for deployment")
         
-        # Check for service conflicts
-        conflicts = []
+        # Check component conflicts across all services
+        all_conflicts = []
+        component_services = []
+        
         for service_id in self._selected_services:
-            deployer = self._service_deployers.get(service_id)
-            if deployer and hasattr(deployer, 'conflicts_with'):
-                service_conflicts = deployer.conflicts_with()
-                for conflict_service in service_conflicts:
-                    if conflict_service in self._selected_services:
-                        conflicts.append(f"{service_id} conflicts with {conflict_service}")
+            if service_id in self._services:
+                service = self._services[service_id]
+                service_conflicts = service.check_component_conflicts()
+                if service_conflicts:
+                    all_conflicts.extend([f"{service_id}: {c}" for c in service_conflicts])
+                component_services.append(service_id)
         
-        if conflicts:
-            raise ValueError(f"Service conflicts detected: {', '.join(conflicts)}")
+        # Check cross-service component conflicts
+        all_components = {}
+        for service_id in component_services:
+            service = self._services[service_id]
+            for comp_name, component in service._components.items():
+                if component.config.enabled:
+                    if comp_name in all_components:
+                        existing_service = all_components[comp_name]
+                        all_conflicts.append(
+                            f"Component {comp_name} used by both {existing_service} and {service_id}"
+                        )
+                    else:
+                        all_components[comp_name] = service_id
         
-        # Validate all selected services have deployers
-        unknown_services = [s for s in self._selected_services if s not in self._service_deployers]
+        if all_conflicts:
+            raise ValueError(f"Component conflicts detected: {'; '.join(all_conflicts)}")
+        
+        # Report unknown services that will use legacy deployment
+        unknown_services = [s for s in self._selected_services if s not in SERVICE_REGISTRY]
         if unknown_services:
             _LOGGER.warning("Unknown services (will use legacy deployment): %s", unknown_services)
         
-        _LOGGER.info("Service selection validated: %s", self._selected_services)
+        _LOGGER.info("Service selection validated: %s component services, %s legacy services", 
+                    len(component_services), len(unknown_services))
         self._emit(PHASE_PREFLIGHT, "Service selection validated", 10)
 
     async def _phase_service_deployment(self) -> None:
-        """Deploy each service using its specialized deployer."""
-        self._emit("service_deploy", "Deploying individual services...", 15)
+        """Deploy each service using component composition."""
+        self._emit("service_deploy", "Deploying component-based services...", 15)
         
         total_services = len(self._selected_services)
+        deployment_path = Path("/tmp/perimeter_deployment")
+        
         for i, service_id in enumerate(self._selected_services):
             base_progress = 15 + int(60 * i / total_services)  # Services take 15-75% of total
-            deployer = self._service_deployers.get(service_id)
             
-            if deployer:
-                _LOGGER.info("Deploying service %s with specialized deployer", service_id)
-                self._emit("service_deploy", f"Deploying {service_id}...", base_progress)
+            if service_id in self._services:
+                service = self._services[service_id]
+                _LOGGER.info("Deploying service %s with component architecture", service_id)
+                self._emit("service_deploy", f"Deploying {service_id} components...", base_progress)
                 
-                success = await deployer.deploy()
+                # Show component breakdown
+                components = [comp.name for comp in service._components.values() if comp.config.enabled]
+                _LOGGER.info(f"Service {service_id} components: {components}")
+                
+                # Deploy using component composition
+                success = await service.deploy(self._client, deployment_path)
                 if not success:
-                    raise Exception(f"Service {service_id} deployment failed")
+                    raise Exception(f"Service {service_id} component deployment failed")
+                
+                # Get auto-generated entities from hardware interfaces
+                try:
+                    deployed_services_set = set(self._selected_services)
+                    entities = await service.get_hardware_entities(self._client, deployed_services_set)
+                    if entities:
+                        _LOGGER.info(f"Service {service_id} generated {len(entities)} auto-entities")
+                except Exception as exc:
+                    _LOGGER.warning(f"Failed to get auto-entities for {service_id}: {exc}")
                     
                 self._emit("service_deploy", f"Service {service_id} deployed", base_progress + int(60 / total_services))
             else:
-                _LOGGER.warning("No specialized deployer for %s, using legacy deployment", service_id)
+                _LOGGER.warning("No component service for %s, using legacy deployment", service_id)
                 await self._legacy_deploy_service(service_id, base_progress)
         
         self._emit("service_deploy", "All services deployed", 75)
