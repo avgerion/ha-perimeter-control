@@ -1,7 +1,7 @@
 """Entities for Perimeter Control services and dashboards."""
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.device_registry import DeviceInfo
-from .const import DOMAIN, AVAILABLE_SERVICES
+from .const import DOMAIN, AVAILABLE_SERVICES, DEFAULT_API_PORT, CONF_SUPERVISOR_PORT
 
 class PerimeterControlServiceEntity(Entity):
     def __init__(self, coordinator, service_id: str):
@@ -26,7 +26,15 @@ class PerimeterControlServiceEntity(Entity):
     def extra_state_attributes(self):
         # Provide a dashboard URL for this service
         host = self.coordinator._entry.data.get("host")
-        port = 8080  # TODO: Make port configurable per service if needed
+        
+        # Get service-specific port from service descriptor if available
+        service_descriptor = self.coordinator._service_descriptors.get(self.service_id)
+        if service_descriptor and hasattr(service_descriptor, 'access_profile'):
+            port = service_descriptor.access_profile.get("port", DEFAULT_API_PORT)
+        else:
+            # Fallback to supervisor API port for unknown services
+            port = self.coordinator._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
+            
         url = f"http://{host}:{port}/{self.service_id}"
         return {"dashboard_url": url}
 
@@ -38,6 +46,6 @@ class PerimeterControlServiceEntity(Entity):
             name = entry.title or f"Perimeter Node {entry.data.get('host')}",
             manufacturer = "Isolator",
             model = "Pi Node",
-            configuration_url = f"http://{entry.data.get('host')}:8080/",
+            configuration_url = f"http://{entry.data.get('host')}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/",
             sw_version = None,
         )

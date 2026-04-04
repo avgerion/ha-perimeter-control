@@ -15,7 +15,8 @@ CONF_SUPERVISOR_PORT = "supervisor_port"  # Supervisor API port
 CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
 
 DEFAULT_SSH_PORT = 22
-DEFAULT_API_PORT = 8080
+DEFAULT_API_PORT = 8080  # Supervisor API port
+DEFAULT_DASHBOARD_PORT = 5006  # Network Isolator dashboard port
 DEFAULT_USER = "pi"
 
 # Legacy static service list - will be replaced by dynamic discovery

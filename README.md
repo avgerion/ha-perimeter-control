@@ -158,7 +158,28 @@ Once configured, the integration will:
 - **Sensors**: Pi system health, CPU, memory
 - **Binary Sensors**: SSH connectivity, API availability
 
-## 🔧 Advanced Configuration
+## � Documentation
+
+### Core Architecture
+- [**Port Architecture**](docs/PORT-ARCHITECTURE.md) - Complete port assignment, configuration, and troubleshooting guide
+- [**Network Architecture**](docs/NETWORK-ARCHITECTURE.md) - Network topology and isolation design
+- [**Component Services**](SERVICE-DEPLOYMENT-ARCHITECTURE.md) - Service composition and deployment architecture
+
+### Setup & Deployment  
+- [**Initial Setup**](docs/INITIAL-SETUP.md) - Pi setup from scratch
+- [**Deployment Guide**](DEPLOYMENT.md) - Complete deployment procedures
+- [**SSH Quick Reference**](docs/SSH-QUICK-REFERENCE.md) - SSH commands and troubleshooting
+
+### Advanced Features
+- [**Web Dashboard**](docs/WEB-DASHBOARD.md) - Dashboard features and access methods
+- [**BLE Scanning**](docs/BLE-SNIFFING.md) - Bluetooth monitoring capabilities
+- [**HA Integration Deep Dive**](docs/HA-INTEGRATION-DEEP-DIVE.md) - Advanced Home Assistant integration
+
+### Development
+- [**Capability Development**](docs/CAPABILITY-DEVELOPMENT-GUIDE.md) - Building new service capabilities
+- [**Testing & CI/CD**](docs/TESTING-CI-CD.md) - Development workflow and testing
+
+## �🔧 Advanced Configuration
 
 ### Custom Service Descriptors
 

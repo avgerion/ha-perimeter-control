@@ -10,7 +10,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_SUPERVISOR_PORT, DEFAULT_API_PORT
 from .coordinator import PerimeterControlCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ class SupervisorEntity(Entity):
             name=entry.title or f"Perimeter Node {entry.data.get('host')}",
             manufacturer="Isolator",
             model="Pi Node",
-            configuration_url=f"http://{entry.data.get('host')}:8080/",
+            configuration_url=f"http://{entry.data.get('host')}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/",
             sw_version=None,
         )
 
