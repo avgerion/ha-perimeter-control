@@ -441,15 +441,21 @@ async def _ensure_dpkg_ready(ssh_client: SshClient, logger: logging.Logger) -> N
     try:
         # Check if dpkg is interrupted - catch errors since dpkg --audit may fail
         from .ssh_client import SshCommandError
+        import asyncio
         try:
-            result = await ssh_client.async_run("sudo dpkg --audit")
+            # Add timeout to dpkg --audit to prevent hanging
+            result = await asyncio.wait_for(
+                ssh_client.async_run("sudo dpkg --audit"), 
+                timeout=10.0
+            )
             if result and "broken due to failed removal or installation" in result:
-                logger.info("Detected interrupted dpkg state, attempting repair...")
-                await _fix_dpkg_issues(ssh_client, logger)
-        except SshCommandError:
-            # dpkg --audit failed, likely means dpkg is in bad state - try to fix
-            logger.info("dpkg --audit failed, attempting repair...")
-            await _fix_dpkg_issues(ssh_client, logger)
+                logger.info("Detected interrupted dpkg state, scheduling background repair...")
+                # Don't block integration startup - schedule background fix
+                asyncio.create_task(_fix_dpkg_issues_background(ssh_client, logger))
+        except (SshCommandError, asyncio.TimeoutError):
+            # dpkg --audit failed or timed out - schedule background repair
+            logger.info("dpkg check failed/timed out, scheduling background repair...")
+            asyncio.create_task(_fix_dpkg_issues_background(ssh_client, logger))
     except Exception as e:
         logger.warning(f"Could not check dpkg status: {e}")
 
@@ -457,29 +463,45 @@ async def _ensure_dpkg_ready(ssh_client: SshClient, logger: logging.Logger) -> N
 async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> None:
     """Attempt to fix common dpkg issues."""
     from .ssh_client import SshCommandError
+    import asyncio
     
     # Always start with the most critical dpkg fix
     logger.info("Running preventive dpkg configuration...")
     try:
-        await ssh_client.async_run("sudo dpkg --configure -a")
+        await asyncio.wait_for(
+            ssh_client.async_run("sudo dpkg --configure -a"), 
+            timeout=30.0
+        )
         logger.info("✅ dpkg --configure -a completed successfully")
-    except SshCommandError as e:
+    except (SshCommandError, asyncio.TimeoutError) as e:
         logger.warning(f"Initial dpkg --configure -a failed: {e}")
     except Exception as e:
         logger.warning(f"Initial dpkg --configure -a failed: {e}")
     
-    # Additional dpkg recovery commands
+    # Additional dpkg recovery commands with timeouts
     additional_fixes = [
-        ("sudo apt-get -f install", "Fixing broken dependencies"),
-        ("sudo apt-get clean", "Cleaning package cache"),
-        ("sudo apt-get autoremove --purge", "Removing unused packages")
+        ("sudo apt-get -f install -y", "Fixing broken dependencies", 60),
+        ("sudo apt-get clean", "Cleaning package cache", 30),
+        ("sudo apt-get autoremove --purge -y", "Removing unused packages", 90)
     ]
     
-    for fix_cmd, description in additional_fixes:
+    for fix_cmd, description, timeout in additional_fixes:
         try:
             logger.info(f"Running dpkg fix: {description}")
-            await ssh_client.async_run(fix_cmd)
-        except SshCommandError as e:
+            await asyncio.wait_for(
+                ssh_client.async_run(fix_cmd), 
+                timeout=timeout
+            )
+        except (SshCommandError, asyncio.TimeoutError) as e:
             logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")
         except Exception as e:
             logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")
+
+async def _fix_dpkg_issues_background(ssh_client: SshClient, logger: logging.Logger) -> None:
+    """Run dpkg fixes in background without blocking integration startup."""
+    try:
+        logger.info("Starting background dpkg repair...")
+        await _fix_dpkg_issues(ssh_client, logger)
+        logger.info("✅ Background dpkg repair completed")
+    except Exception as e:
+        logger.warning(f"Background dpkg repair failed: {e}")
