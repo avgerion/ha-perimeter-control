@@ -1,11 +1,12 @@
 """Feature and Dependency Components - Shared functionality for service composition."""
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
 
-from .service_framework import ServiceComponent, ResourceRequirement, ComponentConfig
+from .service_framework import ServiceComponent, ResourceRequirement, ComponentConfig, robust_system_package_install
 from .ssh_client import SshClient
 
 
@@ -112,25 +113,13 @@ class SystemDependencies(ServiceComponent):
             return True  # Allow deployment to proceed
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Install system packages."""
-        try:
-            if not self.packages:
-                return True
-            
-            # Update package list
-            await ssh_client.async_run("sudo apt-get update")
-            
-            # Install packages
-            packages_str = ' '.join(self.packages)
-            install_cmd = f"sudo apt-get install -y {packages_str}"
-            await ssh_client.async_run(install_cmd)
+        """Install system packages with dpkg recovery."""
+        # Use shared robust package installation utility
+        success = await robust_system_package_install(ssh_client, self.packages, self.logger)
+        if success:
             self.installed_packages.update(self.packages)
             
-            self.logger.info(f"Installed system packages: {packages_str}")
-            return True
-        except Exception as exc:
-            self.logger.error(f"System package installation failed: {exc}")
-            return False
+        return success
 
 
 class ConfigurationManager(ServiceComponent):

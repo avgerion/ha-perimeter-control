@@ -370,3 +370,88 @@ class ComponentRegistry:
 # Global registries
 component_registry = ComponentRegistry()
 hardware_registry = HardwareRegistry()
+
+
+# Utility Functions
+
+async def robust_system_package_install(ssh_client: SshClient, packages: List[str], logger: Optional[logging.Logger] = None) -> bool:
+    """
+    Robust system package installation with automatic dpkg recovery.
+    
+    Args:
+        ssh_client: SSH client for remote execution
+        packages: List of package names to install
+        logger: Logger instance (defaults to module logger)
+        
+    Returns:
+        bool: True if installation succeeded, False otherwise
+    """
+    if not packages:
+        return True
+        
+    if logger is None:
+        logger = _LOGGER
+    
+    try:
+        # Check and fix dpkg state first
+        await _ensure_dpkg_ready(ssh_client, logger)
+        
+        # Update package list
+        logger.info("Updating package lists...")
+        await ssh_client.async_run("sudo apt-get update")
+        
+        # Install packages with retry logic
+        packages_str = ' '.join(packages)
+        install_cmd = f"sudo apt-get install -y {packages_str}"
+        
+        for attempt in range(3):  # Try up to 3 times
+            try:
+                logger.info(f"Installing system packages (attempt {attempt + 1}/3): {packages_str}")
+                await ssh_client.async_run(install_cmd)
+                logger.info(f"Successfully installed system packages: {packages_str}")
+                return True
+            except Exception as install_exc:
+                logger.warning(f"Package install attempt {attempt + 1} failed: {install_exc}")
+                
+                if attempt < 2:  # Not the last attempt
+                    # Try to fix dpkg issues before retry
+                    await _fix_dpkg_issues(ssh_client, logger)
+                    await asyncio.sleep(2)  # Brief delay before retry
+                else:
+                    # Last attempt failed, log comprehensive error
+                    logger.error(f"All package installation attempts failed: {install_exc}")
+                    return False
+        
+        return False
+    except Exception as exc:
+        logger.error(f"System package installation failed: {exc}")
+        return False
+
+
+async def _ensure_dpkg_ready(ssh_client: SshClient, logger: logging.Logger) -> None:
+    """Ensure dpkg is in a ready state before package operations."""
+    try:
+        # Check if dpkg is interrupted
+        result = await ssh_client.async_run("sudo dpkg --audit", check=False)
+        if result and "broken due to failed removal or installation" in result:
+            logger.info("Detected interrupted dpkg state, attempting repair...")
+            await _fix_dpkg_issues(ssh_client, logger)
+    except Exception as e:
+        logger.warning(f"Could not check dpkg status: {e}")
+
+
+async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> None:
+    """Attempt to fix common dpkg issues."""
+    dpkg_fixes = [
+        ("sudo dpkg --configure -a", "Configuring interrupted packages"),
+        ("sudo apt-get -f install", "Fixing broken dependencies"),
+        ("sudo apt-get clean", "Cleaning package cache"),
+        ("sudo apt-get autoremove", "Removing unused packages")
+    ]
+    
+    for fix_cmd, description in dpkg_fixes:
+        try:
+            logger.info(f"Running dpkg fix: {description}")
+            await ssh_client.async_run(fix_cmd, check=False)  # Don't fail on errors
+        except Exception as e:
+            logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")

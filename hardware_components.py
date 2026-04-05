@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-from .service_framework import HardwareInterface, ResourceRequirement, ComponentConfig
+from .service_framework import HardwareInterface, ResourceRequirement, ComponentConfig, robust_system_package_install
 from .ssh_client import SshClient
 
 
@@ -115,10 +115,10 @@ class BluetoothInterface(HardwareInterface):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
         """Deploy Bluetooth interface components."""
         try:
-            # Install required packages
+            # Install required system packages using the robust utility
             packages = ["bluetooth", "bluez", "bluez-tools", "python3-bluetooth"]
-            install_cmd = f"sudo apt-get update && sudo apt-get install -y {' '.join(packages)}"
-            await ssh_client.async_run(install_cmd)
+            if not await robust_system_package_install(ssh_client, packages, self.logger):
+                return False
             
             # Enable Bluetooth service
             await ssh_client.async_run("sudo systemctl enable bluetooth")
@@ -226,10 +226,10 @@ class CameraInterface(HardwareInterface):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
         """Deploy camera interface components."""
         try:
-            # Install camera packages
+            # Install camera packages using the robust utility
             packages = ["v4l-utils", "ffmpeg", "python3-opencv"]
-            install_cmd = f"sudo apt-get update && sudo apt-get install -y {' '.join(packages)}"
-            await ssh_client.async_run(install_cmd)
+            if not await robust_system_package_install(ssh_client, packages, self.logger):
+                return False
             
             # Install Python camera packages
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
@@ -321,10 +321,10 @@ class NetworkInterface(HardwareInterface):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
         """Deploy network interface components.""" 
         try:
-            # Install network packages
+            # Install network packages using the robust utility
             packages = ["iptables", "iptables-persistent", "netfilter-persistent"]
-            install_cmd = f"sudo apt-get update && sudo apt-get install -y {' '.join(packages)}"
-            await ssh_client.async_run(install_cmd)
+            if not await robust_system_package_install(ssh_client, packages, self.logger):
+                return False
             
             # Install Python network packages
             pip_packages = ["psutil", "netaddr", "scapy"]
@@ -422,10 +422,10 @@ class I2CSensorInterface(HardwareInterface):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
         """Deploy I2C interface components."""
         try:
-            # Install I2C packages
+            # Install I2C packages using the robust utility
             packages = ["i2c-tools", "python3-smbus2"]
-            install_cmd = f"sudo apt-get update && sudo apt-get install -y {' '.join(packages)}"
-            await ssh_client.async_run(install_cmd)
+            if not await robust_system_package_install(ssh_client, packages, self.logger):
+                return False
             
             # Enable I2C interface
             await ssh_client.async_run("sudo raspi-config nonint do_i2c 0")
