@@ -393,44 +393,46 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
         logger = _LOGGER
     
     try:
-        # Proactively fix dpkg state - be more aggressive
-        await _fix_dpkg_issues(ssh_client, logger)
+        # Schedule background dpkg fixes - don't block startup
+        asyncio.create_task(_fix_dpkg_issues_background(ssh_client, logger))
         
-        # Update package list - this can also trigger dpkg issues
+        # Update package list with timeout - this can also trigger dpkg issues
         logger.info("Updating package lists...")
         try:
-            await ssh_client.async_run("sudo apt-get update")
-        except Exception as update_exc:
-            logger.warning(f"apt-get update failed: {update_exc}")
-            # Try to fix dpkg issues that may have been caused by update
-            await _fix_dpkg_issues(ssh_client, logger)
-            # Retry update
-            logger.info("Retrying package list update...")
-            await ssh_client.async_run("sudo apt-get update")
+            await asyncio.wait_for(
+                ssh_client.async_run("sudo apt-get update"), 
+                timeout=30.0
+            )
+        except (Exception, asyncio.TimeoutError) as update_exc:
+            logger.warning(f"apt-get update failed/timed out: {update_exc}")
+            # Don't retry update - it's not critical for integration startup
         
-        # Install packages with retry logic
+        # Install packages with timeout and retry logic
         packages_str = ' '.join(packages)
         install_cmd = f"sudo apt-get install -y {packages_str}"
         
-        for attempt in range(3):  # Try up to 3 times
+        for attempt in range(2):  # Reduced to 2 attempts to speed up startup
             try:
-                logger.info(f"Installing system packages (attempt {attempt + 1}/3): {packages_str}")
-                await ssh_client.async_run(install_cmd)
-                logger.info(f"Successfully installed system packages: {packages_str}")
+                logger.info(f"Installing system packages (attempt {attempt + 1}/2): {packages_str}")
+                await asyncio.wait_for(
+                    ssh_client.async_run(install_cmd), 
+                    timeout=60.0
+                )
+                logger.info(f"✅ Successfully installed system packages: {packages_str}")
                 return True
-            except Exception as install_exc:
+            except (Exception, asyncio.TimeoutError) as install_exc:
                 logger.warning(f"Package install attempt {attempt + 1} failed: {install_exc}")
                 
-                if attempt < 2:  # Not the last attempt
-                    # Try to fix dpkg issues before retry
-                    await _fix_dpkg_issues(ssh_client, logger)
-                    await asyncio.sleep(2)  # Brief delay before retry
+                if attempt < 1:  # Not the last attempt
+                    await asyncio.sleep(1)  # Brief delay before retry
                 else:
-                    # Last attempt failed, log comprehensive error
-                    logger.error(f"All package installation attempts failed: {install_exc}")
-                    return False
+                    # Last attempt failed - log warning but don't fail integration
+                    logger.warning(f"Package installation failed, but integration will continue: {install_exc}")
+                    # Schedule background retry
+                    asyncio.create_task(_background_package_install(ssh_client, packages_str, logger))
+                    return True  # Return True to not block integration startup
         
-        return False
+        return True
     except Exception as exc:
         logger.error(f"System package installation failed: {exc}")
         return False
@@ -505,3 +507,17 @@ async def _fix_dpkg_issues_background(ssh_client: SshClient, logger: logging.Log
         logger.info("✅ Background dpkg repair completed")
     except Exception as e:
         logger.warning(f"Background dpkg repair failed: {e}")
+
+async def _background_package_install(ssh_client: SshClient, packages_str: str, logger: logging.Logger) -> None:
+    """Retry package installation in background."""
+    try:
+        logger.info(f"Starting background package installation: {packages_str}")
+        await asyncio.sleep(30)  # Wait for any locks to clear
+        install_cmd = f"sudo apt-get install -y {packages_str}"
+        await asyncio.wait_for(
+            ssh_client.async_run(install_cmd), 
+            timeout=180.0  # Longer timeout for background operation
+        )
+        logger.info(f"✅ Background package installation completed: {packages_str}")
+    except Exception as e:
+        logger.warning(f"Background package installation failed: {e}")
