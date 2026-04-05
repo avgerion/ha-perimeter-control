@@ -393,12 +393,20 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
         logger = _LOGGER
     
     try:
-        # Check and fix dpkg state first
-        await _ensure_dpkg_ready(ssh_client, logger)
+        # Proactively fix dpkg state - be more aggressive
+        await _fix_dpkg_issues(ssh_client, logger)
         
-        # Update package list
+        # Update package list - this can also trigger dpkg issues
         logger.info("Updating package lists...")
-        await ssh_client.async_run("sudo apt-get update")
+        try:
+            await ssh_client.async_run("sudo apt-get update")
+        except Exception as update_exc:
+            logger.warning(f"apt-get update failed: {update_exc}")
+            # Try to fix dpkg issues that may have been caused by update
+            await _fix_dpkg_issues(ssh_client, logger)
+            # Retry update
+            logger.info("Retrying package list update...")
+            await ssh_client.async_run("sudo apt-get update")
         
         # Install packages with retry logic
         packages_str = ' '.join(packages)
@@ -450,17 +458,27 @@ async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> Non
     """Attempt to fix common dpkg issues."""
     from .ssh_client import SshCommandError
     
-    dpkg_fixes = [
-        ("sudo dpkg --configure -a", "Configuring interrupted packages"),
+    # Always start with the most critical dpkg fix
+    logger.info("Running preventive dpkg configuration...")
+    try:
+        await ssh_client.async_run("sudo dpkg --configure -a")
+        logger.info("✅ dpkg --configure -a completed successfully")
+    except SshCommandError as e:
+        logger.warning(f"Initial dpkg --configure -a failed: {e}")
+    except Exception as e:
+        logger.warning(f"Initial dpkg --configure -a failed: {e}")
+    
+    # Additional dpkg recovery commands
+    additional_fixes = [
         ("sudo apt-get -f install", "Fixing broken dependencies"),
         ("sudo apt-get clean", "Cleaning package cache"),
-        ("sudo apt-get autoremove", "Removing unused packages")
+        ("sudo apt-get autoremove --purge", "Removing unused packages")
     ]
     
-    for fix_cmd, description in dpkg_fixes:
+    for fix_cmd, description in additional_fixes:
         try:
             logger.info(f"Running dpkg fix: {description}")
-            await ssh_client.async_run(fix_cmd)  # Allow errors to be caught
+            await ssh_client.async_run(fix_cmd)
         except SshCommandError as e:
             logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")
         except Exception as e:
