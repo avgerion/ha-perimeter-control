@@ -59,6 +59,12 @@ def _register_capabilities(supervisor: Supervisor) -> None:
     except ImportError as exc:
         logging.warning("Could not load photo_booth module: %s", exc)
 
+    try:
+        from .capabilities.wildlife_monitor import WildlifeMonitorCapability
+        supervisor.register_capability("wildlife_monitor", WildlifeMonitorCapability)
+    except ImportError as exc:
+        logging.warning("Could not load wildlife_monitor module: %s", exc)
+
     # Future capabilities registered here:
     #   from .capabilities.pawr_esl_advertiser import PawrEslAdvertiserCapability
     #   supervisor.register_capability("pawr_esl_advertiser", PawrEslAdvertiserCapability)

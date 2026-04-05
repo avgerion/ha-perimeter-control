@@ -389,6 +389,7 @@ class BleGattRepeaterCapability(CapabilityModule):
             connected_entity_id = f"ble_gatt_repeater:{device_id}:connected"
             if connected_entity_id in self.entity_cache._entities:
                 entity = self.entity_cache._entities[connected_entity_id].copy()
+                entity["id"] = connected_entity_id  # Add missing id field
                 entity["state"] = "on"
                 self._publish_entity(entity)
             
@@ -416,6 +417,7 @@ class BleGattRepeaterCapability(CapabilityModule):
             connected_entity_id = f"ble_gatt_repeater:{device_id}:connected"
             if connected_entity_id in self.entity_cache._entities:
                 entity = self.entity_cache._entities[connected_entity_id].copy()
+                entity["id"] = connected_entity_id  # Add missing id field
                 entity["state"] = "off"
                 self._publish_entity(entity)
             
@@ -458,6 +460,7 @@ class BleGattRepeaterCapability(CapabilityModule):
                         weight_entity_id = f"ble_gatt_repeater:{device_id}:weight"
                         if weight_entity_id in self.entity_cache._entities:
                             entity = self.entity_cache._entities[weight_entity_id].copy()
+                            entity["id"] = weight_entity_id  # Add missing id field
                             entity["state"] = f"{weight_kg:.1f}"
                             entity["attributes"]["last_measurement"] = datetime.now().isoformat()
                             self._publish_entity(entity)
@@ -489,6 +492,7 @@ class BleGattRepeaterCapability(CapabilityModule):
                         temp_entity_id = f"ble_gatt_repeater:{device_id}:temperature"
                         if temp_entity_id in self.entity_cache._entities:
                             entity = self.entity_cache._entities[temp_entity_id].copy()
+                            entity["id"] = temp_entity_id  # Add missing id field
                             entity["state"] = f"{temp_celsius:.1f}"
                             entity["attributes"]["last_measurement"] = datetime.now().isoformat()
                             self._publish_entity(entity)
@@ -522,6 +526,7 @@ class BleGattRepeaterCapability(CapabilityModule):
                         hr_entity_id = f"ble_gatt_repeater:{device_id}:heart_rate"
                         if hr_entity_id in self.entity_cache._entities:
                             entity = self.entity_cache._entities[hr_entity_id].copy()
+                            entity["id"] = hr_entity_id  # Add missing id field
                             entity["state"] = str(hr_value)
                             entity["attributes"]["last_measurement"] = datetime.now().isoformat()
                             self._publish_entity(entity)

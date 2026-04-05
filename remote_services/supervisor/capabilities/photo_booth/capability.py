@@ -281,6 +281,7 @@ class PhotoBoothCapability(CapabilityModule):
         camera_entity_id = "photo_booth:camera:stream"
         if camera_entity_id in self.entity_cache._entities:
             entity = self.entity_cache._entities[camera_entity_id].copy()
+            entity["id"] = camera_entity_id  # Add missing id field
             entity["attributes"]["resolution"] = resolution
             self._publish_entity(entity)
         
