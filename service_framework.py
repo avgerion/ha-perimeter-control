@@ -431,10 +431,16 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
 async def _ensure_dpkg_ready(ssh_client: SshClient, logger: logging.Logger) -> None:
     """Ensure dpkg is in a ready state before package operations."""
     try:
-        # Check if dpkg is interrupted
-        result = await ssh_client.async_run("sudo dpkg --audit", check=False)
-        if result and "broken due to failed removal or installation" in result:
-            logger.info("Detected interrupted dpkg state, attempting repair...")
+        # Check if dpkg is interrupted - catch errors since dpkg --audit may fail
+        from .ssh_client import SshCommandError
+        try:
+            result = await ssh_client.async_run("sudo dpkg --audit")
+            if result and "broken due to failed removal or installation" in result:
+                logger.info("Detected interrupted dpkg state, attempting repair...")
+                await _fix_dpkg_issues(ssh_client, logger)
+        except SshCommandError:
+            # dpkg --audit failed, likely means dpkg is in bad state - try to fix
+            logger.info("dpkg --audit failed, attempting repair...")
             await _fix_dpkg_issues(ssh_client, logger)
     except Exception as e:
         logger.warning(f"Could not check dpkg status: {e}")
@@ -442,6 +448,8 @@ async def _ensure_dpkg_ready(ssh_client: SshClient, logger: logging.Logger) -> N
 
 async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> None:
     """Attempt to fix common dpkg issues."""
+    from .ssh_client import SshCommandError
+    
     dpkg_fixes = [
         ("sudo dpkg --configure -a", "Configuring interrupted packages"),
         ("sudo apt-get -f install", "Fixing broken dependencies"),
@@ -452,6 +460,8 @@ async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> Non
     for fix_cmd, description in dpkg_fixes:
         try:
             logger.info(f"Running dpkg fix: {description}")
-            await ssh_client.async_run(fix_cmd, check=False)  # Don't fail on errors
+            await ssh_client.async_run(fix_cmd)  # Allow errors to be caught
+        except SshCommandError as e:
+            logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")
         except Exception as e:
             logger.warning(f"Dpkg fix command failed ({fix_cmd}): {e}")
