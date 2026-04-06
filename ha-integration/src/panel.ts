@@ -25,15 +25,8 @@ export class PerimeterControlPanel extends LitElement {
 
   constructor() {
     super();
-    // Global error handler for unhandled exceptions
-    window.addEventListener('error', (event) => {
-      this.handleError(event.error || new Error(event.message));
-    });
-    
-    // Handle unhandled promise rejections
-    window.addEventListener('unhandledrejection', (event) => {
-      this.handleError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
-    });
+    // Only handle errors specifically from our panel, not global errors
+    // Global error handlers can interfere with HA's internal operations
   }
 
   private handleError(error: Error): void {
@@ -332,13 +325,13 @@ export class PerimeterControlPanel extends LitElement {
         <div class="actions">
           <h2>Global Actions</h2>
           <div class="action-buttons">
-            <button class="action-btn" @click=${this.deployAll}>
+            <button class="action-btn" @click=${() => this.safeAction(this.deployAll)}>
               Deploy All Devices
             </button>
-            <button class="action-btn secondary" @click=${this.reloadConfig}>
+            <button class="action-btn secondary" @click=${() => this.safeAction(this.reloadConfig)}>
               Reload Configurations
             </button>
-            <button class="action-btn secondary" @click=${this.refreshDevices}>
+            <button class="action-btn secondary" @click=${() => this.safeAction(this.refreshDevices)}>
               Refresh Device Info
             </button>
           </div>
@@ -389,6 +382,14 @@ export class PerimeterControlPanel extends LitElement {
     this.clearError();
     // Force a re-render by requesting an update
     this.requestUpdate();
+  }
+
+  private async safeAction(action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      this.handleError(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   private getPerimeterControlDevices() {
@@ -747,30 +748,15 @@ export class PerimeterControlPanel extends LitElement {
   }
 
   private async deployAll() {
-    try {
-      await this.hass?.callService('perimeter_control', 'deploy', { force: true });
-    } catch (error) {
-      console.error('Deploy failed:', error);
-      this.handleError(error instanceof Error ? error : new Error('Deploy operation failed'));
-    }
+    await this.hass?.callService('perimeter_control', 'deploy', { force: true });
   }
 
   private async reloadConfig() {
-    try {
-      await this.hass?.callService('perimeter_control', 'reload_config', {});
-    } catch (error) {
-      console.error('Reload config failed:', error);
-      this.handleError(error instanceof Error ? error : new Error('Config reload failed'));
-    }
+    await this.hass?.callService('perimeter_control', 'reload_config', {});
   }
 
   private async refreshDevices() {
-    try {
-      await this.hass?.callService('perimeter_control', 'get_device_info', {});
-    } catch (error) {
-      console.error('Get device info failed:', error);
-      this.handleError(error instanceof Error ? error : new Error('Device refresh failed'));
-    }
+    await this.hass?.callService('perimeter_control', 'get_device_info', {});
   }
 }
 

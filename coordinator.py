@@ -326,13 +326,15 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Log what we're extracting
             entities = result.get("entities", [])
             services = result.get("services", [])
-            capabilities = result.get("capabilities", [])
             node_info = result.get("node_info", {})
+            capabilities = node_info.get("capabilities", [])  # Fixed: capabilities are nested under node_info
             
             _LOGGER.warning("Extracted from API - entities: %d, services: %d, capabilities: %d", 
                         len(entities), len(services), len(capabilities))
             _LOGGER.warning("Node info: %s", node_info)
             _LOGGER.warning("Services: %s", services)
+            if capabilities:
+                _LOGGER.warning("Capabilities found: %s", capabilities)
             
             # Transform to match expected format
             dashboard_entities = self._create_dashboard_url_entities(result.get("services", []))
