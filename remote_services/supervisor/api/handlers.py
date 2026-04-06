@@ -403,6 +403,42 @@ class HealthHandler(_Base):
         self._json(self.supervisor.get_health_summary())
 
 
+class StatusHandler(_Base):
+    """Legacy status endpoint for HA integration compatibility."""
+    def get(self):
+        health = self.supervisor.get_health_summary()
+        
+        # Get services info
+        services = {}
+        try:
+            # Get service descriptors and their status
+            for cap_name, cap in self.supervisor._capabilities.items():
+                services[cap_name] = {
+                    "name": cap.name,
+                    "status": cap.status,
+                    "version": getattr(cap, 'version', None),
+                    "active": cap.status == "active"
+                }
+        except Exception:
+            pass
+            
+        status_data = {
+            "status": health.get("status", "unknown"),
+            "capabilities": health.get("capabilities", {}),
+            "dashboard": {
+                "active": True,  # Dashboard service is separate
+                "port": 5006
+            },
+            "services": services,
+            "system_info": {
+                "supervisor_version": "0.1.0",
+                "node_id": getattr(self.supervisor, 'node_id', 'unknown'),
+                "timestamp": health.get("timestamp", "unknown")
+            }
+        }
+        self._json(status_data)
+
+
 class MetricsHandler(_Base):
     def get(self):
         """Prometheus text format metrics."""
@@ -898,6 +934,7 @@ def make_app(supervisor) -> tornado.web.Application:
             (r"/api/v1/capabilities",                       CapabilitiesHandler),
             (r"/api/v1/deployments",                        DeploymentsHandler),
             (r"/api/v1/health",                             HealthHandler),
+            (r"/api/v1/status",                             StatusHandler),
             (r"/api/v1/metrics",                            MetricsHandler),
             (r"/api/v1/services/([^/]+)/config",            ServiceConfigHandler),
             (r"/api/v1/services/([^/]+)/access",            ServiceAccessHandler),

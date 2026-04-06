@@ -462,11 +462,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Set flag to prevent concurrent starts    
         self._websocket_starting = True
         try:
+            _LOGGER.debug("Attempting WebSocket connection to: %s", self._supervisor_ws_url)
             # Add timeout to websocket connection
             self._websocket = await asyncio.wait_for(
                 self._http_session.ws_connect(self._supervisor_ws_url),
                 timeout=10.0
             )
+            _LOGGER.info("WebSocket connected successfully to %s", self._supervisor_ws_url)
             
             # Reset reconnection attempts on successful connection
             self._reconnect_attempts = 0
@@ -647,7 +649,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "system_info": {},
             }
         
-        _LOGGER.warning("Service descriptors loaded: %s", list(self._service_descriptors.keys()))
+        _LOGGER.debug("Service descriptors loaded: %s", list(self._service_descriptors.keys()))
         
         # Legacy service status via SSH (fallback for deploy operations)
         service_status = {}
