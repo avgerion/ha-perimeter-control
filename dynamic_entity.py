@@ -56,12 +56,18 @@ class SupervisorEntity(Entity):
     @property
     def available(self) -> bool:
         """Return True if entity should be available."""
-        # Entity is available if it appears in current Supervisor entity list
+        # Check if entity appears in current Supervisor entity list
         supervisor_entities = self.coordinator.data.get("supervisor_entities", [])
-        return any(
+        entity_exists = any(
             entity.get("id") == self.entity_schema.get("id")
             for entity in supervisor_entities
         )
+        
+        # Also check if we have current state data
+        current_state = self._get_current_state()
+        has_state = bool(current_state and current_state.get("state") != "unavailable")
+        
+        return entity_exists and has_state
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -100,7 +106,11 @@ class SupervisorEntity(Entity):
     def _get_current_state(self) -> Dict[str, Any]:
         """Get current state from coordinator data."""
         entity_states = self.coordinator.data.get("entity_states", {})
-        return entity_states.get(self._entity_id, {})
+        entity_data = entity_states.get(self._entity_id, {})
+        # Extract the actual state data - API returns nested structure
+        if "state" in entity_data:
+            return entity_data["state"]
+        return entity_data
 
 
 class DynamicSensorEntity(SupervisorEntity, SensorEntity):

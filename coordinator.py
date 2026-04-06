@@ -339,10 +339,31 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Transform to match expected format
             dashboard_entities = self._create_dashboard_url_entities(result.get("services", []))
             
+            # Transform entities array into entity_states dict for compatibility
+            entity_states = {}
+            for entity in entities:
+                entity_id = entity.get("id")
+                if entity_id:
+                    # Wrap the entity data in the expected format
+                    entity_states[entity_id] = {
+                        "state": {
+                            "state": entity.get("state"),
+                            "attributes": entity.get("attributes", {}),
+                            "last_updated": entity.get("last_updated"),
+                            "friendly_name": entity.get("friendly_name"),
+                            "icon": entity.get("icon"),
+                            "device_class": entity.get("device_class"),
+                            "unit_of_measurement": entity.get("unit_of_measurement"),
+                            "state_class": entity.get("state_class"),
+                        }
+                    }
+            
+            _LOGGER.info("Transformed %d entities into entity_states dict", len(entity_states))
+            
             return {
                 "supervisor_active": result.get("health", {}).get("status") == "healthy",
                 "supervisor_entities": entities + dashboard_entities,
-                "entity_states": result.get("states", {}),
+                "entity_states": entity_states,
                 "services_config": result.get("services", {}),
                 "config_changes": result.get("config_changes", {}),
                 "dashboard_urls": dashboard_urls,
