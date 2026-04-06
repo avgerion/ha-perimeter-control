@@ -630,7 +630,16 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch data from the supervisor API efficiently."""
         _LOGGER.debug("Polling supervisor API...")
         
-        # Get combined status from Supervisor API (fast path)
+        # Get all integration data from the efficient HA endpoint
+        try:
+            integration_data = await self._fetch_ha_integration_data()
+            _LOGGER.debug("Successfully fetched %d entities from supervisor", 
+                        len(integration_data.get("supervisor_entities", [])))
+            return integration_data
+        except Exception as exc:
+            _LOGGER.debug("Failed to fetch integration data: %s. Using fallback.", exc)
+            
+        # Fallback to basic status if HA endpoint fails
         supervisor_data = {}
         try:
             status = await self._supervisor_get("/status")
@@ -639,6 +648,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 KEY_DASHBOARD_ACTIVE: status.get("dashboard", {}).get("active", False),
                 "services": status.get("services", {}),
                 "system_info": status.get("system_info", {}),
+                "supervisor_entities": [],  # No entities in fallback
             }
         except Exception as exc:
             _LOGGER.debug("Supervisor API not available: %s", exc)
@@ -647,6 +657,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 KEY_DASHBOARD_ACTIVE: False,
                 "services": {},
                 "system_info": {},
+                "supervisor_entities": [],
             }
         
         _LOGGER.debug("Service descriptors loaded: %s", list(self._service_descriptors.keys()))

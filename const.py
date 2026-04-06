@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 DOMAIN = "perimeter_control"
-PLATFORMS: list[str] = ["sensor", "button", "binary_sensor"]
+PLATFORMS: list[str] = ["sensor", "button", "binary_sensor", "camera"]
 
 # Config entry keys
 CONF_HOST = "host"

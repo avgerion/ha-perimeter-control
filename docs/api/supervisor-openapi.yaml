@@ -413,13 +413,72 @@ paths:
       description: |
         WebSocket connection for real-time events.
 
+        ## What are WebSockets?
+
+        WebSockets are a communication protocol that enables full-duplex communication over a single TCP connection. Unlike traditional HTTP requests where the client must poll the server for updates, WebSockets allow the server to push data to the client instantly when events occur.
+
+        **Key Benefits:**
+        - **Real-time Communication**: Server can push updates immediately without client polling
+        - **Bidirectional**: Both client and server can send messages at any time
+        - **Low Latency**: No HTTP request/response overhead after initial handshake
+        - **Persistent Connection**: Single connection stays open for the duration of the session
+        - **Efficient**: Reduces server load compared to frequent HTTP polling
+
+        ## How WebSockets Work Generally
+
+        1. **Handshake**: Client sends HTTP request with `Upgrade: websocket` header
+        2. **Protocol Switch**: Server responds with `101 Switching Protocols` status
+        3. **Persistent Connection**: Connection upgrades from HTTP to WebSocket protocol
+        4. **Message Exchange**: Both sides can send/receive messages in real-time
+        5. **Connection Close**: Either side can close the connection gracefully
+
+        ## WebSocket Usage in Perimeter Control
+
+        In this system, WebSockets provide real-time updates from the Raspberry Pi supervisor to Home Assistant:
+
+        **Connection Flow:**
+        ```
+        Home Assistant ←─WebSocket─→ Pi Supervisor (port 8080)
+                     ←─ entity_updated ─┐
+                     ←─ service_started ─┤ Real-time events
+                     ←─ health_failed ───┘
+        ```
+
+        **Use Cases:**
+        - **Entity State Updates**: When BLE devices connect/disconnect, sensor values change
+        - **Service Status Changes**: When capabilities start, stop, or encounter errors  
+        - **Health Monitoring**: Immediate notification of system issues
+        - **Configuration Changes**: Live updates when settings are modified
+
+        **Advantages for IoT:**
+        - Battery sensor changes appear instantly in HA dashboard
+        - Network connectivity issues trigger immediate alerts
+        - Photo booth button presses cause instant HA automations
+        - Service crashes are detected within seconds, not minutes
+
         **Usage:** `ws://pi-device:8080/api/v1/events`
 
         **Events:**
-        - `entity_updated` - Entity state changed
-        - `capability_deployed` - Capability deployment completed
-        - `service_started` - Service became available
-        - `health_check_failed` - Health check failure
+        - `entity_updated` - Entity state changed (sensor values, connectivity status)
+        - `capability_deployed` - Capability deployment completed successfully
+        - `service_started` - Service became available and ready
+        - `health_check_failed` - Health check failure detected
+        - `config_changed` - Configuration file updated
+        - `device_connected` - New BLE/network device discovered
+        - `error_occurred` - Non-fatal error requiring attention
+
+        **Event Message Format:**
+        ```json
+        {
+          "type": "entity_updated",
+          "timestamp": "2026-04-05T10:30:00Z",
+          "data": {
+            "entity_id": "sensor.wildlife_monitor_battery",
+            "state": "85",
+            "attributes": { "unit_of_measurement": "%" }
+          }
+        }
+        ```
       operationId: connectEventStream
       tags: [ Events ]
       responses:
