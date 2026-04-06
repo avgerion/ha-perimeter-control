@@ -338,6 +338,8 @@ export class PerimeterControlPanel extends LitElement {
 
         <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
           <strong>Debug:</strong> Found ${devices.length} devices, ${this.hass ? Object.keys(this.hass.entities).length : 0} total entities
+          <br><strong>Sample entities:</strong> ${this.hass ? Object.keys(this.hass.entities).slice(0, 5).join(', ') : 'None'}
+          <br><strong>Perimeter entities:</strong> ${this.hass ? Object.keys(this.hass.entities).filter(id => id.includes('perimeter')).join(', ') : 'None'}
         </div>
 
         ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
