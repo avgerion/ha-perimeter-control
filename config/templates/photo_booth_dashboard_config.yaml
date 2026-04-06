@@ -1,0 +1,9 @@
+# Photo Booth Dashboard Configuration
+server:
+  host: "0.0.0.0"
+  port: 8093
+  type: "bokeh"
+features:
+  live_stream: true
+  motion_detection: true
+  manual_capture: true

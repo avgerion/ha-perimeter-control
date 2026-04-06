@@ -35,39 +35,13 @@ class BleService(BaseService):
             "bluez-tools"
         ]), 2)
         
-        # Add configuration management
-        config_files = {
-            "ble_config.yaml": """
-# BLE GATT Repeater Configuration
-scan_interval: 30
-connection_timeout: 10
-devices:
-  - name: "Any Health Thermometer"
-    service_uuid: "1809"
-    characteristics:
-      - "2a1c"  # Temperature Measurement
-""",
-            "mqtt_config.yaml": """
-# MQTT Configuration for BLE
-broker: localhost
-port: 1883
-topic_prefix: "ble"
-""",
-            "dashboard_config.yaml": """
-# BLE GATT Repeater Dashboard Configuration
-server:
-  host: "0.0.0.0"
-  port: 8091
-  type: "bokeh"
-features:
-  device_scanner: true
-  gatt_browser: true
-  characteristic_monitor: true
-  connection_status: true
-data_refresh_interval: 5
-"""
+        # Add configuration from template files
+        config_templates = {
+            "ble_config.yaml": "config/templates/ble_config.yaml",
+            "mqtt_config.yaml": "config/templates/mqtt_config.yaml", 
+            "dashboard_config.yaml": "config/templates/ble_dashboard_config.yaml"
         }
-        self.add_component(ConfigurationManager(config_files), 3)
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 3)
         
         # Add data logging
         self.add_component(DataLogging(["sensor", "event"]), 4)
@@ -101,34 +75,12 @@ class PhotoBoothService(BaseService):
             "tornado"
         ]), 4)
         
-        # Add configuration
-        config_files = {
-            "photo_booth_config.yaml": """
-# Photo Booth Configuration
-camera:
-  device: 0
-  resolution: [1920, 1080]
-  fps: 30
-motion:
-  sensitivity: 0.6
-  min_area: 500
-storage:
-  path: "/var/lib/photo_booth"
-  max_photos: 1000
-""",
-            "dashboard_config.yaml": """
-# Dashboard Configuration
-server:
-  host: "0.0.0.0"
-  port: 8093
-  type: "bokeh"
-features:
-  live_stream: true
-  motion_detection: true
-  manual_capture: true
-"""
+        # Add configuration from template files
+        config_templates = {
+            "photo_booth_config.yaml": "config/templates/photo_booth_config.yaml",
+            "dashboard_config.yaml": "config/templates/photo_booth_dashboard_config.yaml"
         }
-        self.add_component(ConfigurationManager(config_files), 5)
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
         
         # Add data logging
         self.add_component(DataLogging(["event", "capture"]), 6)
@@ -162,39 +114,12 @@ class NetworkService(BaseService):
         self.add_component(DataLogging(["network", "firewall"]), 3)
         self.add_component(AlertSystem(["webhook"]), 4)
         
-        # Add configuration
-        config_files = {
-            "isolator.conf.yaml": """
-# Network Isolator Configuration
-interfaces:
-  - name: eth0
-    monitor: true
-    firewall: true
-  - name: wlan0
-    monitor: true
-    firewall: false
-rules:
-  default_policy: DROP
-  allowed_ports: [22, 80, 443, 8080]
-monitoring:
-  interval: 60
-  log_traffic: true
-""",
-            "firewall_rules.yaml": """
-# Firewall Rules
-chains:
-  INPUT: DROP
-  FORWARD: DROP
-  OUTPUT: ACCEPT
-rules:
-  - action: ACCEPT
-    source: 192.168.0.0/16
-    ports: [22, 80, 443]
-  - action: ACCEPT
-    interface: lo
-"""
+        # Add configuration from template files
+        config_templates = {
+            "perimeterControl.conf.yaml": "config/templates/network_isolator.conf.yaml",
+            "firewall_rules.yaml": "config/templates/firewall_rules.yaml"
         }
-        self.add_component(ConfigurationManager(config_files), 5)
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
 
 class WildlifeService(BaseService):
@@ -231,51 +156,13 @@ class WildlifeService(BaseService):
         self.add_component(MotionDetection(sensitivity=0.3), 5)  # More sensitive for wildlife
         self.add_component(AlertSystem(["email", "webhook"]), 6)
         
-        # Add configuration
-        config_files = {
-            "wildlife_config.yaml": """
-# Wildlife Monitor Configuration
-sensors:
-  - type: bme280
-    address: 0x76
-    metrics: [temperature, humidity, pressure]
-  - type: motion_pir
-    gpio_pin: 18
-camera:
-  trigger_on_motion: true
-  record_duration: 30
-  resolution: [1280, 720]
-data:
-  collection_interval: 300  # 5 minutes
-  retention_days: 30
-alerts:
-  temperature_threshold: 35
-  motion_cooldown: 600  # 10 minutes
-""",
-            "data_analysis.yaml": """
-# Data Analysis Configuration
-processing:
-  enable_ml: false
-  aggregation_interval: 3600  # 1 hour
-visualization:
-  charts: [temperature, humidity, motion_events]
-  update_interval: 300
-""",
-            "dashboard_config.yaml": """
-# Wildlife Monitor Dashboard Configuration  
-server:
-  host: "0.0.0.0"
-  port: 8094
-  type: "bokeh"
-features:
-  sensor_charts: true
-  motion_timeline: true
-  environmental_data: true
-  wildlife_gallery: true
-data_refresh_interval: 60
-"""
+        # Add configuration from template files
+        config_templates = {
+            "wildlife_config.yaml": "config/templates/wildlife_config.yaml",
+            "data_analysis.yaml": "config/templates/wildlife_data_analysis.yaml",
+            "dashboard_config.yaml": "config/templates/wildlife_dashboard_config.yaml"
         }
-        self.add_component(ConfigurationManager(config_files), 7)
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 7)
 
 
 class EslService(BaseService):
@@ -308,55 +195,13 @@ class EslService(BaseService):
         self.add_component(DataLogging(["esl", "advertising"]), 3)
         self.add_component(AlertSystem(["mqtt"]), 4)
         
-        # Add configuration
-        config_files = {
-            "esl_config.yaml": """
-# ESL AP Configuration
-advertising:
-  interval_ms: 1000
-  tx_power: 0  # dBm
-  company_id: 0x02E5  # Qualcomm
-security:
-  encryption_key: "default_key_change_me"
-  auth_required: true
-displays:
-  max_concurrent: 50
-  sync_interval: 3600
-protocols:
-  supported: ["esl_1.0", "esl_2.0"]
-  default: "esl_2.0"
-""",
-            "layout_config.yaml": """
-# ESL Layout Configuration
-templates:
-  - name: "price_tag"
-    width: 296
-    height: 128
-    elements:
-      - type: text
-        position: [10, 10]
-        font_size: 24
-      - type: barcode
-        position: [10, 60]
-        format: "code128"
-layouts:
-  default: "price_tag"
-""",
-            "dashboard_config.yaml": """
-# ESL AP Dashboard Configuration
-server:
-  host: "0.0.0.0"  
-  port: 8092
-  type: "bokeh"
-features:
-  display_management: true
-  layout_editor: true
-  advertising_status: true
-  connected_displays: true
-data_refresh_interval: 30
-"""
+        # Add configuration from template files
+        config_templates = {
+            "esl_config.yaml": "config/templates/esl_config.yaml",
+            "layout_config.yaml": "config/templates/esl_layout_config.yaml",
+            "dashboard_config.yaml": "config/templates/esl_dashboard_config.yaml"
         }
-        self.add_component(ConfigurationManager(config_files), 5)
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
 
 # Register all service types with the component registry

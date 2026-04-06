@@ -1,4 +1,4 @@
-apiVersion: isolator/v1
+apiVersion: PerimeterControl/v1
 kind: ServiceDescriptor
 metadata:
   id: network_isolator
@@ -11,7 +11,7 @@ spec:
     entrypoint: isolator.service
 
   config_file:
-    path: /mnt/isolator/conf/perimeterControl.conf.yaml
+    path: /mnt/PerimeterControl/conf/perimeterControl.conf.yaml
     format: yaml
     schema_ref: schema://services/network_isolator/v1
 

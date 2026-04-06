@@ -1,0 +1,14 @@
+# ESL AP Configuration
+advertising:
+  interval_ms: 1000
+  tx_power: 0 # dBm
+  company_id: 0x2e5 # Qualcomm
+security:
+  encryption_key: "default_key_change_me"
+  auth_required: true
+displays:
+  max_concurrent: 50
+  sync_interval: 3600
+protocols:
+  supported: [ "esl_1.0", "esl_2.0" ]
+  default: "esl_2.0"

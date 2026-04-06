@@ -1,0 +1,17 @@
+# Wildlife Monitor Configuration
+sensors:
+  - type: bme280
+    address: 0x76
+    metrics: [ temperature, humidity, pressure ]
+  - type: motion_pir
+    gpio_pin: 18
+camera:
+  trigger_on_motion: true
+  record_duration: 30
+  resolution: [ 1280, 720 ]
+data:
+  collection_interval: 300 # 5 minutes
+  retention_days: 30
+alerts:
+  temperature_threshold: 35
+  motion_cooldown: 600 # 10 minutes

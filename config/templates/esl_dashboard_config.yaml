@@ -1,0 +1,11 @@
+# ESL AP Dashboard Configuration
+server:
+  host: "0.0.0.0"
+  port: 8092
+  type: "bokeh"
+features:
+  display_management: true
+  layout_editor: true
+  advertising_status: true
+  connected_displays: true
+data_refresh_interval: 30

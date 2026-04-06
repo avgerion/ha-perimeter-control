@@ -1,4 +1,4 @@
-apiVersion: isolator/v1
+apiVersion: PerimeterControl/v1
 kind: ServiceDescriptor
 metadata:
   id: ble_gatt_repeater
@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.ble_gatt_repeater
 
   config_file:
-    path: /mnt/isolator/conf/ble-gatt-repeater.yaml
+    path: /mnt/PerimeterControl/conf/ble-gatt-repeater.yaml
     format: yaml
     schema_ref: schema://services/ble_gatt_repeater/v1
 
@@ -25,9 +25,8 @@ spec:
     exposure_scope: tunnel_only
 
   placement:
-    can_run_with: [network_isolator]
-    cannot_run_with: [pawr_esl_ap]
-    prefers_node_labels: [role=ble-gateway]
+    cannot_run_with: [ pawr_esl_ap ]
+    prefers_node_labels: [ role=ble-gateway ]
 
   resources:
     cpu_cores: 0.5

@@ -1,0 +1,7 @@
+# Data Analysis Configuration
+processing:
+  enable_ml: false
+  aggregation_interval: 3600 # 1 hour
+visualization:
+  charts: [ temperature, humidity, motion_events ]
+  update_interval: 300

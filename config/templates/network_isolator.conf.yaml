@@ -1,0 +1,14 @@
+# Network Isolator Configuration
+interfaces:
+  - name: eth0
+    monitor: true
+    firewall: true
+  - name: wlan0
+    monitor: true
+    firewall: false
+rules:
+  default_policy: DROP
+  allowed_ports: [ 22, 80, 443, 8080 ]
+monitoring:
+  interval: 60
+  log_traffic: true

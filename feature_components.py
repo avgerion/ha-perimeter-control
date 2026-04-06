@@ -125,10 +125,38 @@ class SystemDependencies(ServiceComponent):
 class ConfigurationManager(ServiceComponent):
     """Centralized configuration management for services."""
     
-    def __init__(self, config_files: Dict[str, str], config: Optional[ComponentConfig] = None):
+    def __init__(self, config_files: Dict[str, str], config: Optional[ComponentConfig] = None, use_templates: bool = False):
         super().__init__("config_manager", config)
-        self.config_files = config_files  # filename -> content mapping
+        self.use_templates = use_templates
         self.deployed_configs: Set[str] = set()
+        
+        if use_templates:
+            # config_files contains filename -> template_path mapping
+            self.config_files = self._load_template_files(config_files)
+        else:
+            # config_files contains filename -> content mapping (legacy)
+            self.config_files = config_files
+    
+    def _load_template_files(self, template_mappings: Dict[str, str]) -> Dict[str, str]:
+        """Load configuration content from template files."""
+        config_content = {}
+        for filename, template_path in template_mappings.items():
+            try:
+                import os
+                # Resolve relative paths from workspace root
+                workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                full_path = os.path.join(workspace_root, template_path)
+                
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    config_content[filename] = f.read()
+                    
+                self.logger.debug(f"Loaded template {template_path} for {filename}")
+            except Exception as exc:
+                self.logger.error(f"Failed to load template {template_path}: {exc}")
+                # Fallback to empty content
+                config_content[filename] = f"# Template load failed: {exc}"
+                
+        return config_content
     
     @property
     def resource_requirements(self) -> ResourceRequirement:

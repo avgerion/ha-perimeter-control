@@ -1,0 +1,11 @@
+# Wildlife Monitor Dashboard Configuration  
+server:
+  host: "0.0.0.0"
+  port: 8094
+  type: "bokeh"
+features:
+  sensor_charts: true
+  motion_timeline: true
+  environmental_data: true
+  wildlife_gallery: true
+data_refresh_interval: 60

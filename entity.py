@@ -44,7 +44,7 @@ class PerimeterControlServiceEntity(Entity):
         return DeviceInfo(
             identifiers = {(DOMAIN, entry.entry_id)},
             name = entry.title or f"Perimeter Node {entry.data.get('host')}",
-            manufacturer = "Isolator",
+            manufacturer = "PerimeterControl",
             model = "Pi Node",
             configuration_url = f"http://{entry.data.get('host')}:{entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)}/",
             sw_version = None,

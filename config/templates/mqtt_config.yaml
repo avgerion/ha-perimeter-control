@@ -1,0 +1,4 @@
+# MQTT Configuration for BLE
+broker: localhost
+port: 1883
+topic_prefix: "ble"

@@ -1,0 +1,11 @@
+# Firewall Rules
+chains:
+  INPUT: DROP
+  FORWARD: DROP
+  OUTPUT: ACCEPT
+rules:
+  - action: ACCEPT
+    source: 192.168.0.0/16
+    ports: [ 22, 80, 443 ]
+  - action: ACCEPT
+    interface: lo

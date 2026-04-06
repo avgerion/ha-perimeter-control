@@ -1,7 +1,7 @@
 type: photo_booth
 name: "Photo Booth Camera"
 camera_device: "/dev/video0"
-photo_directory: "/opt/isolator/photos"
+photo_directory: "/opt/PerimeterControl/photos"
 resolution: "1920x1080"
 quality: 85
 motion_detection: false

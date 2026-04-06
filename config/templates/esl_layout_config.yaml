@@ -1,0 +1,14 @@
+# ESL Layout Configuration
+templates:
+  - name: "price_tag"
+    width: 296
+    height: 128
+    elements:
+      - type: text
+        position: [ 10, 10 ]
+        font_size: 24
+      - type: barcode
+        position: [ 10, 60 ]
+        format: "code128"
+layouts:
+  default: "price_tag"

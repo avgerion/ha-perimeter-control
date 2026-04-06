@@ -1,4 +1,4 @@
-apiVersion: isolator/v1
+apiVersion: PerimeterControl/v1
 kind: ServiceDescriptor
 metadata:
   id: pawr_esl_ap
@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.pawr_esl_advertiser
 
   config_file:
-    path: /mnt/isolator/conf/esl-ap.yaml
+    path: /mnt/PerimeterControl/conf/esl-ap.yaml
     format: yaml
     schema_ref: schema://services/pawr_esl_ap/v1
 
@@ -26,8 +26,8 @@ spec:
 
   placement:
     can_run_with: []
-    cannot_run_with: [ble_gatt_repeater]
-    prefers_node_labels: [feature=pawr]
+    cannot_run_with: [ ble_gatt_repeater ]
+    prefers_node_labels: [ feature=pawr ]
 
   resources:
     cpu_cores: 0.5

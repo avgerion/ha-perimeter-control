@@ -1,0 +1,8 @@
+# BLE GATT Repeater Configuration
+scan_interval: 30
+connection_timeout: 10
+devices:
+  - name: "Any Health Thermometer"
+    service_uuid: "1809"
+    characteristics:
+      - "2a1c" # Temperature Measurement
