@@ -2,8 +2,5 @@
  * Main entry point for Perimeter Control HA Integration
  */
 
-// Import panel component
+// Import panel component - it registers itself
 import './panel';
-
-// Export the main panel component
-export { PerimeterControlPanel } from './panel';
