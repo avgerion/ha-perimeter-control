@@ -1,4 +1,6 @@
 """Dynamic button entities for Perimeter Control."""
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -6,6 +8,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .coordinator import PerimeterControlCoordinator
 from .dynamic_entity import expand_templated_entities
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -23,10 +27,18 @@ async def async_setup_entry(
     supervisor_entities = coordinator.data.get("supervisor_entities", [])
     
     for entity_schema in supervisor_entities:
-        entity_type = entity_schema.get("type")
-        if entity_type == "button":
-            # Expand templated entities (handles both single and multi-dimensional)
-            entities.extend(expand_templated_entities(coordinator, entity_schema))
+        try:
+            entity_type = entity_schema.get("type")
+            if entity_type == "button":
+                # Expand templated entities (handles both single and multi-dimensional)
+                new_entities = expand_templated_entities(coordinator, entity_schema)
+                entities.extend(new_entities)
+        except Exception as e:
+            entity_id = entity_schema.get("id", "unknown_button")
+            _LOGGER.error(
+                "Failed to process button entity '%s': %s. Continuing with other buttons.",
+                entity_id, e, exc_info=True
+            )
     
     if entities:
         async_add_entities(entities)

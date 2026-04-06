@@ -190,9 +190,14 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
         entity_schema: Dict[str, Any], 
         dimension_values: Optional[Dict[str, str]] = None,
     ) -> None:
-        super().__init__(coordinator, entity_schema, dimension_values)
-        # Initialize Camera with required parameters
-        Camera.__init__(self)
+        try:
+            super().__init__(coordinator, entity_schema, dimension_values)
+            # Initialize Camera with required parameters
+            Camera.__init__(self)
+        except Exception as e:
+            _LOGGER.error("Failed to initialize camera entity: %s", e, exc_info=True)
+            # Re-raise to let the parent error handler deal with it
+            raise
         
     @property
     def is_streaming(self) -> bool:
@@ -213,9 +218,29 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return camera image."""
-        # For now return None - can be extended to fetch from supervisor
-        # This would typically make an API call to get the current image
-        return None
+        try:
+            # Try to get image from supervisor API
+            current_state = self._get_current_state()
+            image_url = current_state.get("attributes", {}).get("image_url")
+            
+            if not image_url:
+                # If no image URL, return a minimal placeholder image
+                return self._generate_placeholder_image()
+                
+            # For now, return placeholder until we implement full image fetching
+            return self._generate_placeholder_image()
+            
+        except Exception as e:
+            _LOGGER.warning("Failed to get camera image for %s: %s", self._entity_id, e)
+            return self._generate_placeholder_image()
+            
+    def _generate_placeholder_image(self) -> bytes:
+        """Generate a minimal placeholder image."""
+        # Create a minimal 1x1 PNG image
+        import base64
+        # This is a 1x1 transparent PNG encoded as base64
+        placeholder_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        return base64.b64decode(placeholder_b64)
         
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -239,17 +264,25 @@ def create_entity_from_schema(
 ) -> SupervisorEntity | None:
     """Create appropriate entity instance from schema."""
     entity_type = entity_schema.get("type")
+    entity_id = entity_schema.get("id", "unknown")
     
-    if entity_type == "sensor":
-        return DynamicSensorEntity(coordinator, entity_schema, dimension_values)
-    elif entity_type == "binary_sensor":
-        return DynamicBinarySensorEntity(coordinator, entity_schema, dimension_values)
-    elif entity_type == "button":
-        return DynamicButtonEntity(coordinator, entity_schema, dimension_values)
-    elif entity_type == "camera":
-        return DynamicCameraEntity(coordinator, entity_schema, dimension_values)
-    else:
-        _LOGGER.warning("Unknown entity type '%s' in schema: %s", entity_type, entity_schema)
+    try:
+        if entity_type == "sensor":
+            return DynamicSensorEntity(coordinator, entity_schema, dimension_values)
+        elif entity_type == "binary_sensor":
+            return DynamicBinarySensorEntity(coordinator, entity_schema, dimension_values)
+        elif entity_type == "button":
+            return DynamicButtonEntity(coordinator, entity_schema, dimension_values)
+        elif entity_type == "camera":
+            return DynamicCameraEntity(coordinator, entity_schema, dimension_values)
+        else:
+            _LOGGER.warning("Unknown entity type '%s' in schema: %s", entity_type, entity_schema)
+            return None
+    except Exception as e:
+        _LOGGER.error(
+            "Failed to create %s entity '%s': %s. Continuing with other entities.",
+            entity_type, entity_id, e, exc_info=True
+        )
         return None
 
 
@@ -258,23 +291,31 @@ def expand_templated_entities(
     entity_schema: Dict[str, Any],
 ) -> list[SupervisorEntity]:
     """Expand templated entities with dimensions into multiple entities."""
+    entity_id = entity_schema.get("id", "unknown")
     dimensions = entity_schema.get("dimensions", {})
     
-    if not dimensions:
-        # Non-templated entity - create single instance
-        entity = create_entity_from_schema(coordinator, entity_schema)
-        return [entity] if entity else []
-    
-    # Templated entity - create one instance per dimension combination
-    entities = []
-    for dim_name, dim_values in dimensions.items():
-        for dim_value in dim_values:
-            entity = create_entity_from_schema(
-                coordinator, 
-                entity_schema, 
-                {dim_name: dim_value}
-            )
-            if entity:
-                entities.append(entity)
-    
-    return entities
+    try:
+        if not dimensions:
+            # Non-templated entity - create single instance
+            entity = create_entity_from_schema(coordinator, entity_schema)
+            return [entity] if entity else []
+        
+        # Templated entity - create one instance per dimension combination
+        entities = []
+        for dim_name, dim_values in dimensions.items():
+            for dim_value in dim_values:
+                entity = create_entity_from_schema(
+                    coordinator, 
+                    entity_schema, 
+                    {dim_name: dim_value}
+                )
+                if entity:
+                    entities.append(entity)
+        
+        return entities
+    except Exception as e:
+        _LOGGER.error(
+            "Failed to expand entity schema '%s': %s. Skipping this entity.",
+            entity_id, e, exc_info=True
+        )
+        return []

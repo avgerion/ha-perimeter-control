@@ -20,6 +20,27 @@ interface Hass {
 @customElement('perimeter-control-panel')
 export class PerimeterControlPanel extends LitElement {
   @property({ attribute: false }) hass?: Hass;
+  @property({ state: true }) errorMessage: string | null = null;
+  @property({ state: true }) errorStack: string | null = null;
+
+  constructor() {
+    super();
+    // Global error handler for unhandled exceptions
+    window.addEventListener('error', (event) => {
+      this.handleError(event.error || new Error(event.message));
+    });
+    
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+      this.handleError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
+    });
+  }
+
+  private handleError(error: Error): void {
+    console.error('Panel Error:', error);
+    this.errorMessage = error.message || 'Unknown error occurred';
+    this.errorStack = error.stack || 'No stack trace available';
+  }
 
   static styles = css`
     :host {
@@ -199,6 +220,71 @@ export class PerimeterControlPanel extends LitElement {
       color: white;
     }
 
+    .error-display {
+      background: #ffebee;
+      border: 1px solid #f44336;
+      border-radius: 4px;
+      padding: 16px;
+      margin: 16px 0;
+      color: #c62828;
+    }
+
+    .error-title {
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .error-message {
+      margin-bottom: 12px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    .error-stack {
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+
+    .error-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .error-btn {
+      padding: 6px 12px;
+      border: 1px solid #f44336;
+      background: #f44336;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .error-btn:hover {
+      background: #d32f2f;
+    }
+
+    .error-btn.secondary {
+      background: transparent;
+      color: #f44336;
+    }
+
+    .error-btn.secondary:hover {
+      background: #ffebee;
+    }
+
     .no-devices {
       text-align: center;
       padding: 48px 16px;
@@ -221,6 +307,11 @@ export class PerimeterControlPanel extends LitElement {
   render() {
     if (!this.hass) {
       return html`<div>Loading...</div>`;
+    }
+
+    // Show error display if there's an error
+    if (this.errorMessage) {
+      return this.renderError();
     }
 
     try {
@@ -254,15 +345,50 @@ export class PerimeterControlPanel extends LitElement {
         </div>
       `;
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Panel] Error in render:', error);
-      return html`
-        <div style="color: red; padding: 16px; background: #ffe6e6; border-radius: 4px;">
-          <h3>Panel Error</h3>
-          <p>Failed to render Perimeter Control panel: ${(error as Error).message}</p>
-        </div>
-      `;
+      this.handleError(error instanceof Error ? error : new Error(String(error)));
+      return this.renderError();
     }
+  }
+
+  private renderError() {
+    return html`
+      <div class="error-display">
+        <div class="error-title">
+          <span>⚠️</span>
+          <span>Perimeter Control Panel Error</span>
+        </div>
+        <div class="error-message">
+          ${this.errorMessage}
+        </div>
+        ${this.errorStack ? html`
+          <details>
+            <summary style="cursor: pointer; margin-bottom: 8px;">Show stack trace</summary>
+            <div class="error-stack">${this.errorStack}</div>
+          </details>
+        ` : ''}
+        <div class="error-actions">
+          <button class="error-btn" @click=${this.clearError}>
+            Clear Error
+          </button>
+          <button class="error-btn secondary" @click=${this.reloadPanel}>
+            Reload Panel
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  private clearError(): void {
+    this.errorMessage = null;
+    this.errorStack = null;
+  }
+
+  private reloadPanel(): void {
+    this.clearError();
+    // Force a re-render by requesting an update
+    this.requestUpdate();
   }
 
   private getPerimeterControlDevices() {
@@ -625,6 +751,7 @@ export class PerimeterControlPanel extends LitElement {
       await this.hass?.callService('perimeter_control', 'deploy', { force: true });
     } catch (error) {
       console.error('Deploy failed:', error);
+      this.handleError(error instanceof Error ? error : new Error('Deploy operation failed'));
     }
   }
 
@@ -633,6 +760,7 @@ export class PerimeterControlPanel extends LitElement {
       await this.hass?.callService('perimeter_control', 'reload_config', {});
     } catch (error) {
       console.error('Reload config failed:', error);
+      this.handleError(error instanceof Error ? error : new Error('Config reload failed'));
     }
   }
 
@@ -641,6 +769,7 @@ export class PerimeterControlPanel extends LitElement {
       await this.hass?.callService('perimeter_control', 'get_device_info', {});
     } catch (error) {
       console.error('Get device info failed:', error);
+      this.handleError(error instanceof Error ? error : new Error('Device refresh failed'));
     }
   }
 }
