@@ -5,8 +5,6 @@
 
 import { html, LitElement, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import './error-boundary';
-import './safe-loader';
 
 interface HassEntity {
   entity_id: string;
@@ -229,33 +227,31 @@ export class PerimeterControlPanel extends LitElement {
       const devices = this.getPerimeterControlDevices();
       
       return html`
-        <error-boundary>
-          <div class="header">
-            <h1>Perimeter Control</h1>
-            <p>Manage your edge devices and services</p>
+        <div class="header">
+          <h1>Perimeter Control</h1>
+          <p>Manage your edge devices and services</p>
+        </div>
+
+        <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
+          <strong>Debug:</strong> Found ${devices.length} devices, ${this.hass ? Object.keys(this.hass.entities).length : 0} total entities
+        </div>
+
+        ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
+
+        <div class="actions">
+          <h2>Global Actions</h2>
+          <div class="action-buttons">
+            <button class="action-btn" @click=${this.deployAll}>
+              Deploy All Devices
+            </button>
+            <button class="action-btn secondary" @click=${this.reloadConfig}>
+              Reload Configurations
+            </button>
+            <button class="action-btn secondary" @click=${this.refreshDevices}>
+              Refresh Device Info
+            </button>
           </div>
-  
-          <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
-            <strong>Debug:</strong> Found ${devices.length} devices, ${this.hass ? Object.keys(this.hass.entities).length : 0} total entities
-          </div>
-  
-          ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
-  
-          <div class="actions">
-            <h2>Global Actions</h2>
-            <div class="action-buttons">
-              <button class="action-btn" @click=${this.deployAll}>
-                Deploy All Devices
-              </button>
-              <button class="action-btn secondary" @click=${this.reloadConfig}>
-                Reload Configurations
-              </button>
-              <button class="action-btn secondary" @click=${this.refreshDevices}>
-                Refresh Device Info
-              </button>
-            </div>
-          </div>
-        </error-boundary>
+        </div>
       `;
       
     } catch (error) {
