@@ -51,15 +51,18 @@ class PerimeterControlPanel extends HTMLElement {
           <strong>Entities:</strong> <span id="entity-count">Loading...</span><br>
           <strong>Time:</strong> <span id="current-time">${new Date().toLocaleString()}</span>
         </div>
-        <button onclick="window.location.reload()">Refresh</button>
-        <button onclick="this.getRootNode().host.updateEntityCount()">Update Count</button>
+        <button onclick="this.parentElement.parentElement.parentElement.updateEntityCount()">Refresh Entities</button>
+        <div id="entity-list" style="margin-top: 16px; max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 8px;"></div>
       </div>
     `;
   }
 
   set _hass(hass: any) {
     this.hass = hass;
-    this.updateEntityCount();
+    if (hass) {
+      this.updateEntityCount();
+      this.updateEntityList();
+    }
   }
 
   updateEntityCount() {
@@ -70,9 +73,48 @@ class PerimeterControlPanel extends HTMLElement {
         .filter(id => id.includes('perimeter'))
         .length;
       countElement.innerHTML = `${entityCount} total (${perimeterEntities} perimeter-related)`;
+    } else if (countElement) {
+      countElement.innerHTML = 'No connection';
+    }
+  }
+
+  updateEntityList() {
+    const listElement = this.querySelector('#entity-list') as HTMLElement;
+    if (this.hass && this.hass.entities && listElement) {
+      const perimeterEntities = Object.keys(this.hass.entities)
+        .filter(id => id.includes('perimeter'))
+        .slice(0, 10); // Show first 10 only
+      
+      if (perimeterEntities.length > 0) {
+        const entityHtml = perimeterEntities.map(entityId => {
+          const entity = this.hass.entities[entityId];
+          const state = entity ? entity.state : 'unknown';
+          return `<div style="padding: 4px; border-bottom: 1px solid #eee;">
+            <strong>${entityId}</strong>: ${state}
+          </div>`;
+        }).join('');
+        listElement.innerHTML = entityHtml;
+      } else {
+        listElement.innerHTML = '<div style="color: #666;">No perimeter entities found</div>';
+      }
+    } else if (listElement) {
+      listElement.innerHTML = '<div style="color: #666;">No connection to Home Assistant</div>';
     }
   }
 }
 
-// Register the custom element
-customElements.define('perimeter-control-panel', PerimeterControlPanel);
+// Register the custom element when DOM is ready and HA is loaded
+function registerPanel() {
+  // Define custom element if not already defined
+  if (!customElements.get('perimeter-control-panel')) {
+    customElements.define('perimeter-control-panel', PerimeterControlPanel);
+  }
+}
+
+// Wait for DOM and try to register
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', registerPanel);
+} else {
+  // DOM already loaded
+  registerPanel();
+}
