@@ -341,7 +341,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Transform entities array into entity_states dict for compatibility
             entity_states = {}
-            for entity in entities:
+            all_entities = entities + dashboard_entities  # Include dashboard entities in state processing
+            for entity in all_entities:
                 entity_id = entity.get("id")
                 if entity_id:
                     # Wrap the entity data in the expected format
@@ -358,7 +359,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         }
                     }
             
-            _LOGGER.info("Transformed %d entities into entity_states dict", len(entity_states))
+            _LOGGER.info("Transformed %d entities (including %d dashboard URLs) into entity_states dict", len(entity_states), len(dashboard_entities))
             
             return {
                 "supervisor_active": result.get("health", {}).get("status") == "healthy",

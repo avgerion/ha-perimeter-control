@@ -19,19 +19,31 @@ async def async_register_panel(hass: HomeAssistant) -> None:
     
     # Only register once
     if DOMAIN in hass.data.get("frontend_panels", {}):
+        _LOGGER.info("Panel already registered, skipping")
         return
+    
+    _LOGGER.info("Starting panel registration process")
         
     # Find our built frontend files
     integration_path = Path(__file__).parent
     frontend_path = integration_path / "frontend"
     
+    _LOGGER.info("Integration path: %s", integration_path)
+    _LOGGER.info("Frontend path: %s", frontend_path)
+    _LOGGER.info("Frontend path exists: %s", frontend_path.exists())
+    
     # Check if frontend files exist
     js_file = frontend_path / "ha-integration.js"
+    _LOGGER.info("JS file path: %s", js_file)
+    _LOGGER.info("JS file exists: %s", js_file.exists())
     if not js_file.exists():
-        _LOGGER.warning(
+        _LOGGER.error(
             "Frontend JavaScript file not found at %s. "
-            "Run 'npm run build' in ha-integration/ directory", 
-            js_file
+            "Directory contents: %s. "
+            "Frontend path: %s",
+            js_file, 
+            list(frontend_path.iterdir()) if frontend_path.exists() else "Directory does not exist",
+            frontend_path
         )
         return
     
