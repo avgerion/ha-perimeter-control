@@ -32,6 +32,7 @@ import glob
 import json
 import logging
 import os
+import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,17 @@ import tornado.websocket
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+def _get_server_ip() -> str:
+    """Get the server's IP address that can be reached from external clients."""
+    try:
+        # Connect to a dummy address to determine local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))  # Google DNS, doesn't need to be reachable
+            return s.getsockname()[0]
+    except Exception:
+        return "localhost"  # Fallback
 
 
 # ------------------------------------------------------------------
@@ -724,8 +736,8 @@ class HAIntegrationHandler(_Base):
             return None  # Service not accessible
             
         port = access_profile.get("port", 8080)
-        # In real deployment, this would use the actual hostname/IP
-        return f"http://localhost:{port}/"
+        server_ip = _get_server_ip()
+        return f"http://{server_ip}:{port}/"
     
     def _service_is_active(self, service_id: str) -> bool:
         """Check if service is currently active via capability status."""
@@ -800,7 +812,8 @@ class HADashboardUrlsHandler(_Base):
             return None
             
         port = access_profile.get("port", 8080)
-        return f"http://localhost:{port}/"
+        server_ip = _get_server_ip()
+        return f"http://{server_ip}:{port}/"
     
     def _service_is_active(self, service_id: str) -> bool:
         """Check if service is active."""

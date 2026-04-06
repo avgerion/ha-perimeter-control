@@ -41,6 +41,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
+import socket
+
+
+def _get_server_ip() -> str:
+    """Get the server's IP address that can be reached from external clients."""
+    try:
+        # Connect to a dummy address to determine local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))  # Google DNS, doesn't need to be reachable
+            return s.getsockname()[0]
+    except Exception:
+        return "localhost"  # Fallback
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
@@ -422,7 +434,8 @@ def _compute_dashboard_url(access_profile: Dict[str, Any]) -> Optional[str]:
         return None
         
     port = access_profile.get("port", 8080)
-    return f"http://localhost:{port}/"
+    server_ip = _get_server_ip()
+    return f"http://{server_ip}:{port}/"
 
 def _service_is_active(service_id: str, supervisor) -> bool:
     """Check if service is active."""
