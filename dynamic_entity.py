@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
+from homeassistant.components.camera import Camera
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
@@ -180,6 +181,57 @@ class DynamicButtonEntity(SupervisorEntity, ButtonEntity):
         )
 
 
+class DynamicCameraEntity(SupervisorEntity, Camera):
+    """Camera entity created from Supervisor schema."""
+
+    def __init__(
+        self,
+        coordinator: PerimeterControlCoordinator,
+        entity_schema: Dict[str, Any], 
+        dimension_values: Optional[Dict[str, str]] = None,
+    ) -> None:
+        super().__init__(coordinator, entity_schema, dimension_values)
+        # Initialize Camera with required parameters
+        Camera.__init__(self)
+        
+    @property
+    def is_streaming(self) -> bool:
+        """Return True if the camera is streaming."""
+        current_state = self._get_current_state()
+        state_value = current_state.get("state")
+        # Camera is streaming if state is not 'unavailable' or 'offline'
+        return state_value not in ["unavailable", "offline", "unknown", None]
+    
+    @property
+    def available(self) -> bool:
+        """Return True if camera is available."""
+        current_state = self._get_current_state()
+        state_value = current_state.get("state")
+        return state_value != "unavailable"
+        
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Return camera image."""
+        # For now return None - can be extended to fetch from supervisor
+        # This would typically make an API call to get the current image
+        return None
+        
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return extra state attributes specific to camera."""
+        attrs = super().extra_state_attributes
+        current_state = self._get_current_state()
+        
+        # Add camera-specific attributes from current state
+        camera_attrs = current_state.get("attributes", {})
+        for attr in ["resolution", "quality", "device", "last_image", "fps"]:
+            if attr in camera_attrs:
+                attrs[attr] = camera_attrs[attr]
+                
+        return attrs
+
+
 def create_entity_from_schema(
     coordinator: PerimeterControlCoordinator,
     entity_schema: Dict[str, Any],
@@ -194,6 +246,8 @@ def create_entity_from_schema(
         return DynamicBinarySensorEntity(coordinator, entity_schema, dimension_values)
     elif entity_type == "button":
         return DynamicButtonEntity(coordinator, entity_schema, dimension_values)
+    elif entity_type == "camera":
+        return DynamicCameraEntity(coordinator, entity_schema, dimension_values)
     else:
         _LOGGER.warning("Unknown entity type '%s' in schema: %s", entity_type, entity_schema)
         return None
