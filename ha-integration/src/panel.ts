@@ -22,11 +22,17 @@ export class PerimeterControlPanel extends LitElement {
   @property({ attribute: false }) hass?: Hass;
   @property({ state: true }) errorMessage: string | null = null;
   @property({ state: true }) errorStack: string | null = null;
+  @property({ state: true }) private isInitialized = false;
 
   constructor() {
     super();
     // Only handle errors specifically from our panel, not global errors
     // Global error handlers can interfere with HA's internal operations
+  }
+
+  protected firstUpdated() {
+    // Mark as initialized after first render
+    this.isInitialized = true;
   }
 
   private handleError(error: Error): void {
@@ -298,8 +304,13 @@ export class PerimeterControlPanel extends LitElement {
   `;
 
   render() {
-    if (!this.hass) {
-      return html`<div>Loading...</div>`;
+    // Early return with loading state if HA isn't ready yet
+    if (!this.hass || !this.isInitialized) {
+      return html`
+        <div style="padding: 16px; text-align: center;">
+          <p>Loading Home Assistant connection...</p>
+        </div>
+      `;
     }
 
     // Show error display if there's an error
@@ -308,6 +319,15 @@ export class PerimeterControlPanel extends LitElement {
     }
 
     try {
+      // Defensive check - ensure entities object exists
+      if (!this.hass.entities) {
+        return html`
+          <div style="padding: 16px; text-align: center;">
+            <p>Waiting for Home Assistant entities...</p>
+          </div>
+        `;
+      }
+
       const devices = this.getPerimeterControlDevices();
       
       return html`
@@ -393,26 +413,37 @@ export class PerimeterControlPanel extends LitElement {
   }
 
   private getPerimeterControlDevices() {
-    // Get all entities - be generic about detection
-    const entities = Object.values(this.hass?.entities || {});
-    
-    // Filter for entities from our integration - look for our integration attributes
-    const integrationEntities = entities.filter(entity => {
-      const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
-      const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
-      const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
-      
-      // Accept entities that have integration markers or supervisor-style attributes  
-      return hasCapabilityId || hasIntegrationDomain || 
-             (hasSupervisorAttributes && (entity.entity_id.includes('camera') || 
-                                        entity.entity_id.includes('sensor') ||
-                                        entity.entity_id.includes('button') ||
-                                        entity.entity_id.includes('binary_sensor')));
-    });
+    try {
+      // Defensive check - ensure HA and entities exist
+      if (!this.hass || !this.hass.entities) {
+        return [];
+      }
 
-    if (integrationEntities.length === 0) {
-      return [];
-    }
+      // Get all entities - be generic about detection
+      const entities = Object.values(this.hass.entities || {});
+      
+      // Filter for entities from our integration - look for our integration attributes
+      const integrationEntities = entities.filter(entity => {
+        try {
+          const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
+          const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
+          const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
+          
+          // Accept entities that have integration markers or supervisor-style attributes  
+          return hasCapabilityId || hasIntegrationDomain || 
+                 (hasSupervisorAttributes && (entity.entity_id.includes('camera') || 
+                                            entity.entity_id.includes('sensor') ||
+                                            entity.entity_id.includes('button') ||
+                                            entity.entity_id.includes('binary_sensor')));
+        } catch (e) {
+          console.warn('Error filtering entity:', entity.entity_id, e);
+          return false;
+        }
+      });
+
+      if (integrationEntities.length === 0) {
+        return [];
+      }
 
     // Group entities by device/capability rather than hardcoded patterns
     const deviceGroups = this.groupEntitiesByDevice(integrationEntities);
@@ -429,6 +460,11 @@ export class PerimeterControlPanel extends LitElement {
         capabilities: this.getDeviceCapabilities(entities)
       };
     });
+    } catch (error) {
+      console.error('Error getting Perimeter Control devices:', error);
+      // Return empty array on error to prevent panel crash
+      return [];
+    }
   }
   
   private groupEntitiesByDevice(entities: HassEntity[]) {
