@@ -335,9 +335,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Services: %s", services)
             
             # Transform to match expected format
+            dashboard_entities = self._create_dashboard_url_entities(result.get("services", []))
+            
             return {
                 "supervisor_active": result.get("health", {}).get("status") == "healthy",
-                "supervisor_entities": entities,
+                "supervisor_entities": entities + dashboard_entities,
                 "entity_states": result.get("states", {}),
                 "services_config": result.get("services", {}),
                 "config_changes": result.get("config_changes", {}),
@@ -437,6 +439,47 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 dashboard_urls[service_id] = url
                 
         return dashboard_urls
+    
+    def _create_dashboard_url_entities(self, services: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Create dashboard URL entities for each service with dashboard access."""
+        from datetime import datetime
+        
+        dashboard_entities = []
+        
+        for service in services:
+            dashboard_url = service.get("dashboard_url")
+            if not dashboard_url:
+                continue
+                
+            service_id = service.get("id", "unknown")
+            service_name = service.get("name", service_id)
+            
+            # Create a sensor entity for the dashboard URL
+            entity = {
+                "id": f"{service_id}:dashboard:url",
+                "type": "sensor",
+                "platform": "sensor",
+                "friendly_name": f"{service_name} Dashboard",
+                "capability_id": service_id,
+                "state": dashboard_url,
+                "attributes": {
+                    "service_id": service_id,
+                    "service_name": service_name,
+                    "port": service.get("port", 8080),
+                    "access_mode": service.get("access_mode", "localhost"),
+                    "status": service.get("status", "unknown"),
+                    "url": dashboard_url,
+                    "entity_type": "dashboard_url"
+                },
+                "icon": "mdi:web",
+                "device_class": None,
+                "unit_of_measurement": None,
+                "last_updated": datetime.utcnow().isoformat() + "Z"
+            }
+            
+            dashboard_entities.append(entity)
+            
+        return dashboard_entities
     
     def detect_config_changes(self) -> dict[str, str]:
         """Detect which service configs have changed externally."""

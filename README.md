@@ -292,6 +292,87 @@ npm run watch      # Watch mode for development
 npm run dev        # Development server
 ```
 
+## 📄 **Frontend Panel System**
+
+The integration provides a comprehensive web-based management interface through multiple components:
+
+### **Core Components**
+
+**🎛️ Main Panel (`panel.ts`)**: 
+- **Location**: Appears in HA sidebar as "Perimeter Control"
+- **Purpose**: Central management interface for all Pi devices and services
+- **Features**: Device overview, service status, dashboard URLs, global actions
+- **Entity Discovery**: Auto-detects entities from supervisor API and displays them in organized cards
+- **Dashboard Access**: One-click access to web dashboards for each service
+
+**⚙️ Panel Registration (`frontend_panel.py`)**:
+- **TypeScript Compilation**: Builds frontend from `ha-integration/src/` to `frontend/ha-integration.js`
+- **Static File Serving**: Registers `/perimeter_control_static` endpoint for assets
+- **Panel Injection**: Adds custom web component to HA sidebar
+- **Error Handling**: Graceful fallback when frontend files missing
+
+**🔧 Build System (`ha-integration/`)**: 
+- **Source**: TypeScript files in `src/` directory with modern Lit framework
+- **Build**: Rollup configuration compiles to single JavaScript bundle
+- **Components**: Error boundaries, safe loaders, service editors, fleet views
+- **Auto-Copy**: Build process copies output to `frontend/` for HA consumption
+
+### **Dashboard URL Entities**
+
+The integration creates **clickable entities** for each service dashboard:
+
+```yaml
+# Example entities created automatically:
+sensor.perimeter_control_photo_booth_dashboard:
+  friendly_name: "Photo Booth Dashboard"
+  state: "http://192.168.50.47:3000"
+  attributes:
+    service_id: photo_booth
+    port: 3000
+    status: active
+    
+sensor.perimeter_control_supervisor_dashboard:
+  friendly_name: "Supervisor API"
+  state: "http://192.168.50.47:8080"
+  attributes:
+    service_id: supervisor
+    port: 8080
+    status: active
+```
+
+**Usage in HA**: Click entity in Entities card or use in automations:
+```yaml
+# Automation example: Open dashboard on button press
+action:
+  - service: browser_mod.navigate
+    data:
+      path: "{{ states('sensor.perimeter_control_photo_booth_dashboard') }}"
+```
+
+### **Development Workflow**
+
+**Frontend Development**:
+```bash
+# Auto-rebuild during development
+cd ha-integration
+npm run watch
+
+# One-time build for deployment  
+npm run build
+```
+
+**Panel Debugging**:
+1. Check browser console for TypeScript errors
+2. Verify `frontend/ha-integration.js` exists and is recent
+3. Check HA logs for panel registration errors
+4. Use VS Code task "Build HA Integration" for quick rebuilds
+
+**Entity Debugging**:
+1. Verify supervisor API returns dashboard URLs: `curl http://pi-ip:8080/api/v1/ha/dashboard-urls`
+2. Check coordinator logs for entity creation
+3. Restart integration if entities don't appear
+4. Use Developer Tools > States to verify entity creation
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
