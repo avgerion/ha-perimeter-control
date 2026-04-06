@@ -4,7 +4,7 @@
 
 // Define the custom element class without any imports
 class PerimeterControlPanel extends HTMLElement {
-  private hass: any;
+  private _hass: any;
 
   constructor() {
     super();
@@ -57,19 +57,30 @@ class PerimeterControlPanel extends HTMLElement {
     `;
   }
 
-  set _hass(hass: any) {
-    this.hass = hass;
+
+  // Home Assistant will set this property
+  set hass(hass: any) {
+    this._hass = hass;
     if (hass) {
       this.updateEntityCount();
       this.updateEntityList();
     }
   }
 
+  get hass() {
+    return this._hass;
+  }
+
+  // For HA panel compatibility (even if unused)
+  setConfig(config: any) {
+    // No-op for now
+  }
+
   updateEntityCount() {
     const countElement = this.querySelector('#entity-count') as HTMLElement;
-    if (this.hass && this.hass.entities && countElement) {
-      const entityCount = Object.keys(this.hass.entities).length;
-      const perimeterEntities = Object.keys(this.hass.entities)
+    if (this._hass && this._hass.entities && countElement) {
+      const entityCount = Object.keys(this._hass.entities).length;
+      const perimeterEntities = Object.keys(this._hass.entities)
         .filter(id => id.includes('perimeter'))
         .length;
       countElement.innerHTML = `${entityCount} total (${perimeterEntities} perimeter-related)`;
@@ -80,14 +91,14 @@ class PerimeterControlPanel extends HTMLElement {
 
   updateEntityList() {
     const listElement = this.querySelector('#entity-list') as HTMLElement;
-    if (this.hass && this.hass.entities && listElement) {
-      const perimeterEntities = Object.keys(this.hass.entities)
+    if (this._hass && this._hass.entities && listElement) {
+      const perimeterEntities = Object.keys(this._hass.entities)
         .filter(id => id.includes('perimeter'))
         .slice(0, 10); // Show first 10 only
       
       if (perimeterEntities.length > 0) {
         const entityHtml = perimeterEntities.map(entityId => {
-          const entity = this.hass.entities[entityId];
+          const entity = this._hass.entities[entityId];
           const state = entity ? entity.state : 'unknown';
           return `<div style="padding: 4px; border-bottom: 1px solid #eee;">
             <strong>${entityId}</strong>: ${state}
