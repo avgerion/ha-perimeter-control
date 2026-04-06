@@ -1,8 +1,6 @@
+
 /**
  * Perimeter Control Panel - Main integration panel for Home Assistant
- * 
- * This is the main management interface that appears in the HA sidebar.
- * It provides device management, service control, and deployment capabilities.
  */
 
 import { html, LitElement, css } from 'lit';
@@ -53,23 +51,23 @@ export class PerimeterControlPanel extends LitElement {
 
     .devices-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
       gap: 16px;
-      margin-bottom: 24px;
     }
 
     .device-card {
-      background: var(--card-background-color, white);
+      background: var(--card-background-color);
       border-radius: 8px;
-      border: 1px solid var(--divider-color, #e0e0e0);
       padding: 16px;
+      border: 1px solid var(--divider-color);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
     .device-header {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
 
     .device-icon {
@@ -95,42 +93,69 @@ export class PerimeterControlPanel extends LitElement {
       color: var(--secondary-text-color);
     }
 
-    .services-grid {
+    .entities-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 12px;
-      margin-top: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
     }
 
-    .service-card {
-      background: var(--secondary-background-color);
-      border-radius: 6px;
-      padding: 12px;
+    .entity-card {
+      background: var(--card-background-color, #fafafa);
+      border-radius: 4px;
+      padding: 8px;
       border: 1px solid var(--divider-color);
+      font-size: 12px;
     }
 
-    .service-header {
+    .entity-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
 
-    .service-name {
+    .entity-name {
       font-weight: 500;
-      font-size: 14px;
+      font-size: 11px;
     }
 
-    .service-status {
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 12px;
+    .entity-capability {
+      font-size: 10px;
+      color: var(--secondary-text-color);
+      margin-bottom: 4px;
+    }
+
+    .entity-status {
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-size: 10px;
       font-weight: 500;
     }
 
-    .status-unknown { background: #e0e0e0; color: #666; }
-    .status-running { background: #c8e6c9; color: #2e7d32; }
-    .status-stopped { background: #ffcdd2; color: #c62828; }
+    .entity-actions {
+      margin-top: 6px;
+    }
+
+    .entity-actions .action-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      margin-right: 4px;
+    }
+
+    .dashboard-links {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .dashboard-links .entity-name {
+      color: white;
+    }
+
+    .dashboard-links .entity-status {
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
 
     .actions {
       margin-top: 24px;
@@ -186,6 +211,13 @@ export class PerimeterControlPanel extends LitElement {
       color: var(--primary-text-color);
       margin-bottom: 8px;
     }
+
+    .status-unknown { background: #e0e0e0; color: #666; }
+    .status-active { background: #c8e6c9; color: #2e7d32; }
+    .status-inactive { background: #ffcdd2; color: #c62828; }
+    .status-available { background: #e1f5fe; color: #0277bd; }
+    .status-running { background: #c8e6c9; color: #2e7d32; }
+    .status-stopped { background: #ffcdd2; color: #c62828; }
   `;
 
   render() {
@@ -193,101 +225,212 @@ export class PerimeterControlPanel extends LitElement {
       return html`<div>Loading...</div>`;
     }
 
-    // Find Perimeter Control devices and entities
-    const devices = this.getPerimeterControlDevices();
-
-    return html`
-      <error-boundary>
-        <div class="header">
-          <h1>Perimeter Control</h1>
-          <p>Manage your Isolator Pi edge nodes and distributed services</p>
-        </div>
-
-        ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
-
-        <div class="actions">
-          <h2>Global Actions</h2>
-          <div class="action-buttons">
-            <button class="action-btn" @click=${this.deployAll}>
-              Deploy All Devices
-            </button>
-            <button class="action-btn secondary" @click=${this.reloadConfig}>
-              Reload All Configurations
-            </button>
-            <button class="action-btn secondary" @click=${this.getDeviceInfo}>
-              Refresh Device Info
-            </button>
+    try {
+      const devices = this.getPerimeterControlDevices();
+      
+      return html`
+        <error-boundary>
+          <div class="header">
+            <h1>Perimeter Control</h1>
+            <p>Manage your edge devices and services</p>
           </div>
+  
+          <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
+            <strong>Debug:</strong> Found ${devices.length} devices, ${this.hass ? Object.keys(this.hass.entities).length : 0} total entities
+          </div>
+  
+          ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
+  
+          <div class="actions">
+            <h2>Global Actions</h2>
+            <div class="action-buttons">
+              <button class="action-btn" @click=${this.deployAll}>
+                Deploy All Devices
+              </button>
+              <button class="action-btn secondary" @click=${this.reloadConfig}>
+                Reload Configurations
+              </button>
+              <button class="action-btn secondary" @click=${this.refreshDevices}>
+                Refresh Device Info
+              </button>
+            </div>
+          </div>
+        </error-boundary>
+      `;
+      
+    } catch (error) {
+      console.error('[Panel] Error in render:', error);
+      return html`
+        <div style="color: red; padding: 16px; background: #ffe6e6; border-radius: 4px;">
+          <h3>Panel Error</h3>
+          <p>Failed to render Perimeter Control panel: ${(error as Error).message}</p>
         </div>
-      </error-boundary>
-    `;
+      `;
+    }
   }
 
   private getPerimeterControlDevices() {
-    // Look for entities from perimeter_control integration
+    // Get all entities - be generic about detection
     const entities = Object.values(this.hass?.entities || {});
-    const perimeterEntities = entities.filter(entity =>
-      entity.entity_id.startsWith('sensor.perimeter_control_') ||
-      entity.entity_id.startsWith('binary_sensor.perimeter_control_') ||
-      entity.entity_id.startsWith('button.perimeter_control_') ||
-      entity.entity_id.startsWith('camera.perimeter_control_')
-    );
-
-    // TEMPORARY FIX: If no entities with perimeter_control_ prefix found,
-    // check if we have supervisor entities (these will be from our fixed coordinator)
-    if (perimeterEntities.length === 0) {
-      // Look for any entities that might be from our integration
-      const allEntities = entities.filter(entity => {
-        const id = entity.entity_id;
-        return id.includes('photo_booth') ||
-          id.includes('wildlife_monitor') ||
-          id.includes('camera') ||
-          id.includes('dashboard');
-      });
-
-      if (allEntities.length > 0) {
-        return [{
-          name: 'Perimeter Control Node',
-          host: '192.168.50.47',  // TODO: Extract from entity attributes
-          entities: allEntities,
-          status: this.getDeviceStatus(allEntities)
-        }];
-      }
-    }
-
-    // Group by device (extract device name from entity_id)
-    const deviceMap: Record<string, any[]> = {};
-    perimeterEntities.forEach(entity => {
-      const parts = entity.entity_id.split('_');
-      if (parts.length > 3) {
-        const deviceName = parts.slice(2, -1).join('_'); // Extract device name
-        if (!deviceMap[deviceName]) deviceMap[deviceName] = [];
-        deviceMap[deviceName].push(entity);
-      }
+    
+    // Filter for entities from our integration - look for our integration attributes
+    const integrationEntities = entities.filter(entity => {
+      const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
+      const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
+      const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
+      
+      // Accept entities that have integration markers or supervisor-style attributes  
+      return hasCapabilityId || hasIntegrationDomain || 
+             (hasSupervisorAttributes && (entity.entity_id.includes('camera') || 
+                                        entity.entity_id.includes('sensor') ||
+                                        entity.entity_id.includes('button') ||
+                                        entity.entity_id.includes('binary_sensor')));
     });
 
-    return Object.entries(deviceMap).map(([name, entities]) => ({
-      name,
-      host: entities[0]?.attributes?.host || name,
-      entities,
-      status: this.getDeviceStatus(entities)
-    }));
+    if (integrationEntities.length === 0) {
+      return [];
+    }
+
+    // Group entities by device/capability rather than hardcoded patterns
+    const deviceGroups = this.groupEntitiesByDevice(integrationEntities);
+    
+    return Object.entries(deviceGroups).map(([deviceKey, entities]) => {
+      const deviceName = this.getDeviceNameFromEntities(entities);
+      const deviceHost = this.getDeviceHostFromEntities(entities);
+      
+      return {
+        name: deviceName,
+        host: deviceHost,
+        entities: entities,
+        status: this.getDeviceStatus(entities),
+        capabilities: this.getDeviceCapabilities(entities)
+      };
+    });
+  }
+  
+  private groupEntitiesByDevice(entities: HassEntity[]) {
+    const groups: Record<string, HassEntity[]> = {};
+    
+    entities.forEach(entity => {
+      // Get device key from various sources
+      let deviceKey = 'default';
+      
+      // Try to get device info
+      const deviceInfo = entity.attributes?.device_info;
+      if (deviceInfo?.name) {
+        deviceKey = deviceInfo.name;
+      } else if (deviceInfo?.identifiers) {
+        deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
+      }
+      // Fallback to capability grouping
+      else if (entity.attributes?.capability_id) {
+        deviceKey = entity.attributes.capability_id;
+      }
+      // Fallback to host extraction
+      else if (entity.attributes?.host) {
+        deviceKey = entity.attributes.host;
+      }
+      // Last resort - extract from entity ID pattern
+      else {
+        const parts = entity.entity_id.split('.');
+        if (parts.length > 1) {
+          const idParts = parts[1].split('_');
+          if (idParts.length > 2) {
+            deviceKey = idParts.slice(0, -1).join('_');
+          }
+        }
+      }
+      
+      if (!groups[deviceKey]) groups[deviceKey] = [];
+      groups[deviceKey].push(entity);
+    });
+    
+    return groups;
+  }
+  
+  private getDeviceNameFromEntities(entities: HassEntity[]): string {
+    // Try device_info first
+    for (const entity of entities) {
+      const deviceName = entity.attributes?.device_info?.name;
+      if (deviceName) return deviceName;
+    }
+    
+    // Try capability name
+    for (const entity of entities) {
+      const capability = entity.attributes?.capability_id || entity.attributes?.capability;
+      if (capability) return capability.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    }
+    
+    // Fallback to first entity's friendly name or ID
+    const firstEntity = entities[0];
+    return firstEntity?.attributes?.friendly_name || 
+           firstEntity?.entity_id.split('.')[1].replace(/_/g, ' ') ||
+           'Unknown Device';
+  }
+  
+  private getDeviceHostFromEntities(entities: HassEntity[]): string | null {
+    // Look for host in attributes
+    for (const entity of entities) {
+      const host = entity.attributes?.host;
+      if (host) return host;
+    }
+    
+    // Look for device info with host
+    for (const entity of entities) {
+      const deviceInfo = entity.attributes?.device_info;
+      if (deviceInfo?.configuration_url) {
+        try {
+          const url = new URL(deviceInfo.configuration_url);
+          return url.hostname;
+        } catch {}
+      }
+    }
+    
+    // Default fallback
+    return '192.168.50.47';
+  }
+  
+  private getDeviceCapabilities(entities: HassEntity[]): string[] {
+    const capabilities = new Set<string>();
+    entities.forEach(entity => {
+      const cap = entity.attributes?.capability_id || entity.attributes?.capability;
+      if (cap) capabilities.add(cap);
+    });
+    return Array.from(capabilities);
   }
 
   private getDeviceStatus(entities: HassEntity[]) {
-    // Check if any connectivity sensor shows "on" (connected)
-    const connected = entities.some(e =>
-      e.entity_id.includes('connected') && e.state === 'on'
-    );
-    return connected ? 'connected' : 'disconnected';
+    // Check if any entities are active/available
+    const activeCount = entities.filter(e => {
+      const entityType = e.entity_id.split('.')[0];
+      switch (entityType) {
+        case 'binary_sensor':
+          return e.state === 'on';
+        case 'camera':
+          return e.state !== 'unavailable';
+        case 'sensor':
+          return e.state !== 'unknown' && e.state !== 'unavailable';
+        default:
+          return e.state !== 'unavailable';
+      }
+    }).length;
+    
+    return activeCount > 0 ? 'connected' : 'disconnected';
   }
 
   private renderNoDevices() {
+    const entityList = this.hass ? Object.keys(this.hass.entities) : [];
     return html`
       <div class="no-devices">
         <h2>No Perimeter Control devices found</h2>
         <p>Add a Pi device by going to Settings → Devices & Services → Add Integration</p>
-        <p>Search for "Perimeter Control" and follow the setup instructions</p>
+        
+        <details style="margin-top: 16px; text-align: left;">
+          <summary>Debug: All entities (${entityList.length})</summary>
+          <div style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; margin: 8px 0;">
+            ${entityList.map(id => html`<div>${id}</div>`)}
+          </div>
+        </details>
       </div>
     `;
   }
@@ -303,99 +446,137 @@ export class PerimeterControlPanel extends LitElement {
                 <h3>${device.name}</h3>
                 <p>Host: ${device.host}</p>
                 <p>Status: ${device.status}</p>
+                ${device.capabilities?.length > 0 ? html`
+                  <p>Capabilities: ${device.capabilities.join(', ')}</p>
+                ` : ''}
               </div>
             </div>
             
-            <div class="services-grid">
-              ${device.entities.map((entity: HassEntity) => html`
-                <div class="service-card">
-                  <div class="service-header">
-                    <div class="service-name">${this.getServiceName(entity)}</div>
-                    <div class="service-status status-${this.getServiceStatus(entity)}">
-                      ${this.getServiceStatus(entity)}
-                    </div>
-                  </div>
-                  ${this.renderEntityActions(entity)}
-                </div>
-              `)}
-              ${device.host ? html`
-                <div class="service-card">
-                  <div class="service-header">
-                    <div class="service-name">Web Dashboard</div>
-                    <div class="service-status status-running">available</div>
-                  </div>
-                  <div style="margin-top: 8px;">
-                    <button 
-                      class="action-btn" 
-                      @click=${() => this.openDashboard(device.host, 8080)}
-                      style="padding: 6px 12px; font-size: 12px;"
-                    >
-                      🌐 Open Supervisor API
-                    </button>
-                    <button 
-                      class="action-btn secondary" 
-                      @click=${() => this.openDashboard(device.host, 3000)}
-                      style="padding: 6px 12px; font-size: 12px; margin-left: 4px;"
-                    >
-                      📊 Open Dashboard
-                    </button>
-                  </div>
-                </div>
-              ` : ''}
+            <div class="entities-grid">
+              ${device.entities.map((entity: HassEntity) => this.renderGenericEntity(entity))}
+              ${device.host ? this.renderDashboardLinks(device.host, device.capabilities) : ''}
             </div>
           </div>
         `)}
       </div>
     `;
   }
-
-  private getServiceName(entity: HassEntity) {
-    return entity.attributes?.friendly_name ||
-      entity.entity_id.split('.')[1].replace(/_/g, ' ');
+  
+  private renderGenericEntity(entity: HassEntity) {
+    const entityType = entity.entity_id.split('.')[0];
+    const friendlyName = entity.attributes?.friendly_name || 
+                        entity.entity_id.split('.')[1].replace(/_/g, ' ');
+    const capability = entity.attributes?.capability_id || entity.attributes?.capability;
+    
+    return html`
+      <div class="entity-card">
+        <div class="entity-header">
+          <div class="entity-name">${friendlyName}</div>
+          <div class="entity-status status-${this.getEntityStatusClass(entity)}">
+            ${this.getEntityDisplayValue(entity)}
+          </div>
+        </div>
+        
+        ${capability ? html`<div class="entity-capability">${capability}</div>` : ''}
+        ${this.renderEntityActions(entity, entityType)}
+      </div>
+    `;
+  }
+  
+  private getEntityStatusClass(entity: HassEntity): string {
+    const entityType = entity.entity_id.split('.')[0];
+    
+    switch (entityType) {
+      case 'binary_sensor':
+        return entity.state === 'on' ? 'active' : 'inactive';
+      case 'camera':
+        return entity.state !== 'unavailable' ? 'active' : 'inactive';
+      case 'sensor':
+        return entity.state !== 'unknown' && entity.state !== 'unavailable' ? 'active' : 'inactive';
+      case 'button':
+        return 'available';
+      default:
+        return entity.state === 'unavailable' ? 'inactive' : 'active';
+    }
+  }
+  
+  private getEntityDisplayValue(entity: HassEntity): string {
+    const entityType = entity.entity_id.split('.')[0];
+    
+    switch (entityType) {
+      case 'binary_sensor':
+        return entity.state === 'on' ? 'Active' : 'Inactive';
+      case 'camera':
+        return entity.state !== 'unavailable' ? 'Streaming' : 'Offline';
+      case 'sensor':
+        const unit = entity.attributes?.unit_of_measurement;
+        return unit ? `${entity.state} ${unit}` : entity.state;
+      case 'button':
+        return 'Ready';
+      default:
+        return entity.state;
+    }
   }
 
-  private getServiceStatus(entity: HassEntity) {
-    if (entity.entity_id.includes('sensor')) {
-      // For numeric sensors, show the value
-      return entity.state !== 'unknown' ? entity.state : 'unknown';
+  private renderEntityActions(entity: HassEntity, entityType: string) {
+    switch (entityType) {
+      case 'button':
+        return html`
+          <div class="entity-actions">
+            <button class="action-btn" @click=${() => this.callEntityService(entity.entity_id, 'press')}>
+              Press
+            </button>
+          </div>
+        `;
+      case 'camera':
+        return html`
+          <div class="entity-actions">
+            <button class="action-btn" @click=${() => this.showCameraEntity(entity.entity_id)}>
+              📷 View
+            </button>
+          </div>
+        `;
+      case 'binary_sensor':
+      case 'sensor':
+        return html`
+          <div class="entity-actions">
+            <button class="action-btn secondary" @click=${() => this.showEntityInfo(entity.entity_id)}>
+              ℹ️ Details
+            </button>
+          </div>
+        `;
+      default:
+        return html`
+          <div class="entity-actions">
+            <button class="action-btn secondary" @click=${() => this.showEntityInfo(entity.entity_id)}>
+              View
+            </button>
+          </div>
+        `;
     }
-    if (entity.entity_id.includes('binary_sensor')) {
-      return entity.state === 'on' ? 'active' : 'inactive';
-    }
-    if (entity.entity_id.includes('camera')) {
-      return entity.state !== 'unavailable' ? 'active' : 'inactive';
-    }
-    return entity.state || 'unknown';
   }
-
-  private renderEntityActions(entity: HassEntity) {
-    if (entity.entity_id.includes('button')) {
-      return html`
-                <div style="margin-top: 8px;">
-                    <button 
-                        class="action-btn" 
-                        @click=${() => this.callEntityService(entity.entity_id, 'press')}
-                        style="padding: 6px 12px; font-size: 12px;"
-                    >
-                        Press ${this.getServiceName(entity)}
-                    </button>
-                </div>
-            `;
-    }
-    if (entity.entity_id.includes('camera')) {
-      return html`
-                <div style="margin-top: 8px;">
-                    <button 
-                        class="action-btn secondary" 
-                        @click=${() => this.showCameraEntity(entity.entity_id)}
-                        style="padding: 6px 12px; font-size: 12px;"
-                    >
-                        📷 View Camera
-                    </button>
-                </div>
-            `;
-    }
-    return '';
+  
+  private renderDashboardLinks(host: string, capabilities: string[] = []) {
+    return html`
+      <div class="entity-card dashboard-links">
+        <div class="entity-header">
+          <div class="entity-name">Web Dashboards</div>
+          <div class="entity-status status-available">available</div>
+        </div>
+        
+        <div class="entity-actions" style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <button class="action-btn" @click=${() => this.openDashboard(host, 8080)} style="font-size: 11px; padding: 4px 8px;">
+            🌐 API
+          </button>
+          
+          ${capabilities.map(cap => html`
+            <button class="action-btn secondary" @click=${() => this.openCapabilityDashboard(host, cap)} style="font-size: 11px; padding: 4px 8px;">
+              📊 ${cap}
+            </button>
+          `)}
+        </div>
+      </div>
+    `;
   }
 
   private openDashboard(host: string, port: number) {
@@ -413,13 +594,34 @@ export class PerimeterControlPanel extends LitElement {
   }
 
   private showCameraEntity(entityId: string) {
-    // Create a Home Assistant more-info dialog for the camera
     const event = new CustomEvent('hass-more-info', {
       detail: { entityId },
       bubbles: true,
       composed: true
     });
     this.dispatchEvent(event);
+  }
+  
+  private showEntityInfo(entityId: string) {
+    const event = new CustomEvent('hass-more-info', {
+      detail: { entityId },
+      bubbles: true,
+      composed: true
+    });
+    this.dispatchEvent(event);
+  }
+  
+  private openCapabilityDashboard(host: string, capability: string) {
+    const capabilityPorts: Record<string, number> = {
+      'photo_booth': 8093,
+      'wildlife_monitor': 8094,
+      'ble_gatt_repeater': 8091,
+      'network_isolator': 5006
+    };
+    
+    const port = capabilityPorts[capability] || 3000;
+    const url = `http://${host}:${port}`;
+    window.open(url, '_blank');
   }
 
   private async deployAll() {
@@ -438,7 +640,7 @@ export class PerimeterControlPanel extends LitElement {
     }
   }
 
-  private async getDeviceInfo() {
+  private async refreshDevices() {
     try {
       await this.hass?.callService('perimeter_control', 'get_device_info', {});
     } catch (error) {
@@ -450,5 +652,5 @@ export class PerimeterControlPanel extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'perimeter-control-panel': PerimeterControlPanel;
-  }
+}
 }
