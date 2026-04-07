@@ -60,7 +60,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path="perimeter-control",
-        webcomponent_name="perimeter-control-panel", 
+        webcomponent_name="perimeter-control-panel",
         sidebar_title="Perimeter Control",
         sidebar_icon="mdi:shield-outline",
         module_url=f"{URL_BASE}/ha-integration.js",

@@ -5,9 +5,37 @@
 // Define the custom element class without any imports
 class PerimeterControlPanel extends HTMLElement {
   private _hass: any;
+  private initialized = false;
 
   constructor() {
     super();
+  }
+
+  connectedCallback() {
+    if (!this.initialized) {
+      this.render();
+      this.initialized = true;
+    }
+  }
+
+  // Home Assistant will set this property
+  set hass(hass: any) {
+    this._hass = hass;
+    if (this.initialized) {
+      this.update();
+    }
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  // For HA panel compatibility (even if unused)
+  setConfig(config: any) {
+    // No-op for now
+  }
+
+  render() {
     this.innerHTML = `
       <style>
         :host {
@@ -51,29 +79,22 @@ class PerimeterControlPanel extends HTMLElement {
           <strong>Entities:</strong> <span id="entity-count">Loading...</span><br>
           <strong>Time:</strong> <span id="current-time">${new Date().toLocaleString()}</span>
         </div>
-        <button onclick="this.parentElement.parentElement.parentElement.updateEntityCount()">Refresh Entities</button>
+        <button id="refresh-button">Refresh Entities</button>
         <div id="entity-list" style="margin-top: 16px; max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 8px;"></div>
       </div>
     `;
-  }
 
-
-  // Home Assistant will set this property
-  set hass(hass: any) {
-    this._hass = hass;
-    if (hass) {
-      this.updateEntityCount();
-      this.updateEntityList();
+    const refreshButton = this.querySelector('#refresh-button');
+    if (refreshButton) {
+      refreshButton.addEventListener('click', () => this.update());
     }
+
+    this.update();
   }
 
-  get hass() {
-    return this._hass;
-  }
-
-  // For HA panel compatibility (even if unused)
-  setConfig(config: any) {
-    // No-op for now
+  update() {
+    this.updateEntityCount();
+    this.updateEntityList();
   }
 
   updateEntityCount() {
