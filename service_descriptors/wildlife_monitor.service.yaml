@@ -1,4 +1,4 @@
-apiVersion: isolator/v1
+apiVersion: perimetercontrol/v1
 kind: ServiceDescriptor
 metadata:
   id: wildlife_monitor
@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.wildlife_monitor
 
   config_file:
-    path: /mnt/isolator/conf/wildlife-monitor.yaml
+    path: ${WILDLIFE_MONITOR_CONFIG_PATH:-/mnt/PerimeterControl/conf/wildlife-monitor.yaml}
     format: yaml
     schema_ref: schema://services/wildlife_monitor/v1
 
@@ -27,7 +27,7 @@ spec:
   placement:
     can_run_with: []
     cannot_run_with: []
-    prefers_node_labels: [feature=camera, role=edge]
+    prefers_node_labels: [ feature=camera, role=edge ]
 
   resources:
     cpu_cores: 0.25
@@ -37,7 +37,7 @@ spec:
   low_power_profile:
     enabled: true
     duty_cycle_percent: 10
-    wake_sources: [gpio_pir, rtc_timer]
+    wake_sources: [ gpio_pir, rtc_timer ]
     max_avg_current_ma: 180
     min_battery_percent: 25
 

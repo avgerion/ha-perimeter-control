@@ -22,6 +22,7 @@ Usage:
     python3 traffic-logger.py --config /path/to/isolator.conf.yaml
 """
 
+
 import argparse
 import json
 import logging
@@ -33,22 +34,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 import yaml
+import os
+
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_DEVICE_LOG_ROOT', '/var/log/PerimeterControl/devices')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.traffic-logger')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('traffic-logger')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class TrafficLogger:
     """Parse netfilter logs and write to per-device files"""
     
-    def __init__(self, config_path: Path, log_dir: Path = Path('/var/log/isolator/devices')):
+    def __init__(self, config_path: Path, log_dir: Path = None):
         self.config_path = config_path
-        self.log_dir = log_dir
+        self.log_dir = Path(log_dir or LOG_ROOT)
         self.config = self._load_config()
-        
         # Create log directory
         self.log_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Device logs directory: {self.log_dir}")

@@ -9,17 +9,17 @@ Type=oneshot
 RemainAfterExit=yes
 
 # Configure static IP on whichever interface is isolated by config
-ExecStartPre=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/network-topology.py --config /mnt/isolator/conf/isolator.conf.yaml prepare-interface
+ExecStartPre=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/network-topology.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml prepare-interface
 
 # Generate and apply configurations
-ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml --output-dir /etc/isolator
+ExecStart=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/apply-rules.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml --output-dir /etc/PerimeterControl
 
 # Reload configurations on changes
-ExecReload=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml --output-dir /etc/isolator
+ExecReload=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/apply-rules.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml --output-dir /etc/PerimeterControl
 
 # Cleanup on stop
 ExecStop=/usr/sbin/nft flush ruleset
-ExecStop=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/network-topology.py --config /mnt/isolator/conf/isolator.conf.yaml cleanup-interface
+ExecStop=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/network-topology.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml cleanup-interface
 
 # Logging
 StandardOutput=journal
@@ -28,7 +28,7 @@ SyslogIdentifier=isolator
 
 # Security
 ProtectSystem=strict
-ReadWritePaths=/etc/isolator /etc/hostapd /etc/dnsmasq.d
+ReadWritePaths=/etc/PerimeterControl /etc/hostapd /etc/dnsmasq.d
 ProtectHome=yes
 NoNewPrivileges=false
 PrivateTmp=yes

@@ -8,15 +8,15 @@ Wants=isolator.service
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/opt/isolator
+WorkingDirectory=/opt/PerimeterControl
 Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONPATH=/opt/isolator"
+Environment="PYTHONPATH=/opt/PerimeterControl"
 
 # Supervisor is run as root so it can manage systemd units via subprocess.
 # Future: drop to unprivileged user + sudoers + capability bounding set.
-ExecStart=/opt/isolator/venv/bin/python3 -m supervisor \
-    --config /mnt/isolator/conf \
-    --state  /opt/isolator/state  \
+ExecStart=/opt/PerimeterControl/venv/bin/python3 -m supervisor \
+    --config /mnt/PerimeterControl/conf \
+    --state  /opt/PerimeterControl/state  \
     --port   8080                 \
     --log-level INFO
 
@@ -29,7 +29,7 @@ TimeoutStopSec=30
 # Harden the service
 PrivateTmp=yes
 ProtectSystem=full
-ReadWritePaths=/opt/isolator/state /mnt/isolator/conf /var/log/isolator
+ReadWritePaths=/opt/PerimeterControl/state /mnt/PerimeterControl/conf /var/log/PerimeterControl
 
 StandardOutput=journal
 StandardError=journal

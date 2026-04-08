@@ -1,14 +1,14 @@
 # Perimeter Control — Home Assistant Integration
 
-A **native Home Assistant integration** that provides complete management of **Isolator Pi edge nodes** through a clean, integrated user interface.
+A **native Home Assistant integration** that provides complete management of **PerimeterControl Pi edge nodes** through a clean, integrated user interface.
 
 ## Architecture
 
-This integration connects your **Home Assistant server** to **remote Raspberry Pi target devices** running the Isolator Supervisor:
+This integration connects your **Home Assistant server** to **remote Raspberry Pi target devices** running the PerimeterControl Supervisor:
 
 ```
 Home Assistant Server ──SSH Deploy──► Pi Target (192.168.50.47)
-                      ◄─────API────── Supervisor (port 8080)
+                      ◄─────API────── PerimeterControl Supervisor (port 8080)
 ```
 
 The integration provides:
@@ -51,7 +51,7 @@ The integration provides:
 2. Copy the entire project directory to your Home Assistant custom_components:
    ```bash
    # Copy integration files
-   cp -r /path/to/NetworkIsolator /config/custom_components/perimeter_control/
+  cp -r /path/to/PerimeterControl /config/custom_components/perimeter_control/
    ```
 3. Restart Home Assistant
 4. Go to Settings → Devices & Services → Add Integration

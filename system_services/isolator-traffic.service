@@ -6,7 +6,7 @@ Requires=isolator.service
 
 [Service]
 Type=simple
-ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/traffic-logger.py --config /mnt/isolator/conf/isolator.conf.yaml --log-dir /var/log/isolator/devices
+ExecStart=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/traffic-logger.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml --log-dir /var/log/PerimeterControl/devices
 Restart=always
 RestartSec=10
 

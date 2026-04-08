@@ -21,6 +21,7 @@ Usage:
       --profile /var/log/isolator/ble/profiles/profile_foo_latest.json
 """
 
+
 import argparse
 import asyncio
 import json
@@ -31,6 +32,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import os
 
 try:
     from bless import BlessServer
@@ -44,11 +46,14 @@ except ImportError:
     )
     sys.exit(1)
 
+# ---------------- Configurable Constants ----------------
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.ble-gatt-mirror')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('ble-gatt-mirror')
+logger = logging.getLogger(LOGGER_NAME)
 
 # Isolator Mirror Control Service UUIDs — project-specific, not Bluetooth SIG.
 # Always advertised so the proxy is identifiable on a BLE scanner regardless of

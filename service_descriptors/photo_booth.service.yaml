@@ -1,4 +1,4 @@
-apiVersion: isolator/v1
+apiVersion: perimetercontrol/v1
 kind: ServiceDescriptor
 metadata:
   id: photo_booth
@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.photo_booth
 
   config_file:
-    path: /mnt/isolator/conf/photo-booth.yaml
+    path: ${PHOTOBOOTH_CONFIG_PATH:-/mnt/PerimeterControl/conf/photo-booth.yaml}
     format: yaml
     schema_ref: schema://services/photo_booth/v1
 
@@ -20,16 +20,16 @@ spec:
     bind_address: ""
     port: 8093
     tls_mode: self_signed
-    cert_file: /etc/isolator/tls/fullchain.pem
-    key_file: /etc/isolator/tls/privkey.pem
+    cert_file: ${PHOTOBOOTH_CERT_FILE:-/etc/PerimeterControl/tls/fullchain.pem}
+    key_file: ${PHOTOBOOTH_KEY_FILE:-/etc/PerimeterControl/tls/privkey.pem}
     auth_mode: token
     allowed_origins: []
     exposure_scope: lan_only
 
   placement:
-    can_run_with: [network_isolator]
+    can_run_with: [ perimeter_control ]
     cannot_run_with: []
-    prefers_node_labels: [feature=camera]
+    prefers_node_labels: [ feature=camera ]
 
   resources:
     cpu_cores: 1.0

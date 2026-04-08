@@ -422,13 +422,17 @@ export class DeployPanel extends LitElement {
     `;
 }
 
-@customElement('isolator-deploy-panel')
-export class IsolatorDeployPanelAlias extends DeployPanel {
-}
-
 declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-deploy-panel': DeployPanel;
-        'isolator-deploy-panel': DeployPanel;
+
+    // ─── Configurable Constants ─────────────────────────────────────────────
+    const ISOLATOR_DEPLOY_PANEL_TAG = (window as any).PERIMETERCONTROL_DEPLOY_PANEL_TAG || 'perimeter-control-deploy-panel';
+
+    @customElement(ISOLATOR_DEPLOY_PANEL_TAG)
+    export class PerimeterControlDeployPanelAlias extends DeployPanel { }
+
+    declare global {
+        interface HTMLElementTagNameMap {
+            'perimeter-control-deploy-panel': DeployPanel;
+            [typeof ISOLATOR_DEPLOY_PANEL_TAG]: DeployPanel;
+        }
     }
-}

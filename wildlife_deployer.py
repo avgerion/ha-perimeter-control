@@ -25,7 +25,8 @@ class WildlifeDeployer(BaseDeployer):
         progress_cb: ProgressCallback | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
-        self.service_id = "wildlife_monitor"
+        import os
+        self.service_id = os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor')
 
     async def deploy(self) -> bool:
         """Deploy Wildlife Monitor service."""

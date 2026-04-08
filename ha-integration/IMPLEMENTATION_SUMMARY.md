@@ -72,7 +72,7 @@ ha-integration/
 ```
 Home Assistant Lovelace Dashboard
 │
-├── Fleet View (isolator-fleet-view)
+├── Fleet View (perimetercontrol-fleet-view)
 │   ├── Node List Sidebar
 │   │   └── Node Status Indicator
 │   └── Main Content Panel
@@ -80,8 +80,8 @@ Home Assistant Lovelace Dashboard
 │       └── Services List
 │           └── Service Access Editor (embedded)
 │
-└── Access Editor Card (isolator-service-access-card)
-    └── Service Access Editor (perimeter-control-service-access-editor)
+└── Access Editor Card (perimetercontrol-service-access-card)
+  └── Service Access Editor (perimeter-control-service-access-editor)
 ```
 
 ### API Integration

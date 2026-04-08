@@ -1,6 +1,6 @@
-"""Network Isolator service deployer.
+"""PerimeterControl Network Isolator service deployer.
 
-Handles deployment of Network Isolator service including:
+Handles deployment of the PerimeterControl network isolator service including:
 - Network configuration and iptables rules
 - Network topology scripts
 - Core isolation functionality
@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class NetworkDeployer(BaseDeployer):
-    """Deployer for Network Isolator service."""
+    """Deployer for the PerimeterControl network isolator service."""
 
     def __init__(
         self,
@@ -25,7 +25,8 @@ class NetworkDeployer(BaseDeployer):
         progress_cb: ProgressCallback | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
-        self.service_id = "network_isolator"
+        import os
+        self.service_id = os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator')
 
     async def deploy(self) -> bool:
         """Deploy Network Isolator service."""

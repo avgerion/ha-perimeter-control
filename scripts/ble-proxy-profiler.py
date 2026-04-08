@@ -19,6 +19,7 @@ Usage examples:
   python3 ble-proxy-profiler.py --target-name MyDevice --scan-duration 20
 """
 
+
 import argparse
 import asyncio
 import json
@@ -38,11 +39,15 @@ except ImportError:
     print("ERROR: bleak not installed in this environment", file=sys.stderr)
     sys.exit(1)
 
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_BLE_LOG_ROOT', '/var/log/PerimeterControl/ble')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.ble-proxy-profiler')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('ble-proxy-profiler')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def _hex_bytes(data: bytes) -> str:
@@ -68,11 +73,11 @@ class BLEProxyProfiler:
         connect_timeout: float,
         service_discovery_timeout: float,
         service_discovery_poll_interval: float,
-        output_dir: Path,
-        read_values: bool,
-        max_gatt_attempts: int,
-        retry_backoff_initial: float,
-        retry_backoff_max: float,
+        output_dir: Path = None,
+        read_values: bool = True,
+        max_gatt_attempts: int = 3,
+        retry_backoff_initial: float = 1.0,
+        retry_backoff_max: float = 10.0,
     ):
         self.target_mac = target_mac.upper() if target_mac else None
         self.target_name = target_name
@@ -80,7 +85,7 @@ class BLEProxyProfiler:
         self.connect_timeout = connect_timeout
         self.service_discovery_timeout = service_discovery_timeout
         self.service_discovery_poll_interval = service_discovery_poll_interval
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir or LOG_ROOT)
         self.read_values = read_values
         self.max_gatt_attempts = max_gatt_attempts
         self.retry_backoff_initial = retry_backoff_initial

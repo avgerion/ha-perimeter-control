@@ -1,9 +1,9 @@
 # ============================================================
-# Isolator Deployment Configuration
+# PerimeterControl Deployment Configuration
 # ============================================================
 #
 # Referenced by ha-integration/scripts/deploy.py via --config.
-# Place this file at /config/isolator-repo/deployment.yaml on your HA host.
+# Place this file at /config/perimetercontrol-repo/deployment.yaml on your HA host.
 #
 # SECURITY: This file references the SSH key path.
 # Ensure the key file is mode 600 and not world-readable.
@@ -25,12 +25,12 @@ services:
   # - pawr_esl_ap
   # - wildlife_monitor
 
-# ── Repo root ────────────────────────────────────────────────
-# Path to the cloned NetworkIsolator repo on the HA host.
-repo_dir: "/config/isolator-repo"
+  # ── Repo root ────────────────────────────────────────────────
+  # Path to the cloned PerimeterControl repo on the HA host.
+repo_dir: "/config/perimetercontrol-repo"
 
 # ── Options ──────────────────────────────────────────────────
 supervisor_port: 8080
 no_restart: false # set true to deploy without restarting services
 skip_supervisor: false # set true to deploy only dashboard (faster)
-sync_config: false # set true to push config/isolator.conf.yaml to Pi
+sync_config: false # set true to push config/perimetercontrol.conf.yaml to Pi

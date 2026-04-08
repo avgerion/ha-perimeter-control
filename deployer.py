@@ -1,8 +1,9 @@
 """Service-aware deployer orchestrating specialized service deployers.
 
+
 Uses service-specific deployers to handle deployment of individual capabilities:
 - BLE GATT Repeater (ble_deployer.py)  
-- Network Isolator (network_deployer.py)
+- PerimeterControl Network Service (network_deployer.py)
 - Photo Booth (camera_deployer.py)
 - Wildlife Monitor (wildlife_deployer.py)
 - ESL AP (esl_deployer.py)

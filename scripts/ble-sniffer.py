@@ -31,6 +31,7 @@ Debugging:
     wc -l /var/log/isolator/ble/*.json
 """
 
+
 import argparse
 import json
 import logging
@@ -46,11 +47,16 @@ from pathlib import Path
 from threading import Thread
 import signal
 
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_BLE_LOG_ROOT', '/var/log/PerimeterControl/ble')
+CAPTURE_ROOT = os.environ.get('PERIMETERCONTROL_BLE_CAPTURE_ROOT', '/mnt/PerimeterControl/captures/ble')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.ble-sniffer')
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('ble-sniffer')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class BLESniffer:
@@ -65,12 +71,13 @@ class BLESniffer:
     - When --no-filter is set, ALL addresses are captured (useful for debugging).
     """
 
+
     def __init__(self, target_name=None, target_mac=None, output_dir=None,
                  debug=False, no_filter=False):
         self.target_name = target_name
         self.target_mac = target_mac.upper() if target_mac else None
-        self.output_dir = Path(output_dir or '/mnt/isolator/captures/ble')
-        self.log_dir = Path('/var/log/isolator/ble')
+        self.output_dir = Path(output_dir or CAPTURE_ROOT)
+        self.log_dir = Path(LOG_ROOT)
         self.debug = debug
         self.no_filter = no_filter
 

@@ -5,11 +5,6 @@ A real-time web interface for monitoring connected devices, traffic patterns, an
 ## Overview
 
 The dashboard provides live visibility into:
-- All connected WiFi devices and their current status
-- Real-time traffic graphs (bandwidth, packets, connections)
-- Active firewall rules and capture status
-- Logs and alerts for blocked connections
-- Quick controls for rule modifications and capture toggles
 
 ## Architecture
 
@@ -49,43 +44,30 @@ The dashboard provides live visibility into:
 **Layout:** Grid of device cards
 
 Each card shows:
-- Device name/ID (color-coded by status: green=online, gray=offline, red=blocked)
-- MAC address
-- Current IP address
-- Connection status and duration
-- Current rules: `internet: allow|deny|log-only`
-- Capture status indicator (recording icon if `capture.enabled: true`)
-- Quick action buttons:
   - Toggle internet access
   - Enable/disable capture
   - View full logs
 
 **Interactive Actions:**
-- Click device card → expand to show detailed stats
-- Hover → tooltip with connection count, total bytes transferred
 
 ### 2. Live Traffic Graphs (Center)
 
 **Real-time plotting with 30-second rolling window:**
 
-- **Bandwidth Graph** (stacked area chart)
   - Upload/download rates per device
   - Color-coded by device
   - Y-axis: KB/s or MB/s (auto-scaling)
   - X-axis: Time (last 30s, 5min, 1hr selectable)
 
-- **Connection Timeline** (horizontal bars)
   - Shows active connections over time
   - Each row = one device
   - Bars = connection duration
   - Color = protocol (blue=TCP, green=UDP, orange=ICMP)
 
-- **Packet Count Heatmap** (optional, for dense analysis)
   - 2D grid: devices × time
   - Color intensity = packet rate
   - Useful for spotting traffic bursts
 
-- **Protocol Distribution** (pie/donut chart)
   - DNS, HTTP, HTTPS, MQTT, other
   - Updates every 5 seconds
 
@@ -98,18 +80,11 @@ Each card shows:
 | iot-sensor-01 | TCP | 52.1.2.3 | 443 | ESTABLISHED | 00:04:23 | 1,234 |
 | target-device | UDP | 8.8.8.8 | 53 | - | 00:00:01 | 2 |
 
-- Click column headers to sort
-- Search/filter by device, IP, or port
-- Click row → show full packet details (if `logging: full`)
 
 ### 4. Events & Alerts (Bottom Right)
 
 **Live log stream:**
 
-- Blocked connection attempts (red badge)
-- New device connections (blue badge)
-- Capture started/stopped (green badge)
-- Config reloaded (yellow badge)
 
 Format:
 ```
@@ -124,20 +99,11 @@ Auto-scroll to latest, with pause button.
 
 **Quick rule editor:**
 
-- Select device from dropdown
-- Toggle switches for:
   - Internet access (allow/deny/log-only)
   - Packet capture (on/off)
   - Logging level (none/metadata/full)
-- LAN access rule builder (add/remove host:port entries)
-- "Apply Changes" button → writes to `isolator.conf.yaml` and triggers reload
 
 **System status indicators:**
-- hostapd status (running/stopped)
-- dnsmasq status
-- nftables rules loaded
-- USB drive mount status (`/mnt/isolator`)
-- Disk space available for captures
 
 ## Implementation Details
 
@@ -164,11 +130,6 @@ server/
 ### Data Update Strategy
 
 **Polling intervals:**
-- Device status (connected/disconnected): 2 seconds
-- Bandwidth graphs: 1 second
-- Connection table: 3 seconds
-- Logs/alerts: 1 second
-- Config file changes: inotify (instant)
 
 **Data sources:**
 
@@ -181,21 +142,13 @@ server/
 ### Performance Considerations
 
 **On Raspberry Pi 3:**
-- Limit Bokeh history buffer to 1000 data points max
-- Use Pandas with optimized dtypes (categorical for devices)
-- Cache parsed config in memory
-- Use `ColumnDataSource.stream()` for efficient updates (no full data replacement)
-- Lazy-load detailed packet captures only on user request
 
 ### Security
 
-- **Authentication:** Basic HTTP auth (username/password in config) or SSH tunnel only
-- **No public exposure:** Bind to `127.0.0.1:5006` by default; access via SSH tunnel from Windows:
   ```bash
   ssh -L 5006:localhost:5006 pi@isolator.local
   ```
   Then browse to `http://localhost:5006` on your Windows machine.
-- **Read-only dashboard mode:** Option to disable rule editing from web UI (enforce config file changes only)
 
 ## Running the Dashboard
 
@@ -229,14 +182,6 @@ Configure dashboard to bind to `0.0.0.0:5006`, then browse to: `http://isolator.
 
 ## Future Enhancements
 
-- [ ] Dark mode toggle
-- [ ] Export traffic reports to PDF
-- [ ] Mobile-responsive layout
-- [ ] Geographic IP visualization (map of external connections)
-- [ ] Packet payload viewer (hexdump + ASCII)
-- [ ] Integration with Wireshark remote capture (open .pcap in browser)
-- [ ] Voice control via Web Speech API ("Copilot, block that device")
-- [ ] QR code generator for easy AP connection sharing
 
 ## Dependencies
 

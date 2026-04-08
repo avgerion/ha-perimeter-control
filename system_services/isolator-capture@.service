@@ -1,30 +1,31 @@
 [Unit]
-Description=Packet Capture for Device %i
-Documentation=https://github.com/your-repo/NetworkIsolator
-After=isolator.service
-PartOf=isolator.service
+Description=Network Isolator Packet Capture for Device %i
+Documentation=https://github.com/your-repo/network-isolator
+After=network-isolator.service
+PartOf=network-isolator.service
 
 [Service]
 Type=simple
 # %i is the device ID (MAC address with colons replaced by dashes)
-ExecStart=/usr/bin/tcpdump -i wlan0 -w /mnt/isolator/captures/%i/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root ether host %i
+EnvironmentFile=-/etc/default/network_isolator-capture
+ExecStart=/usr/bin/tcpdump -i ${ISOLATOR_CAPTURE_INTERFACE:-wlan0} -w ${ISOLATOR_CAPTURE_DIR:-/mnt/PerimeterControl/captures}/%i/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root ether host %i
 Restart=always
 RestartSec=5
 
 # Create capture directory
-ExecStartPre=/usr/bin/mkdir -p /mnt/isolator/captures/%i
+ExecStartPre=/usr/bin/mkdir -p ${NETWORK_ISOLATOR_CAPTURE_DIR:-/mnt/PerimeterControl/captures}/%i
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=capture-%i
+SyslogIdentifier=network-isolator-capture-%i
 
 # Security
 ProtectSystem=strict
 ProtectHome=yes
 NoNewPrivileges=true
 PrivateTmp=yes
-ReadWritePaths=/mnt/isolator/captures
+ReadWritePaths=${NETWORK_ISOLATOR_CAPTURE_DIR:-/mnt/PerimeterControl/captures}
 
 [Install]
 WantedBy=multi-user.target

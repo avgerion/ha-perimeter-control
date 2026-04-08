@@ -14,6 +14,7 @@ Usage:
     python3 ble-scanner-v2.py --duration 60
 """
 
+
 import argparse
 import asyncio
 import json
@@ -23,6 +24,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+import os
 
 try:
     from bleak import BleakScanner
@@ -32,20 +34,23 @@ except ImportError:
     print("ERROR: bleak not installed. Run: pip install bleak", file=sys.stderr)
     sys.exit(1)
 
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_BLE_LOG_ROOT', '/var/log/PerimeterControl/ble')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.ble-scanner')
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('ble-scanner')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class BLEScannerV2:
     """BLE-only scanner using bleak (BlueZ D-Bus). Works non-interactively."""
 
     def __init__(self, output_dir=None):
-        self.output_dir = Path(output_dir or '/var/log/isolator/ble')
+        self.output_dir = Path(output_dir or LOG_ROOT)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.scan_file = self.output_dir / f"scan_{timestamp}.json"
         self.scan_start_time = datetime.now().isoformat()

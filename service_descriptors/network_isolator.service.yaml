@@ -1,19 +1,19 @@
-apiVersion: isolator/v1
+apiVersion: perimetercontrol/v1
 kind: ServiceDescriptor
 metadata:
-  id: network_isolator
-  name: Network Isolator
+  id: perimeter_control
+  name: Perimeter Control
   version: "1.0.0"
 
 spec:
   runtime:
     type: systemd
-    entrypoint: isolator.service
+    entrypoint: perimetercontrol.service
 
   config_file:
-    path: /mnt/isolator/conf/isolator.conf.yaml
+    path: ${PERIMETERCONTROL_CONFIG_PATH:-/mnt/PerimeterControl/conf/perimeterControl.conf.yaml}
     format: yaml
-    schema_ref: schema://services/network_isolator/v1
+    schema_ref: schema://services/perimeter_control/v1
 
   access_profile:
     mode: upstream
@@ -25,9 +25,9 @@ spec:
     exposure_scope: lan_only
 
   placement:
-    can_run_with: [photo_booth, ble_gatt_repeater]
+    can_run_with: [ photo_booth, ble_gatt_repeater ]
     cannot_run_with: []
-    prefers_node_labels: [role=perimeter]
+    prefers_node_labels: [ role=perimeter ]
 
   resources:
     cpu_cores: 1.0

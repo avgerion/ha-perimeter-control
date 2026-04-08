@@ -11,6 +11,7 @@ Usage:
     python3 apply-rules.py --config /path/to/isolator.conf.yaml
 """
 
+
 import argparse
 import sys
 import subprocess
@@ -19,15 +20,19 @@ from pathlib import Path
 from typing import Dict, List, Any
 import yaml
 import ipaddress
+import os
 
 from topology_config import resolve_topology, validate_topology
+
+# ---------------- Configurable Constants ----------------
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.apply-rules')
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('apply-rules')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class RulesGenerator:

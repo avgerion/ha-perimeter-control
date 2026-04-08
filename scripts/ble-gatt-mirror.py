@@ -17,8 +17,8 @@ Planned next scope (step 4/5):
   - Relay notifications/indications between target and client
 
 Usage:
-  sudo /opt/isolator/venv/bin/python3 /opt/isolator/scripts/ble-gatt-mirror.py \
-      --profile /var/log/isolator/ble/profiles/profile_foo_latest.json
+  sudo /opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/ble-gatt-mirror.py \
+      --profile /var/log/PerimeterControl/ble/profiles/profile_foo_latest.json
 """
 
 import argparse
@@ -39,7 +39,7 @@ try:
 except ImportError:
     print(
         "ERROR: bless is not installed. Install in Pi venv with:\n"
-        "  /opt/isolator/venv/bin/pip install bless",
+        "  /opt/PerimeterControl/venv/bin/pip install bless",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -53,8 +53,12 @@ logger = logging.getLogger('ble-gatt-mirror')
 # Isolator Mirror Control Service UUIDs — project-specific, not Bluetooth SIG.
 # Always advertised so the proxy is identifiable on a BLE scanner regardless of
 # whether the profile contains GATT data.
-_ISOLATOR_CTRL_SVC_UUID  = 'a1b2c3d4-0001-0001-0001-a1b2c3d4e5f6'
-_ISOLATOR_CTRL_CHAR_UUID = 'a1b2c3d4-0001-0001-0002-a1b2c3d4e5f6'
+
+# ─── Configurable Constants ─────────────────────────────────────────────
+import os
+PERIMETERCONTROL_CTRL_SVC_UUID = os.environ.get('PERIMETERCONTROL_CTRL_SVC_UUID', 'a1b2c3d4-0001-0001-0001-a1b2c3d4e5f6')
+PERIMETERCONTROL_CTRL_CHAR_UUID = os.environ.get('PERIMETERCONTROL_CTRL_CHAR_UUID', 'a1b2c3d4-0001-0001-0002-a1b2c3d4e5f6')
+PERIMETERCONTROL_LOG_DIR = os.environ.get('PERIMETERCONTROL_LOG_DIR', '/var/log/PerimeterControl/ble/proxy')
 
 
 @dataclass
@@ -368,23 +372,23 @@ class BLEGATTMirror:
         # Always register the Isolator Mirror Control service.  This guarantees
         # BlueZ has at least one registered service (required) and makes the proxy
         # identifiable on any BLE scanner regardless of profile contents.
-        await self.server.add_new_service(_ISOLATOR_CTRL_SVC_UUID)
+        await self.server.add_new_service(PERIMETERCONTROL_CTRL_SVC_UUID)
         await self.server.add_new_characteristic(
-            _ISOLATOR_CTRL_SVC_UUID,
-            _ISOLATOR_CTRL_CHAR_UUID,
+            PERIMETERCONTROL_CTRL_SVC_UUID,
+            PERIMETERCONTROL_CTRL_CHAR_UUID,
             GATTCharacteristicProperties.read | GATTCharacteristicProperties.write,
             bytearray(b'mirror-ready'),
             GATTAttributePermissions.readable | GATTAttributePermissions.writeable,
         )
-        services_seen.add(_ISOLATOR_CTRL_SVC_UUID)
-        self.char_map[_ISOLATOR_CTRL_CHAR_UUID] = MirrorCharacteristic(
-            service_uuid=_ISOLATOR_CTRL_SVC_UUID,
-            char_uuid=_ISOLATOR_CTRL_CHAR_UUID,
+        services_seen.add(PERIMETERCONTROL_CTRL_SVC_UUID)
+        self.char_map[PERIMETERCONTROL_CTRL_CHAR_UUID] = MirrorCharacteristic(
+            service_uuid=PERIMETERCONTROL_CTRL_SVC_UUID,
+            char_uuid=PERIMETERCONTROL_CTRL_CHAR_UUID,
             properties=['read', 'write'],
             initial_value=bytearray(b'mirror-ready'),
         )
-        self.values[_ISOLATOR_CTRL_CHAR_UUID] = bytearray(b'mirror-ready')
-        if set(self.char_map) == {_ISOLATOR_CTRL_CHAR_UUID}:
+        self.values[PERIMETERCONTROL_CTRL_CHAR_UUID] = bytearray(b'mirror-ready')
+        if set(self.char_map) == {PERIMETERCONTROL_CTRL_CHAR_UUID}:
             logger.warning('Profile had no GATT services; only control service registered')
 
         started = await self.server.start()
@@ -449,7 +453,7 @@ def main() -> int:
     parser.add_argument('--name', help='Override local advertised name')
     parser.add_argument(
         '--log-dir',
-        default='/var/log/isolator/ble/proxy',
+        default=PERIMETERCONTROL_LOG_DIR,
         help='Directory for mirror operation logs',
     )
     parser.add_argument(

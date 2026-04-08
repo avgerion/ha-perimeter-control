@@ -40,8 +40,8 @@ def _summary_shell(topology: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Resolve and apply isolator network topology")
-    parser.add_argument("--config", required=True, help="Path to isolator.conf.yaml")
+    parser = argparse.ArgumentParser(description="Resolve and apply PerimeterControl network topology")
+    parser.add_argument("--config", required=True, help="Path to perimetercontrol.conf.yaml")
     parser.add_argument("command", choices=["summary", "prepare-interface", "cleanup-interface"])
     parser.add_argument("--format", choices=["json", "shell"], default="json")
     args = parser.parse_args()

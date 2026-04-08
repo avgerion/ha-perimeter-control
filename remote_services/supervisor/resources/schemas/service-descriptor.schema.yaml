@@ -1,12 +1,12 @@
-apiVersion: isolator/v1
+apiVersion: PerimeterControl/v1
 kind: ServiceDescriptorSchema
 metadata:
   name: generic-service-descriptor
   version: "1.0"
 
 description: >-
-  Canonical service descriptor contract used by the supervisor and Home Assistant
-  integration for all node-hosted services.
+  Canonical service descriptor contract used by the supervisor and Home
+  Assistant integration for all node-hosted services.
 
 required:
   - apiVersion
@@ -17,7 +17,7 @@ required:
 fields:
   apiVersion:
     type: string
-    const: isolator/v1
+    const: PerimeterControl/v1
 
   kind:
     type: string
@@ -25,7 +25,7 @@ fields:
 
   metadata:
     type: map
-    required: [id, name, version]
+    required: [ id, name, version ]
     properties:
       id:
         type: string
@@ -37,37 +37,37 @@ fields:
 
   spec:
     type: map
-    required: [runtime, config_file, access_profile]
+    required: [ runtime, config_file, access_profile ]
     properties:
       runtime:
         type: map
-        required: [type, entrypoint]
+        required: [ type, entrypoint ]
         properties:
           type:
             type: string
-            enum: [systemd, python_module, container]
+            enum: [ systemd, python_module, container ]
           entrypoint:
             type: string
 
       config_file:
         type: map
-        required: [path, format]
+        required: [ path, format ]
         properties:
           path:
             type: string
           format:
             type: string
-            enum: [yaml, json, toml, ini]
+            enum: [ yaml, json, toml, ini ]
           schema_ref:
             type: string
 
       access_profile:
         type: map
-        required: [mode, port, tls_mode, auth_mode, exposure_scope]
+        required: [ mode, port, tls_mode, auth_mode, exposure_scope ]
         properties:
           mode:
             type: string
-            enum: [localhost, upstream, isolated, all, explicit]
+            enum: [ localhost, upstream, isolated, all, explicit ]
           bind_address:
             type: string
           port:
@@ -76,20 +76,20 @@ fields:
             max: 65535
           tls_mode:
             type: string
-            enum: [off, self_signed, provided_cert]
+            enum: [ off, self_signed, provided_cert ]
           cert_file:
             type: string
           key_file:
             type: string
           auth_mode:
             type: string
-            enum: [none, token, mTLS]
+            enum: [ none, token, mTLS ]
           allowed_origins:
             type: list
             items: string
           exposure_scope:
             type: string
-            enum: [lan_only, vpn_only, tunnel_only]
+            enum: [ lan_only, vpn_only, tunnel_only ]
 
       placement:
         type: map
@@ -137,15 +137,15 @@ fields:
       system_deps:
         type: map
         description: >-
-          Optional system-level dependencies required by this service.
-          The deploy script reads these from all local descriptors and
-          installs the union of requirements automatically.
+          Optional system-level dependencies required by this service. The
+          deploy script reads these from all local descriptors and installs the
+          union of requirements automatically.
         properties:
           apt:
             type: list
             items: string
             description: >-
-              Logical dependency tokens (not raw package names).
-              Supported tokens:
+              Logical dependency tokens (not raw package names). Supported
+              tokens:
                 gstreamer - GStreamer core + plugins + PyGObject bindings
                 i2c       - i2c-tools + python3-smbus2

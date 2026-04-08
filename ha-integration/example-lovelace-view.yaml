@@ -1,4 +1,4 @@
-# Home Assistant Lovelace View - Isolator Fleet Configuration
+# Home Assistant Lovelace View - PerimeterControl Fleet Configuration
 #
 # IMPORTANT: Read NETWORK-ARCHITECTURE.md before using this file!
 #
@@ -6,7 +6,7 @@
 # 1. Find your Supervisor IP:
 #    - SSH to your Pi: ssh pi@<pi-ip>
 #    - Run: hostname -I
-#    - Or use mDNS: isolator-pi.local
+#    - Or use mDNS: perimetercontrol-pi.local
 #
 # 2. Verify Supervisor is accessible:
 #    curl http://<SUPERVISOR_IP>:8080/api/v1/services
@@ -25,15 +25,15 @@
 # ===== BEGIN CONFIGURATION =====
 # Replace "SUPERVISOR_IP" with your actual IP or hostname:
 # - Option 1: IP address (e.g., 192.168.69.11)
-# - Option 2: mDNS hostname (e.g., isolator-pi.local)
-# - Option 3: Public domain (e.g., isolator.example.com) - requires HTTPS
+# - Option 2: mDNS hostname (e.g., perimetercontrol-pi.local)
+# - Option 3: Public domain (e.g., perimetercontrol.example.com) - requires HTTPS
 #
 # Replace "8080" if Supervisor runs on different port
 # (check with: ssh pi@your-ip "netstat -tlnp | grep python3")
 # ===== END CONFIGURATION =====
 
-title: Isolator Network
-path: isolator
+title: PerimeterControl Network
+path: perimetercontrol
 icon: mdi:shield-network
 type: custom:layout-card
 layout_type: grid
@@ -42,7 +42,7 @@ columns: 2
 view:
   - type: markdown
     content: |
-      # Isolator Service Fleet Configuration
+      # PerimeterControl Service Fleet Configuration
 
       **IMPORTANT**: Before using this view, verify your Supervisor is accessible:
 
@@ -54,7 +54,7 @@ view:
 
       If you get "Connection refused" or timeout, check:
       1. Supervisor IP is correct (run `hostname -I` on your Pi)
-      2. Supervisor is running (check: `systemctl status isolator-supervisor`)
+      2. Supervisor is running (check: `systemctl status perimetercontrol-supervisor`)
       3. No firewall blocking port 8080 (check: `sudo ufw status`)
       4. HA has network access to the Pi (try `ping SUPERVISOR_IP` from HA)
 
@@ -123,7 +123,7 @@ view:
     api_base_url: "http://SUPERVISOR_IP:8080" # ← SAME IP:PORT
     api_timeout_ms: 10000
 
-  # Network Isolator Service
+  # Network Isolator Service (service_id remains unchanged)
   - type: custom:perimeter-control-card
     title: "🔒 Network Isolator"
     service_id: network_isolator
@@ -246,5 +246,3 @@ view:
 #   service_id: pawr_esl_ap
 #   api_base_url: "http://TERTIARY_PI_IP:8080"  # ← CHANGE THIS (different from Pi-1 and Pi-2)
 #   api_timeout_ms: 10000
-
-

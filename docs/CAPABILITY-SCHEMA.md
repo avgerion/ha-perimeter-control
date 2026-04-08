@@ -8,15 +8,15 @@ Use this descriptor for every service so Home Assistant can render one reusable 
 
 ```yaml
 service:
-  service_id: network_isolator              # unique service key
-  display_name: Network Isolator
+  service_id: perimetercontrol              # unique service key
+  display_name: PerimeterControl
   category: networking                      # networking | ble | esl | media | utility
   runtime_type: systemd                     # systemd | python_module | container
-  entrypoint: isolator.service              # unit name, module, or container image
+  entrypoint: perimetercontrol.service              # unit name, module, or container image
 
   # Each service has a dedicated config file
   config_file:
-    path: /mnt/isolator/conf/isolator.conf.yaml
+    path: /mnt/perimetercontrol/conf/perimetercontrol.conf.yaml
     format: yaml                            # yaml | json | toml | ini
     schema_ref: schema://services/network_isolator/v1
 
@@ -26,8 +26,8 @@ service:
     bind_address: ""                        # used when mode=explicit
     port: 5006
     tls_mode: self_signed                   # off | self_signed | provided_cert
-    cert_file: /etc/isolator/tls/fullchain.pem
-    key_file: /etc/isolator/tls/privkey.pem
+    cert_file: /etc/perimetercontrol/tls/fullchain.pem
+    key_file: /etc/perimetercontrol/tls/privkey.pem
     auth_mode: token                        # none | token | mTLS
     allowed_origins:
       - https://ha.local:8123
@@ -53,10 +53,9 @@ Design notes:
 Every capability is deployed with a manifest that declares requirements, conflicts, and health probes.
 
 ```yaml
-# Base capability structure (common to all)
-id: network_isolator          # Unique capability ID
+id: perimetercontrol          # Unique capability ID
 version: "1.0"                # Semantic version
-package: network_isolation    # Python package name
+package: perimetercontrol    # Python package name
 image_tag: "latest"           # Container or venv tag
 priority_class: critical      # critical | high | normal | best-effort
 
@@ -107,15 +106,15 @@ secrets: {}                   # Filled by HA integration
 
 # Service lifecycle
 services:
-  - name: isolator
+  - name: perimetercontrol
     type: systemd
-    unit: isolator.service
-  - name: isolator-traffic
+    unit: perimetercontrol.service
+  - name: perimetercontrol-traffic
     type: systemd
-    unit: isolator-traffic.service
-  - name: isolator-dashboard
+    unit: perimetercontrol-traffic.service
+  - name: perimetercontrol-dashboard
     type: systemd
-    unit: isolator-dashboard.service
+    unit: perimetercontrol-dashboard.service
 ```
 
 ## 1. Network Isolation Capability
@@ -123,10 +122,10 @@ services:
 Firewall rules, traffic logging, and device policy enforcement.
 
 ```yaml
-id: network_isolator
+id: perimetercontrol
 version: "1.0"
 
-package: network_isolation
+package: perimetercontrol
 priority_class: critical
 
 resources:
@@ -147,7 +146,7 @@ health:
   probes:
     - name: nftables_loaded
       type: exec
-      command: ["sudo", "nft", "list", "table", "inet", "isolator"]
+      command: ["sudo", "nft", "list", "table", "inet", "perimetercontrol"]
       interval_sec: 30
     - name: traffic_logger_running
       type: process
@@ -219,13 +218,13 @@ config:
 
   # Logging and storage
   logging:
-    output: /var/log/isolator/traffic.log
+    output: /var/log/perimetercontrol/traffic.log
     rotate_mb: 50
     retain_days: 30
     format: json
 
   capture:
-    base_output_dir: /mnt/isolator/captures
+    base_output_dir: /mnt/perimetercontrol/captures
     default_rotate_mb: 100
     default_retention_days: 7
 

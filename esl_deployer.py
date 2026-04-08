@@ -25,7 +25,8 @@ class EslDeployer(BaseDeployer):
         progress_cb: ProgressCallback | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
-        self.service_id = "esl_ap"
+        import os
+        self.service_id = os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap')
 
     async def deploy(self) -> bool:
         """Deploy ESL AP service."""

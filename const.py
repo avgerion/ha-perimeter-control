@@ -16,17 +16,20 @@ CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
 
 DEFAULT_SSH_PORT = 22
 DEFAULT_API_PORT = 8080  # Supervisor API port
-DEFAULT_DASHBOARD_PORT = 5006  # Network Isolator dashboard port
+import os
+
+# ─── Configurable Constants ─────────────────────────────────────────────
+DEFAULT_DASHBOARD_PORT = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', 5006))  # PerimeterControl dashboard port
 DEFAULT_USER = "pi"
 
 # Legacy static service list - will be replaced by dynamic discovery
 # TODO: Remove once all platforms use dynamic entity discovery
 AVAILABLE_SERVICES = [
-    "network_isolator",
-    "photo_booth", 
-    "wildlife_monitor",
-    "ble_gatt_repeater",
-    "esl_ap",
+    os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator'),
+    os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'),
+    os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'),
+    os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater'),
+    os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'),
 ]
 
 # System dependency groups (maps apt group tag → actual packages)

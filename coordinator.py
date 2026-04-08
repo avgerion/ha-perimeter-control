@@ -121,8 +121,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Also check if dashboard is healthy by testing a simple HTTP request
             try:
-                # Use the Network Isolator dashboard port for health check
-                dashboard_port = DEFAULT_DASHBOARD_PORT
+                # Use the PerimeterControl dashboard port for health check
+                import os
+                dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
                 if not instance._http_session.closed:
                     async with instance._http_session.get(f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/") as resp:
                         if resp.status == 200:

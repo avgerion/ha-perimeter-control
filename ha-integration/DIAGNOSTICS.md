@@ -4,13 +4,13 @@
 
 ---
 
-## Error: "Cannot reach Isolator Supervisor API"
+## Error: "Cannot reach PerimeterControl Supervisor API"
 
 ### Symptom
 Card shows red box:
 ```
 🔌 API Offline
-Cannot reach Isolator Supervisor API at http://192.168.69.11:8080
+Cannot reach PerimeterControl Supervisor API at http://192.168.69.11:8080
 Network error or CORS issue detected.
 ```
 
@@ -39,22 +39,22 @@ Problematic:
 **Step 2: Verify Supervisor is actually running**
 ```bash
 ssh pi@192.168.69.11
-sudo systemctl status isolator-supervisor
+sudo systemctl status perimetercontrol-supervisor
 ```
 
 ```
 Expected:
-● isolator-supervisor.service - Network Isolator Supervisor
-     Loaded: loaded (...)
-     Active: active (running) since Today HH:MM:SS UTC; Xm ago
+● perimetercontrol-supervisor.service - PerimeterControl Supervisor
+   Loaded: loaded (...)
+   Active: active (running) since Today HH:MM:SS UTC; Xm ago
 
 Problematic:
-● isolator-supervisor.service
-     Loaded: loaded (...)
-     Active: inactive (dead)  ← Service not running!
+● perimetercontrol-supervisor.service
+   Loaded: loaded (...)
+   Active: inactive (dead)  ← Service not running!
      
 Solution: Start it
-sudo systemctl start isolator-supervisor
+sudo systemctl start perimetercontrol-supervisor
 ```
 
 **Step 3: Check IP is correct**
@@ -68,7 +68,7 @@ hostname -I
 ```
 If mismatch:
 - Check DHCP lease (may have expired)
-- Use mDNS hostname (isolator-pi.local) instead of hardcoded IP
+- Use mDNS hostname (perimetercontrol-pi.local) instead of hardcoded IP
 - Reserve IP in router for this Pi
 ```
 

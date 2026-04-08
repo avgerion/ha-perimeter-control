@@ -1,7 +1,7 @@
 /**
- * Isolator Fleet View — Multi-Pi Network Management Dashboard
+ * PerimeterControl Fleet View — Multi-Pi Network Management Dashboard
  * 
- * Displays all Isolator Supervisor nodes in a network:
+ * Displays all PerimeterControl Supervisor nodes in a network:
  * - Node status, features, and hardware inventory
  * - Service list with status and access profile editor
  * - Onboarding workflow for new Pi nodes
@@ -18,121 +18,121 @@ import { repeat } from 'lit/directives/repeat.js';
 import './service-access-editor';
 
 interface NodeFeatures {
-    cameras: any[];
-    ble_adapters: any[];
-    gpio: { chips: any[]; available: boolean };
-    i2c: { buses: any[]; available: boolean };
-    spi: { devices: any[]; available: boolean };
-    audio: { cards: any[]; available: boolean };
-    uart: { ports: any[]; available: boolean };
-    pwm: { chips: any[]; available: boolean };
-    hardware_config: { dt_overlays: string[]; dt_params: Record<string, string> };
-    gstreamer: { available: boolean; version: string | null; key_elements: string[] };
-    storage: any[];
+  cameras: any[];
+  ble_adapters: any[];
+  gpio: { chips: any[]; available: boolean };
+  i2c: { buses: any[]; available: boolean };
+  spi: { devices: any[]; available: boolean };
+  audio: { cards: any[]; available: boolean };
+  uart: { ports: any[]; available: boolean };
+  pwm: { chips: any[]; available: boolean };
+  hardware_config: { dt_overlays: string[]; dt_params: Record<string, string> };
+  gstreamer: { available: boolean; version: string | null; key_elements: string[] };
+  storage: any[];
 }
 
 interface Service {
-    id: string;
-    name: string;
-    version: string;
-    descriptor_file: string;
-    runtime: string;
-    config_file: string;
+  id: string;
+  name: string;
+  version: string;
+  descriptor_file: string;
+  runtime: string;
+  config_file: string;
 }
 
 interface NodeInfo {
-    url: string;
-    name: string;
-    status: 'online' | 'offline' | 'connecting';
-    features?: NodeFeatures;
-    services?: Service[];
-    lastUpdate?: number;
-    error?: string;
+  url: string;
+  name: string;
+  status: 'online' | 'offline' | 'connecting';
+  features?: NodeFeatures;
+  services?: Service[];
+  lastUpdate?: number;
+  error?: string;
 }
 
 @customElement('perimeter-control-fleet-view')
 export class FleetView extends LitElement {
-    @property({ type: Array }) nodes: NodeInfo[] = [];
-    @property({ type: Boolean }) autoRefresh = true;
-    @property({ type: Number }) refreshInterval = 30000; // 30 seconds
+  @property({ type: Array }) nodes: NodeInfo[] = [];
+  @property({ type: Boolean }) autoRefresh = true;
+  @property({ type: Number }) refreshInterval = 30000; // 30 seconds
 
-    @state() private selectedNode: NodeInfo | null = null;
-    @state() private selectedService: Service | null = null;
-    @state() private loading = false;
-    @state() private error: string | null = null;
+  @state() private selectedNode: NodeInfo | null = null;
+  @state() private selectedService: Service | null = null;
+  @state() private loading = false;
+  @state() private error: string | null = null;
 
-    private refreshTimer?: number;
+  private refreshTimer?: number;
 
-    connectedCallback() {
-        super.connectedCallback();
-        if (this.autoRefresh) {
-            this.startAutoRefresh();
-        }
+  connectedCallback() {
+    super.connectedCallback();
+    if (this.autoRefresh) {
+      this.startAutoRefresh();
     }
+  }
 
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        this.stopAutoRefresh();
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.stopAutoRefresh();
+  }
+
+  private startAutoRefresh() {
+    this.refreshTimer = window.setInterval(() => {
+      this.refreshAllNodes();
+    }, this.refreshInterval);
+  }
+
+  private stopAutoRefresh() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
     }
+  }
 
-    private startAutoRefresh() {
-        this.refreshTimer = window.setInterval(() => {
-            this.refreshAllNodes();
-        }, this.refreshInterval);
+  async refreshAllNodes() {
+    for (const node of this.nodes) {
+      await this.loadNodeFeatures(node);
+      await this.loadNodeServices(node);
     }
+  }
 
-    private stopAutoRefresh() {
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-        }
+  async loadNodeFeatures(node: NodeInfo) {
+    try {
+      node.status = 'connecting';
+      const response = await fetch(`${node.url}/api/v1/node/features?timeout=10`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      node.features = data.node_features;
+      node.status = 'online';
+      node.lastUpdate = Date.now();
+      node.error = undefined;
+    } catch (err) {
+      node.status = 'offline';
+      node.error = err instanceof Error ? err.message : 'Unknown error';
     }
+    this.requestUpdate();
+  }
 
-    async refreshAllNodes() {
-        for (const node of this.nodes) {
-            await this.loadNodeFeatures(node);
-            await this.loadNodeServices(node);
-        }
+  async loadNodeServices(node: NodeInfo) {
+    try {
+      const response = await fetch(`${node.url}/api/v1/services?timeout=5`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      node.services = data.services || [];
+    } catch (err) {
+      node.services = [];
     }
+    this.requestUpdate();
+  }
 
-    async loadNodeFeatures(node: NodeInfo) {
-        try {
-            node.status = 'connecting';
-            const response = await fetch(`${node.url}/api/v1/node/features?timeout=10`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            node.features = data.node_features;
-            node.status = 'online';
-            node.lastUpdate = Date.now();
-            node.error = undefined;
-        } catch (err) {
-            node.status = 'offline';
-            node.error = err instanceof Error ? err.message : 'Unknown error';
-        }
-        this.requestUpdate();
-    }
+  private selectNode(node: NodeInfo) {
+    this.selectedNode = node;
+    this.selectedService = null;
+  }
 
-    async loadNodeServices(node: NodeInfo) {
-        try {
-            const response = await fetch(`${node.url}/api/v1/services?timeout=5`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            node.services = data.services || [];
-        } catch (err) {
-            node.services = [];
-        }
-        this.requestUpdate();
-    }
+  private selectService(service: Service | null) {
+    this.selectedService = service;
+  }
 
-    private selectNode(node: NodeInfo) {
-        this.selectedNode = node;
-        this.selectedService = null;
-    }
-
-    private selectService(service: Service | null) {
-        this.selectedService = service;
-    }
-
-    static styles = css`
+  static styles = css`
     :host {
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -399,24 +399,24 @@ export class FleetView extends LitElement {
     }
   `;
 
-    protected render() {
-        return html`
+  protected render() {
+    return html`
       <div class="container">
         <!-- Sidebar: Node List -->
         <div class="sidebar">
           <div class="sidebar-header">
-            🔗 Isolator Fleet
+            🔗 PerimeterControl Fleet
             <div style="font-size: 11px; font-weight: normal; color: #999; margin-top: 4px;">
               ${this.nodes.length} node${this.nodes.length !== 1 ? 's' : ''}
             </div>
           </div>
           <div class="node-list">
             ${this.nodes.length === 0
-                ? html`<div class="placeholder" style="padding: 20px;"><div>No nodes configured</div></div>`
-                : repeat(
-                    this.nodes,
-                    (n) => n.url,
-                    (node) => html`
+        ? html`<div class="placeholder" style="padding: 20px;"><div>No nodes configured</div></div>`
+        : repeat(
+          this.nodes,
+          (n) => n.url,
+          (node) => html`
                     <div
                       class="node-item ${this.selectedNode?.url === node.url ? 'selected' : ''}"
                       @click=${() => this.selectNode(node)}
@@ -432,22 +432,22 @@ export class FleetView extends LitElement {
                       </div>
                     </div>
                   `
-                )}
+        )}
           </div>
         </div>
 
         <!-- Main Content -->
         <div class="main">
           ${this.selectedNode
-                ? html`
+        ? html`
                 <div class="main-header">
                   <div>
                     <h2>${this.selectedNode.name}</h2>
                     <div style="font-size: 12px; color: #999; margin-top: 4px;">
                       Status: <strong>${this.selectedNode.status}</strong>
                       ${this.selectedNode.lastUpdate
-                        ? ` • Updated: ${new Date(this.selectedNode.lastUpdate).toLocaleTimeString()}`
-                        : ''}
+            ? ` • Updated: ${new Date(this.selectedNode.lastUpdate).toLocaleTimeString()}`
+            : ''}
                     </div>
                   </div>
                   <button class="refresh-btn" @click=${() => this.loadNodeFeatures(this.selectedNode!)}>
@@ -456,8 +456,8 @@ export class FleetView extends LitElement {
                 </div>
 
                 ${this.selectedNode.error
-                        ? html`<div class="error-box">${this.selectedNode.error}</div>`
-                        : ''}
+            ? html`<div class="error-box">${this.selectedNode.error}</div>`
+            : ''}
 
                 <div class="tabs">
                   <button
@@ -475,10 +475,10 @@ export class FleetView extends LitElement {
                 </div>
 
                 ${!this.selectedService
-                        ? this.renderFeatures(this.selectedNode)
-                        : this.renderServices(this.selectedNode)}
+            ? this.renderFeatures(this.selectedNode)
+            : this.renderServices(this.selectedNode)}
               `
-                : html`
+        : html`
                 <div class="placeholder">
                   <div class="placeholder-icon">🛰️</div>
                   <div>Select a node to view details</div>
@@ -487,16 +487,16 @@ export class FleetView extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private renderFeatures(node: NodeInfo) {
+    if (!node.features) {
+      return html`<div class="placeholder">Loading features...</div>`;
     }
 
-    private renderFeatures(node: NodeInfo) {
-        if (!node.features) {
-            return html`<div class="placeholder">Loading features...</div>`;
-        }
+    const f = node.features;
 
-        const f = node.features;
-
-        return html`
+    return html`
       <div class="content active">
         <div class="features-grid">
           <div class="feature-card">
@@ -508,50 +508,50 @@ export class FleetView extends LitElement {
             <h4>📡 BLE Adapters</h4>
             <div class="feature-value">${f.ble_adapters.length} found</div>
             ${f.ble_adapters.length > 0
-                ? html`<ul class="feature-list">
+        ? html`<ul class="feature-list">
                   ${f.ble_adapters.map((a) => html`<li>${a.device}</li>`)}
                 </ul>`
-                : ''}
+        : ''}
           </div>
 
           <div class="feature-card">
             <h4>⚡ GPIO</h4>
             <div class="feature-value">${f.gpio.available ? '✓ Available' : '✗ Unavailable'}</div>
             ${f.gpio.chips.length > 0
-                ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
+        ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
                   ${f.gpio.chips.length} chip${f.gpio.chips.length !== 1 ? 's' : ''}
                 </div>`
-                : ''}
+        : ''}
           </div>
 
           <div class="feature-card">
             <h4>I²C</h4>
             <div class="feature-value">${f.i2c.available ? '✓ Available' : '✗ Unavailable'}</div>
             ${f.i2c.buses.length > 0
-                ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
+        ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
                   ${f.i2c.buses.length} bus${f.i2c.buses.length !== 1 ? 'es' : ''}
                 </div>`
-                : ''}
+        : ''}
           </div>
 
           <div class="feature-card">
             <h4>🔊 Audio</h4>
             <div class="feature-value">${f.audio.available ? '✓ Available' : '✗ Unavailable'}</div>
             ${f.audio.cards.length > 0
-                ? html`<ul class="feature-list">
+        ? html`<ul class="feature-list">
                   ${f.audio.cards.map((c) => html`<li>${c.name}</li>`)}
                 </ul>`
-                : ''}
+        : ''}
           </div>
 
           <div class="feature-card">
             <h4>📡 UART</h4>
             <div class="feature-value">${f.uart.available ? '✓ Available' : '✗ Unavailable'}</div>
             ${f.uart.ports.length > 0
-                ? html`<ul class="feature-list">
+        ? html`<ul class="feature-list">
                   ${f.uart.ports.map((p) => html`<li>${p.device}</li>`)}
                 </ul>`
-                : ''}
+        : ''}
           </div>
 
           <div class="feature-card">
@@ -565,43 +565,43 @@ export class FleetView extends LitElement {
             <h4>💾 Storage</h4>
             <div class="feature-value">${f.storage.length > 0 ? f.storage[0].size : 'Unknown'}</div>
             ${f.storage.length > 0
-                ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
+        ? html`<div style="font-size: 11px; color: #666; margin-top: 4px;">
                   Used: ${f.storage[0].used}
                 </div>`
-                : ''}
+        : ''}
           </div>
 
           ${Object.keys(f.hardware_config.dt_params).length > 0
-                ? html`
+        ? html`
                 <div class="feature-card" style="grid-column: 1 / -1;">
                   <h4>⚙️ Device Tree Parameters</h4>
                   <ul class="feature-list">
                     ${Object.entries(f.hardware_config.dt_params).map(
-                    ([k, v]) => html`<li><strong>${k}</strong> = ${v}</li>`
-                )}
+          ([k, v]) => html`<li><strong>${k}</strong> = ${v}</li>`
+        )}
                   </ul>
                 </div>
               `
-                : ''}
+        : ''}
         </div>
       </div>
     `;
+  }
+
+  private renderServices(node: NodeInfo) {
+    if (!node.services) {
+      return html`<div class="placeholder">Loading services...</div>`;
     }
 
-    private renderServices(node: NodeInfo) {
-        if (!node.services) {
-            return html`<div class="placeholder">Loading services...</div>`;
-        }
+    if (node.services.length === 0) {
+      return html`<div class="placeholder">No services found</div>`;
+    }
 
-        if (node.services.length === 0) {
-            return html`<div class="placeholder">No services found</div>`;
-        }
-
-        return html`
+    return html`
       <div class="content active">
         <div class="service-list">
           ${node.services.map(
-            (service) => html`
+      (service) => html`
               <div class="service-item ${this.selectedService?.id === service.id ? 'selected' : ''}">
                 <div class="service-name">${service.name}</div>
                 <div class="service-meta">
@@ -610,28 +610,32 @@ export class FleetView extends LitElement {
               </div>
 
               ${this.selectedService?.id === service.id
-                    ? html`
+          ? html`
                     <perimeter-control-service-access-editor
                       apiBaseUrl=${node.url}
                       serviceId=${service.id}
                     ></perimeter-control-service-access-editor>
                   `
-                    : ''}
+          : ''}
             `
-        )}
+    )}
         </div>
       </div>
     `;
-    }
-}
-
-@customElement('isolator-fleet-view')
-export class IsolatorFleetViewAlias extends FleetView {
+  }
 }
 
 declare global {
+
+  // ─── Configurable Constants ─────────────────────────────────────────────
+  const ISOLATOR_FLEET_VIEW_TAG = (window as any).PERIMETERCONTROL_FLEET_VIEW_TAG || 'perimeter-control-fleet-view';
+
+  @customElement(ISOLATOR_FLEET_VIEW_TAG)
+  export class PerimeterControlFleetViewAlias extends FleetView { }
+
+  declare global {
     interface HTMLElementTagNameMap {
-        'perimeter-control-fleet-view': FleetView;
-        'isolator-fleet-view': FleetView;
+      'perimeter-control-fleet-view': FleetView;
+      [typeof ISOLATOR_FLEET_VIEW_TAG]: FleetView;
     }
-}
+  }

@@ -25,7 +25,8 @@ class BleDeployer(BaseDeployer):
         progress_cb: ProgressCallback | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
-        self.service_id = "ble_gatt_repeater"
+        import os
+        self.service_id = os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater')
 
     async def deploy(self) -> bool:
         """Deploy BLE GATT Repeater service."""

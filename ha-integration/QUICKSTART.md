@@ -17,7 +17,7 @@ Get the Perimeter Control integration working in 5 minutes.
 
 ```bash
 # Copy integration to Home Assistant
-cd NetworkIsolator  # This repository root
+cd PerimeterControl  # This repository root
 cp -r . /path/to/homeassistant/config/custom_components/perimeter_control/
 ```
 

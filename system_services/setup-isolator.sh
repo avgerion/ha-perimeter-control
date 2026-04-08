@@ -6,7 +6,7 @@
 # per-device firewall rules, traffic capture, and web dashboard.
 #
 # Usage:
-#   sudo bash setup-isolator.sh --config /path/to/isolator.conf.yaml
+#   sudo bash setup-isolator.sh --config /path/to/network_isolator.conf.yaml
 #
 # What it does:
 #   - Installs required packages (hostapd, dnsmasq, nftables, etc.)
@@ -31,10 +31,10 @@ NC='\033[0m' # No Color
 # Default paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="/mnt/isolator/conf/isolator.conf.yaml"
-INSTALL_DIR="/opt/isolator"
-LOG_DIR="/var/log/isolator"
-RUN_DIR="/run/isolator"
+CONFIG_FILE="/mnt/PerimeterControl/conf/network_isolator.conf.yaml"
+INSTALL_DIR="/opt/PerimeterControl"
+LOG_DIR="/var/log/PerimeterControl"
+RUN_DIR="/run/PerimeterControl"
 ISOLATED_INTERFACE=""
 ISOLATED_KIND=""
 UPSTREAM_INTERFACE=""
@@ -54,10 +54,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: sudo bash setup-isolator.sh --config /path/to/isolator.conf.yaml [--with-gstreamer]"
+            echo "Usage: sudo bash setup-isolator.sh --config /path/to/network_isolator.conf.yaml [--with-gstreamer]"
             echo ""
             echo "Options:"
-            echo "  --config PATH          Path to isolator.conf.yaml"
+            echo "  --config PATH          Path to network_isolator.conf.yaml"
             echo "  --with-gstreamer       Install GStreamer and PyGObject bindings (photo booth, wildlife monitor, audio capture)"
             exit 0
             ;;
@@ -98,7 +98,7 @@ check_root() {
 check_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         log_error "Config file not found: $CONFIG_FILE"
-        log_info "Copy config/isolator.conf.yaml to $CONFIG_FILE and customize it"
+        log_info "Copy config/network_isolator.conf.yaml to $CONFIG_FILE and customize it"
         exit 1
     fi
     log_success "Config file found: $CONFIG_FILE"
@@ -190,10 +190,10 @@ step_create_directories() {
     mkdir -p "$RUN_DIR"
     
     # Capture directories
-    mkdir -p /mnt/isolator/captures/{unknown,bridge}
+    mkdir -p /mnt/PerimeterControl/captures/{unknown,bridge}
     
     # Config directory (if using USB drive)
-    mkdir -p /mnt/isolator/conf
+    mkdir -p /mnt/PerimeterControl/conf
     
     log_success "Directories created"
 }
@@ -302,12 +302,12 @@ step_generate_configs() {
     
     python3 scripts/apply-rules.py \
         --config "$CONFIG_FILE" \
-        --output-dir /etc/isolator \
+        --output-dir /etc/PerimeterControl \
         --templates-dir "$INSTALL_DIR/templates"
     
     deactivate
     
-    log_success "Configuration files generated in /etc/isolator"
+    log_success "Configuration files generated in /etc/PerimeterControl"
 }
 
 step_install_systemd_services() {
@@ -327,8 +327,8 @@ Wants=hostapd.service dnsmasq.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml
-ExecReload=/opt/isolator/scripts/apply-rules.py --config /mnt/isolator/conf/isolator.conf.yaml
+ExecStart=/opt/PerimeterControl/scripts/apply-rules.py --config /mnt/PerimeterControl/conf/network_isolator.conf.yaml
+ExecReload=/opt/PerimeterControl/scripts/apply-rules.py --config /mnt/PerimeterControl/conf/network_isolator.conf.yaml
 StandardOutput=journal
 StandardError=journal
 
@@ -455,8 +455,8 @@ main() {
     log_info "Next steps:"
     echo "  1. Connect devices to the AP (SSID from config)"
     echo "  2. Access dashboard via SSH tunnel (see above)"
-    echo "  3. Monitor traffic in /var/log/isolator/traffic.log"
-    echo "  4. View captures in /mnt/isolator/captures/"
+    echo "  3. Monitor traffic in /var/log/PerimeterControl/traffic.log"
+    echo "  4. View captures in /mnt/PerimeterControl/captures/"
     echo ""
     log_info "Useful commands:"
     echo "  sudo systemctl status isolator"

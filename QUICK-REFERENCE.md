@@ -1,4 +1,4 @@
-# Network Isolator - Quick Reference Card
+# PerimeterControl - Quick Reference Card
 
 ## 🚀 Quick Deploy (Windows → Pi)
 
@@ -22,17 +22,17 @@ Browse to: **http://localhost:5006**
 
 ```bash
 # Status check
-sudo systemctl status isolator isolator-monitor isolator-dashboard
+sudo systemctl status perimetercontrol perimetercontrol-monitor perimetercontrol-dashboard
 
 # Reload config (live, no restart)
-sudo systemctl reload isolator
+sudo systemctl reload perimetercontrol
 
 # Restart all services
-sudo systemctl restart isolator isolator-monitor isolator-dashboard
+sudo systemctl restart perimetercontrol perimetercontrol-monitor perimetercontrol-dashboard
 
 # View logs (live)
-sudo journalctl -u isolator -f
-sudo journalctl -u isolator-monitor -f
+sudo journalctl -u perimetercontrol -f
+sudo journalctl -u perimetercontrol-monitor -f
 ```
 
 ## 📡 Device Monitoring
@@ -43,10 +43,10 @@ cat /var/lib/misc/dnsmasq.leases
 iw dev wlan0 station dump
 
 # Active captures
-systemctl list-units 'isolator-capture@*'
+systemctl list-units 'perimetercontrol-capture@*'
 
 # View captures
-ls -lh /mnt/isolator/captures/
+ls -lh /mnt/perimetercontrol/captures/
 ```
 
 ## 🔥 Firewall Commands
@@ -69,28 +69,28 @@ sudo conntrack -L
 
 ```bash
 # View device captures
-sudo tcpdump -r /mnt/isolator/captures/aa-bb-cc-dd-ee-ff/capture_*.pcap
+sudo tcpdump -r /mnt/perimetercontrol/captures/aa-bb-cc-dd-ee-ff/capture_*.pcap
 
 # Download to Windows
-scp -i ./y -r paul@192.168.69.11:/mnt/isolator/captures/ ./
+scp -i ./y -r paul@192.168.69.11:/mnt/perimetercontrol/captures/ ./
 
 # Stop capture for device
-sudo systemctl stop isolator-capture@aa-bb-cc-dd-ee-ff.service
+sudo systemctl stop perimetercontrol-capture@aa-bb-cc-dd-ee-ff.service
 ```
 
 ## 🛠️ Configuration Updates
 
 ```bash
 # Edit config (on Pi)
-sudo nano /mnt/isolator/conf/isolator.conf.yaml
+sudo nano /mnt/perimetercontrol/conf/perimetercontrol.conf.yaml
 
 # Or from Windows
-notepad config\isolator.conf.yaml
-scp -i ./y config/isolator.conf.yaml paul@192.168.69.11:/tmp/
-ssh -i ./y paul@192.168.69.11 "sudo mv /tmp/isolator.conf.yaml /mnt/isolator/conf/"
+notepad config\perimetercontrol.conf.yaml
+scp -i ./y config/perimetercontrol.conf.yaml paul@192.168.69.11:/tmp/
+ssh -i ./y paul@192.168.69.11 "sudo mv /tmp/perimetercontrol.conf.yaml /mnt/perimetercontrol/conf/"
 
 # Apply changes
-sudo systemctl reload isolator
+sudo systemctl reload perimetercontrol
 ```
 
 ## 🌉 Bridge Mode (Target AP Analysis)
@@ -100,14 +100,14 @@ sudo systemctl reload isolator
 sudo nano /etc/wpa_supplicant/wpa_supplicant-wlan1.conf
 
 # Start bridge mode
-sudo systemctl start isolator-bridge
+sudo systemctl start perimetercontrol-bridge
 
 # Check connection
 iw dev wlan1 link
 ip addr show wlan1
 
 # View captures
-ls -lh /mnt/isolator/captures/bridge/
+ls -lh /mnt/perimetercontrol/captures/bridge/
 ```
 
 ## 🐛 Troubleshooting
@@ -125,20 +125,20 @@ sudo journalctl -u dnsmasq -n 50
 sysctl net.ipv4.ip_forward
 
 # Test hostapd manually
-sudo hostapd -dd /etc/isolator/hostapd.conf
+sudo hostapd -dd /etc/perimetercontrol/hostapd.conf
 
 # View all isolator logs
-sudo journalctl -u 'isolator*' --since "10 minutes ago"
+sudo journalctl -u 'perimetercontrol*' --since "10 minutes ago"
 ```
 
 ## 📂 Important Locations
 
 ```
-/mnt/isolator/conf/isolator.conf.yaml    # Main config
-/etc/isolator/                           # Generated configs
-/var/log/isolator/traffic.log           # Traffic events (JSON)
-/mnt/isolator/captures/                  # All captures
-/opt/isolator/                           # Installation directory
+/mnt/perimetercontrol/conf/perimetercontrol.conf.yaml    # Main config
+/etc/perimetercontrol/                           # Generated configs
+/var/log/perimetercontrol/traffic.log           # Traffic events (JSON)
+/mnt/perimetercontrol/captures/                  # All captures
+/opt/perimetercontrol/                           # Installation directory
 ```
 
 ## 🔐 Security Quick Check
@@ -214,19 +214,19 @@ sudo systemctl restart isolator-monitor
 
 ## 🎯 Quick Start Checklist
 
-- [ ] Edit `config/isolator.conf.yaml` (SSID, password, devices)
+- [ ] Edit `config/perimetercontrol.conf.yaml` (SSID, password, devices)
 - [ ] Run `.\deploy.ps1` from Windows
 - [ ] Wait for setup to complete (~5 minutes)
 - [ ] SSH tunnel: `ssh -i ./y -L 5006:localhost:5006 paul@192.168.69.11`
 - [ ] Open dashboard: http://localhost:5006
 - [ ] Connect test device to WiFi AP
 - [ ] Verify device appears in dashboard
-- [ ] Check capture started: `ls /mnt/isolator/captures/`
-- [ ] Download captures: `scp -i ./y -r paul@192.168.69.11:/mnt/isolator/captures/ ./`
+- [ ] Check capture started: `ls /mnt/perimetercontrol/captures/`
+- [ ] Download captures: `scp -i ./y -r paul@192.168.69.11:/mnt/perimetercontrol/captures/ ./`
 - [ ] Open captures in Wireshark
 
 ---
 
-**Created for:** Network Isolator v1.0  
+**Created for:** PerimeterControl v1.0  
 **Platform:** Raspberry Pi 3 + Raspberry Pi OS Lite 64-bit  
 **See:** DEPLOYMENT.md for full documentation

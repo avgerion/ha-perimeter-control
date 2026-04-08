@@ -1,4 +1,4 @@
-# Home Assistant Custom Card: Fleet View Dashboard
+# Home Assistant Custom Card: PerimeterControl Fleet View Dashboard
 # ================================================
 #
 # IMPORTANT: Read NETWORK-ARCHITECTURE.md before using this!
@@ -26,8 +26,8 @@
 # - Each PHYSICAL Pi uses DIFFERENT IP (not different ports)
 #
 # Installation:
-# 1. Install the Perimeter Control integration via HACS
-# 2. Add each Pi via Settings → Devices & Services → Add Integration → Perimeter Control
+# 1. Install the PerimeterControl integration via HACS
+# 2. Add each Pi via Settings → Devices & Services → Add Integration → PerimeterControl
 #
 # Usage:
 # Add this card to your HA Lovelace dashboard YAML.
@@ -37,7 +37,7 @@ layout_type: vertical
 view:
   - type: markdown
     content: |
-      # Isolator Network Fleet Management
+      # PerimeterControl Network Fleet Management
 
       **Pre-Deployment Verification**:
 
@@ -52,7 +52,7 @@ view:
 
       If you get "Connection refused":
       1. Check PI_IP is correct (run `hostname -I` on Pi)
-      2. Verify Supervisor running: `systemctl status isolator-supervisor`
+      2. Verify Supervisor running: `systemctl status perimetercontrol-supervisor`
       3. Check firewall: `sudo ufw status` (should allow 8080)
       4. Verify network access: `ping PI_IP` from HA machine
 
@@ -66,12 +66,11 @@ view:
     # Examples:
     # - IP: http://192.168.69.11:8080
     # - mDNS: http://primary-pi.local:8080  (RECOMMENDED - more stable)
-    # - Public: https://isolator.example.com:8443  (requires HTTPS + cert)
+    # - Public: https://perimetercontrol.example.com:8443  (requires HTTPS + cert)
 
     nodes:
       - url: "http://PI_1_IP:8080" # ← CHANGE THIS
         name: "🏠 Primary Pi"
-
       # ===== MULTI-PI CONFIGURATION =====
       # Uncomment below to add second and third Pi nodes
       # Replace PI_2_IP and PI_3_IP with actual IPs/hostnames
@@ -97,7 +96,7 @@ view:
 
       ## What You're Seeing
 
-      This dashboard shows all Isolator Supervisor nodes in your network:
+      This dashboard shows all PerimeterControl Supervisor nodes in your network:
       - **Left sidebar**: List of Pi nodes
       - **Main panel**: Selected node's hardware features and services
       - **Features**: Cameras, BLE adapters, GPIO, I2C, audio, storage, etc.
@@ -121,7 +120,7 @@ view:
 
       - Red indicator = Supervisor not responding
       - Check Pi is powered on and connected to network
-      - Verify Supervisor is running: `systemctl status isolator-supervisor`
+      - Verify Supervisor is running: `systemctl status perimetercontrol-supervisor`
       - Check firewall/network isolation on that Pi
 
       Dashboard will auto-retry when Pi comes back online.

@@ -1,6 +1,6 @@
 # Perimeter Control Integration — Technical Overview
 
-This document details the **native Home Assistant integration** architecture for managing Isolator Pi edge nodes.
+This document details the **native Home Assistant integration** architecture for managing PerimeterControl Pi edge nodes.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ Home Assistant Core
 │   ├── Frontend Panel (integrated UI in HA sidebar)
 │   └── Entities (device discovery & state tracking)
 └── Target Pi Devices
-    └── Isolator Supervisor (API server on port 8080)
+    └── PerimeterControl Supervisor (API server on port 8080)
 ```
 
 ### Data Flow
@@ -44,7 +44,7 @@ Home Assistant Core
 │  JSON Request/Response                  │
 │                                         │
 │  Target Pi Device (192.168.50.47)      │
-│  ├── Isolator Supervisor (port 8080)   │
+│  ├── PerimeterControl Supervisor (port 8080)   │
 │  ├── Service Runtime (capabilities)    │
 │  └── SSH Server (deployment target)    │
 │                                         │

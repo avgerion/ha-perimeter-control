@@ -1,6 +1,6 @@
 [Unit]
 Description=PerimeterControl Supervisor
-Documentation=https://github.com/isolator/isolator
+Documentation=https://github.com/avgerion/ha-perimeter-control
 After=network.target PerimeterControl.service
 Wants=PerimeterControl.service
 
@@ -29,11 +29,11 @@ TimeoutStopSec=30
 # Harden the service
 PrivateTmp=yes
 ProtectSystem=full
-ReadWritePaths=/opt/isolator/state /mnt/isolator/conf /var/log/isolator
+ReadWritePaths=/opt/PerimeterControl/state /mnt/PerimeterControl/conf /var/log/PerimeterControl
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=isolator-supervisor
+SyslogIdentifier=PerimeterControl-supervisor
 
 [Install]
 WantedBy=multi-user.target

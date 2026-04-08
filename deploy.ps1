@@ -55,7 +55,7 @@ Write-Host ""
 # Create temporary directory on Pi
 Write-Host "[3/7] Creating directories on Pi..." -ForegroundColor Yellow
 
-ssh -i $KeyFile "${PiUser}@${PiIP}" "sudo mkdir -p /mnt/isolator/conf /tmp/isolator-deploy"
+ssh -i $KeyFile "${PiUser}@${PiIP}" "sudo mkdir -p /mnt/network-isolator/conf /tmp/network-isolator-deploy"
 
 Write-Host "  ✓ Directories created" -ForegroundColor Green
 Write-Host ""
@@ -63,10 +63,10 @@ Write-Host ""
 # Copy config file
 Write-Host "[4/7] Copying configuration file..." -ForegroundColor Yellow
 
-scp -i $KeyFile $ConfigFile "${PiUser}@${PiIP}:/tmp/isolator.conf.yaml"
-ssh -i $KeyFile "${PiUser}@${PiIP}" "sudo mv /tmp/isolator.conf.yaml /mnt/isolator/conf/"
+scp -i $KeyFile $ConfigFile "${PiUser}@${PiIP}:/tmp/network-isolator.conf.yaml"
+ssh -i $KeyFile "${PiUser}@${PiIP}" "sudo mv /tmp/network-isolator.conf.yaml /mnt/network-isolator/conf/"
 
-Write-Host "  ✓ Config copied to /mnt/isolator/conf/isolator.conf.yaml" -ForegroundColor Green
+Write-Host "  ✓ Config copied to /mnt/network-isolator/conf/network-isolator.conf.yaml" -ForegroundColor Green
 Write-Host ""
 
 # Copy project files
@@ -76,7 +76,7 @@ Write-Host "[5/7] Copying project files... (this may take a minute)" -Foreground
 $projectDir = Get-Location
 
 # Create archive locally (faster than individual file copies)
-$archiveName = "isolator-deploy.zip"
+$archiveName = "network-isolator-deploy.zip"
 Write-Host "  → Creating archive..." -ForegroundColor Gray
 
 if (Test-Path $archiveName) {
@@ -97,7 +97,7 @@ Write-Host "  → Uploading archive..." -ForegroundColor Gray
 scp -i $KeyFile $archiveName "${PiUser}@${PiIP}:/tmp/"
 
 Write-Host "  → Extracting on Pi..." -ForegroundColor Gray
-ssh -i $KeyFile "${PiUser}@${PiIP}" "cd /tmp && unzip -q -o $archiveName -d isolator-deploy"
+ssh -i $KeyFile "${PiUser}@${PiIP}" "cd /tmp && unzip -q -o $archiveName -d network-isolator-deploy"
 
 # Clean up local archive
 Remove-Item $archiveName -Force
@@ -111,7 +111,7 @@ Write-Host "  This will install packages and configure services." -ForegroundCol
 Write-Host "  You may be prompted for sudo password on the Pi." -ForegroundColor Gray
 Write-Host ""
 
-ssh -i $KeyFile -t "${PiUser}@${PiIP}" "cd /tmp/isolator-deploy && sudo bash system_services/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml"
+ssh -i $KeyFile -t "${PiUser}@${PiIP}" "cd /tmp/network-isolator-deploy && sudo bash system_services/setup-network-isolator.sh --config /mnt/network-isolator/conf/network-isolator.conf.yaml"
 
 Write-Host ""
 Write-Host "  ✓ Setup complete" -ForegroundColor Green
@@ -120,7 +120,7 @@ Write-Host ""
 # Verify installation
 Write-Host "[7/7] Verifying installation..." -ForegroundColor Yellow
 
-$services = @("isolator", "isolator-monitor", "isolator-dashboard", "hostapd", "dnsmasq")
+$services = @("network-isolator", "network-isolator-monitor", "network-isolator-dashboard", "hostapd", "dnsmasq")
 $allRunning = $true
 
 foreach ($service in $services) {

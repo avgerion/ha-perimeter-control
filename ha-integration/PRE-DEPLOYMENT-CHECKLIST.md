@@ -51,12 +51,13 @@
 
 ## Section 2: Pi Device Prerequisites
 
-### 2.1: Isolator Supervisor Setup
+
+### 2.1: PerimeterControl Supervisor Setup
 
 - [ ] **Supervisor is deployed on Pi**
   ```bash
   ssh paul@192.168.50.47
-  sudo systemctl status isolator-supervisor
+  sudo systemctl status perimetercontrol-supervisor
   # Should show: Active: active (running)
   ```
 
@@ -191,9 +192,9 @@
   - Try with unreachable IP - should timeout gracefully
 
 - [ ] **API failure handling**
-  - Stop supervisor on Pi: `sudo systemctl stop isolator-supervisor`
+  - Stop supervisor on Pi: `sudo systemctl stop perimetercontrol-supervisor`
   - Try operations - should show "connection refused" errors
-  - Restart supervisor: `sudo systemctl start isolator-supervisor`
+  - Restart supervisor: `sudo systemctl start perimetercontrol-supervisor`
 
 ---
 

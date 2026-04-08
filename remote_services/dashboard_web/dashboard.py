@@ -12,6 +12,7 @@ Access methods:
      Browse to: http://isolator.local:5006
 """
 
+
 import logging
 import socket
 import subprocess
@@ -34,20 +35,21 @@ from data_sources import DataManager
 
 import os
 
-# Get log path from environment, with fallback
-LOG_ROOT = os.environ.get('LOG_ROOT', '/var/log/PerimeterControl')
-log_file = os.path.join(LOG_ROOT, 'dashboard.log')
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_ROOT', '/var/log/PerimeterControl')
+DASHBOARD_LOG_FILE = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_FILE', os.path.join(LOG_ROOT, 'dashboard.log'))
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.dashboard')
 
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler(log_file),
+        logging.FileHandler(DASHBOARD_LOG_FILE),
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger('isolator.dashboard')
+logger = logging.getLogger(LOGGER_NAME)
 logging.getLogger('bokeh.server.views.ws').setLevel(logging.DEBUG)
 logging.getLogger('bokeh.server.session').setLevel(logging.DEBUG)
 logging.getLogger('bokeh.server.protocol_handler').setLevel(logging.DEBUG)

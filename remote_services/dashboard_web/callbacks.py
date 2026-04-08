@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Callback handlers for the Network Isolator dashboard.
+Callback handlers for the PerimeterControl dashboard.
 Manages periodic data updates and user interaction events.
 """
 
@@ -12,7 +12,17 @@ from typing import Any, Dict, Optional
 from bokeh.models import ColumnDataSource
 from bokeh.events import ButtonClick
 
-logger = logging.getLogger('isolator.callbacks')
+
+# ─── Configurable Constants ─────────────────────────────────────────────
+import os
+
+
+# Default log directory for BLE scan results (can be overridden by env/config)
+BLE_SCAN_LOG_DIR = os.environ.get('PERIMETERCONTROL_BLE_SCAN_LOG_DIR', '/var/log/PerimeterControl/ble')
+BLE_SCAN_LOG_PATTERN = os.path.join(BLE_SCAN_LOG_DIR, 'scan_*.json')
+
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'PerimeterControl.callbacks')
+logger = logging.getLogger(LOGGER_NAME)
 
 # ─── BLE Advertisement decode helpers ────────────────────────────────────────
 
@@ -782,7 +792,8 @@ def setup_callbacks(doc, data_manager):
             if not events:
                 # Show a diagnostic hint from the sniffer log
                 log_tail = data_manager.get_ble_sniffer_log_tail(n=5)
-                hint = ' | '.join(log_tail[-3:]) if log_tail else 'No log output yet — check /var/log/isolator/ble/*.raw.log on the Pi'
+                BLE_SNIFFER_LOG_PATH = os.environ.get('PERIMETERCONTROL_BLE_SNIFFER_LOG_PATH', '/var/log/perimetercontrol/ble/*.raw.log')
+                hint = ' | '.join(log_tail[-3:]) if log_tail else f'No log output yet — check {BLE_SNIFFER_LOG_PATH} on the Pi'
                 doc.ble_source.data = {
                     'timestamp': [0],
                     'time_str': [
@@ -1031,7 +1042,8 @@ def setup_callbacks(doc, data_manager):
                 capture_config = {
                     'enabled': capture_enabled,
                     'filter': '',
-                    'output': f'/mnt/isolator/captures/{device_id}',
+                    CAPTURE_OUTPUT_PATH = os.environ.get('PERIMETERCONTROL_CAPTURE_OUTPUT_PATH', '/mnt/perimetercontrol/captures')
+                    'output': f'{CAPTURE_OUTPUT_PATH}/{device_id}',
                     'rotate_mb': 100,
                     'live': True
                 }
@@ -1235,7 +1247,7 @@ def setup_callbacks(doc, data_manager):
         # doesn't reload stale results on the next poll tick.
         try:
             import glob as _glob
-            for f in _glob.glob('/var/log/isolator/ble/scan_*.json'):
+            for f in _glob.glob(BLE_SCAN_LOG_PATTERN):
                 import os as _os
                 _os.remove(f)
         except Exception as _e:
@@ -1391,9 +1403,11 @@ def setup_callbacks(doc, data_manager):
         on_ble_proxy_stop,
         *event_logger_refs,
     ]
-    if hasattr(doc, '_isolator_callback_refs'):
-        doc._isolator_callback_refs.extend(callback_refs)
+
+    # Store callback refs in a generic attribute for PerimeterControl
+    if hasattr(doc, '_perimetercontrol_callback_refs'):
+        doc._perimetercontrol_callback_refs.extend(callback_refs)
     else:
-        doc._isolator_callback_refs = callback_refs
+        doc._perimetercontrol_callback_refs = callback_refs
 
     logger.info("All callbacks registered successfully")

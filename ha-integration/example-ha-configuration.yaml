@@ -1,5 +1,5 @@
 # ============================================================
-# Isolator HA Integration — Home Assistant Configuration
+# PerimeterControl HA Integration — Home Assistant Configuration
 # ============================================================
 #
 # Copy relevant sections into your configuration.yaml.
@@ -7,20 +7,20 @@
 #
 # ── secrets.yaml (add these) ────────────────────────────────
 #
-#   isolator_pi_host: "192.168.69.11"
-#   isolator_pi_user: "paul"
-#   isolator_ssh_key_path: "/config/.ssh/pi_rsa"
+#   perimetercontrol_pi_host: "192.168.69.11"
+#   perimetercontrol_pi_user: "paul"
+#   perimetercontrol_ssh_key_path: "/config/.ssh/pi_rsa"
 #
 # ── Lovelace resource (add once) ────────────────────────────
 # Either via UI: Settings → Dashboards → Resources, or:
 #
 # lovelace:
 #   resources:
-#     - url: /local/isolator/ha-integration.js
+#     - url: /local/perimetercontrol/ha-integration.js
 #       type: module
 #
 # Copy ha-integration.js from dist/ to:
-#   <config>/www/isolator/ha-integration.js
+#   <config>/www/perimetercontrol/ha-integration.js
 
 # ── shell_command: deploy triggers ───────────────────────────────────────────
 #
@@ -31,65 +31,62 @@
 # Adjust --services to match the services configured on each Pi.
 shell_command:
   # Deploy everything to the Pi (all services in the deployment config)
-  isolator_deploy: >-
-    python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-    --config /config/isolator-repo/deployment.yaml
-    2>&1 | tee /config/isolator-repo/deploy.log
+
+  perimetercontrol_deploy: >-
+    python3 /config/perimetercontrol-repo/ha-integration/scripts/deploy.py
+    --config /config/perimetercontrol-repo/deployment.yaml 2>&1 | tee
+    /config/perimetercontrol-repo/deploy.log
 
   # Deploy without restarting services (safe for live systems)
-  isolator_deploy_no_restart: >-
-    python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-    --config /config/isolator-repo/deployment.yaml
-    --no-restart
-    2>&1 | tee /config/isolator-repo/deploy.log
+
+  perimetercontrol_deploy_no_restart: >-
+    python3 /config/perimetercontrol-repo/ha-integration/scripts/deploy.py
+    --config /config/perimetercontrol-repo/deployment.yaml --no-restart 2>&1 |
+    tee /config/perimetercontrol-repo/deploy.log
 
   # Deploy only specific services (photo_booth example)
-  isolator_deploy_photo_booth: >-
-    python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-    --config /config/isolator-repo/deployment.yaml
-    --services photo_booth
-    2>&1 | tee /config/isolator-repo/deploy.log
+
+  perimetercontrol_deploy_photo_booth: >-
+    python3 /config/perimetercontrol-repo/ha-integration/scripts/deploy.py
+    --config /config/perimetercontrol-repo/deployment.yaml --services
+    photo_booth 2>&1 | tee /config/perimetercontrol-repo/deploy.log
 
   # Push local config changes to Pi (does NOT restart supervisor)
-  isolator_sync_config: >-
-    python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-    --config /config/isolator-repo/deployment.yaml
-    --sync-config
-    --skip-supervisor
-    --no-restart
-    2>&1 | tee /config/isolator-repo/deploy.log
+
+  perimetercontrol_sync_config: >-
+    python3 /config/perimetercontrol-repo/ha-integration/scripts/deploy.py
+    --config /config/perimetercontrol-repo/deployment.yaml --sync-config
+    --skip-supervisor --no-restart 2>&1 | tee
+    /config/perimetercontrol-repo/deploy.log
 
 # ── Optional: file sensor to surface deploy.log in HA ────────────────────────
 sensor:
   - platform: command_line
-    name: Isolator Last Deploy
+    name: PerimeterControl Last Deploy
     command: >-
-      tail -5 /config/isolator-repo/deploy.log 2>/dev/null
-      | python3 -c "
-      import sys, json
-      lines = [l.strip() for l in sys.stdin if l.strip()]
-      last = lines[-1] if lines else ''
-      try:
+      tail -5 /config/perimetercontrol-repo/deploy.log 2>/dev/null | python3 -c
+      " import sys, json lines = [l.strip() for l in sys.stdin if l.strip()]
+      last = lines[-1] if lines else '' try:
           obj = json.loads(last)
           print(('OK' if obj.get('ok') else 'FAIL') + ': ' + obj.get('step',''))
       except Exception:
           print(last[:80] if last else 'no log')
       "
     scan_interval: 30
-    unique_id: isolator_last_deploy
+    unique_id: perimetercontrol_last_deploy
 
 # ── Optional: notify on failed deploy ────────────────────────────────────────
 automation:
-  - alias: "Isolator deploy failed"
+  - alias: "PerimeterControl deploy failed"
     trigger:
       - platform: state
-        entity_id: sensor.isolator_last_deploy
+        entity_id: sensor.perimetercontrol_last_deploy
     condition:
       - condition: template
-        value_template: "{{ 'FAIL' in states('sensor.isolator_last_deploy') }}"
+        value_template: "{{ 'FAIL' in states('sensor.perimetercontrol_last_deploy') }}"
     action:
       - service: persistent_notification.create
         data:
-          title: "Isolator Deploy Failed"
-          message: "{{ states('sensor.isolator_last_deploy') }}"
-          notification_id: isolator_deploy_fail
+          title: "PerimeterControl Deploy Failed"
+          message: "{{ states('sensor.perimetercontrol_last_deploy') }}"
+          notification_id: perimetercontrol_deploy_fail

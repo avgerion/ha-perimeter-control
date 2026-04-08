@@ -17,6 +17,7 @@ Usage:
     python3 ble-scanner.py --duration 60
 """
 
+
 import argparse
 import json
 import logging
@@ -28,21 +29,25 @@ from datetime import datetime
 from pathlib import Path
 from threading import Thread, Lock
 import signal
+import os
+
+# ---------------- Configurable Constants ----------------
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_BLE_LOG_ROOT', '/var/log/PerimeterControl/ble')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.ble-scanner')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('ble-scanner')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class BLEScanner:
     """Active BLE scanner for device discovery"""
     
     def __init__(self, output_dir=None):
-        self.output_dir = Path(output_dir or '/var/log/isolator/ble')
+        self.output_dir = Path(output_dir or LOG_ROOT)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
         # Generate filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.scan_file = self.output_dir / f"scan_{timestamp}.json"

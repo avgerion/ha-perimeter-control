@@ -16,105 +16,109 @@ import { customElement, property, state } from 'lit/decorators.js';
 import type { TemplateResult } from 'lit';
 
 export interface ErrorBoundaryConfig {
-    title?: string;
-    fallbackMessage?: string;
-    showDetails?: boolean;
-    onError?: (error: Error, retry: () => void) => void;
+  title?: string;
+  fallbackMessage?: string;
+  showDetails?: boolean;
+  onError?: (error: Error, retry: () => void) => void;
 }
 
 @customElement('perimeter-control-error-boundary')
 export class ErrorBoundary extends LitElement {
-    @property({ attribute: false }) config?: ErrorBoundaryConfig;
-    @state() private hasError = false;
-    @state() private error?: Error;
-    @state() private errorCount = 0;
+  @property({ attribute: false }) config?: ErrorBoundaryConfig;
+  @state() private hasError = false;
+  @state() private error?: Error;
+  @state() private errorCount = 0;
 
-    // Map of child render functions to catch
-    private childRender?: () => TemplateResult;
+  // Map of child render functions to catch
+  private childRender?: () => TemplateResult;
 
-    constructor() {
-        super();
-        // Override error handler to catch unhandled rejections in children
-        this.addEventListener('error', (e) => this.handleError(e as ErrorEvent), true);
+  constructor() {
+    super();
+    // Override error handler to catch unhandled rejections in children
+    this.addEventListener('error', (e) => this.handleError(e as ErrorEvent), true);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    // Listen for unhandled promise rejections in this element tree
+    window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+
+  private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    // Only handle if this error originated from our subtree
+    if (this.contains(event.target as Node)) {
+      this.handleError(new Error(`Promise rejection: ${event.reason}`));
+      event.preventDefault();
+    }
+  };
+
+  private handleError = (event: ErrorEvent | Error) => {
+    const error = event instanceof ErrorEvent ? event.error : event;
+    this.errorCount++;
+
+    if (!error) {
+      return;
     }
 
-    connectedCallback() {
-        super.connectedCallback();
-        // Listen for unhandled promise rejections in this element tree
-        window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+    this.hasError = true;
+    this.error = error;
+
+
+    // ─── Configurable Constants ─────────────────────────────────────────────
+    const ERROR_BOUNDARY_LABEL = (window as any).PERIMETERCONTROL_ERROR_BOUNDARY_LABEL || 'PerimeterControl Error Boundary';
+
+    // Log to console for debugging
+    console.error(
+      `[${ERROR_BOUNDARY_LABEL}] Component crashed (attempt #${this.errorCount}):`,
+      error.message,
+      error.stack
+    );
+
+    // Call user's error handler if provided
+    if (this.config?.onError) {
+      this.config.onError(error, () => this.retry());
+    }
+  };
+
+  retry = () => {
+    this.hasError = false;
+    this.error = undefined;
+    this.requestUpdate();
+  };
+
+  setChildRender(fn: () => TemplateResult) {
+    this.childRender = fn;
+    this.requestUpdate();
+  }
+
+  protected render() {
+    if (this.hasError) {
+      return this.renderErrorFallback();
     }
 
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+    if (this.childRender) {
+      try {
+        return this.childRender();
+      } catch (error) {
+        this.handleError(error instanceof Error ? error : new Error(String(error)));
+        return this.renderErrorFallback();
+      }
     }
 
-    private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-        // Only handle if this error originated from our subtree
-        if (this.contains(event.target as Node)) {
-            this.handleError(new Error(`Promise rejection: ${event.reason}`));
-            event.preventDefault();
-        }
-    };
+    return nothing;
+  }
 
-    private handleError = (event: ErrorEvent | Error) => {
-        const error = event instanceof ErrorEvent ? event.error : event;
-        this.errorCount++;
+  private renderErrorFallback() {
+    const title = this.config?.title || 'Perimeter Control';
+    const message = this.config?.fallbackMessage || 'Failed to load integration';
+    const showDetails = this.config?.showDetails !== false;
 
-        if (!error) {
-            return;
-        }
-
-        this.hasError = true;
-        this.error = error;
-
-        // Log to console for debugging
-        console.error(
-            `[Isolator Error Boundary] Component crashed (attempt #${this.errorCount}):`,
-            error.message,
-            error.stack
-        );
-
-        // Call user's error handler if provided
-        if (this.config?.onError) {
-            this.config.onError(error, () => this.retry());
-        }
-    };
-
-    retry = () => {
-        this.hasError = false;
-        this.error = undefined;
-        this.requestUpdate();
-    };
-
-    setChildRender(fn: () => TemplateResult) {
-        this.childRender = fn;
-        this.requestUpdate();
-    }
-
-    protected render() {
-        if (this.hasError) {
-            return this.renderErrorFallback();
-        }
-
-        if (this.childRender) {
-            try {
-                return this.childRender();
-            } catch (error) {
-                this.handleError(error instanceof Error ? error : new Error(String(error)));
-                return this.renderErrorFallback();
-            }
-        }
-
-        return nothing;
-    }
-
-    private renderErrorFallback() {
-        const title = this.config?.title || 'Perimeter Control';
-        const message = this.config?.fallbackMessage || 'Failed to load integration';
-        const showDetails = this.config?.showDetails !== false;
-
-        return html`
+    return html`
       <ha-card>
         <div class="card-content" style="padding: 16px;">
           <div style="
@@ -128,7 +132,7 @@ export class ErrorBoundary extends LitElement {
             <div style="margin-bottom: 8px;">${message}</div>
             
             ${showDetails && this.error
-                ? html`
+        ? html`
                 <details style="margin-top: 8px; font-size: 0.9em; color: #d32f2f;">
                   <summary style="cursor: pointer; user-select: none;">Error details</summary>
                   <pre style="
@@ -142,8 +146,8 @@ export class ErrorBoundary extends LitElement {
 ${this.error.stack || 'No stack trace available'}</pre>
                 </details>
               `
-                : nothing
-            }
+        : nothing
+      }
 
             <div style="margin-top: 12px;">
               <button
@@ -179,10 +183,10 @@ ${this.error.stack || 'No stack trace available'}</pre>
         </div>
       </ha-card>
     `;
-    }
+  }
 
-    static getStyles() {
-        return `
+  static getStyles() {
+    return `
       :host {
         display: block;
       }
@@ -192,16 +196,19 @@ ${this.error.stack || 'No stack trace available'}</pre>
         border-radius: 4px;
       }
     `;
-    }
-}
-
-@customElement('isolator-error-boundary')
-export class IsolatorErrorBoundaryAlias extends ErrorBoundary {
+  }
 }
 
 declare global {
+
+  const ISOLATOR_ERROR_BOUNDARY_TAG = (window as any).PERIMETERCONTROL_ERROR_BOUNDARY_TAG || 'perimeter-control-error-boundary';
+
+  @customElement(ISOLATOR_ERROR_BOUNDARY_TAG)
+  export class PerimeterControlErrorBoundaryAlias extends ErrorBoundary { }
+
+  declare global {
     interface HTMLElementTagNameMap {
-        'perimeter-control-error-boundary': ErrorBoundary;
-        'isolator-error-boundary': ErrorBoundary;
+      'perimeter-control-error-boundary': ErrorBoundary;
+      [typeof ISOLATOR_ERROR_BOUNDARY_TAG]: ErrorBoundary;
     }
-}
+  }

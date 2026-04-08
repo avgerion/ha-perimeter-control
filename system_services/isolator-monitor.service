@@ -6,7 +6,7 @@ Requires=isolator.service
 
 [Service]
 Type=simple
-ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/scripts/monitor-devices.py --config /mnt/isolator/conf/isolator.conf.yaml
+ExecStart=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/scripts/monitor-devices.py --config /mnt/PerimeterControl/conf/isolator.conf.yaml
 Restart=always
 RestartSec=10
 

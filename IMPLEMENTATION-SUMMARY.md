@@ -1,23 +1,23 @@
 # Phase 2 & 3 Implementation Summary
 
-This document summarizes the implementation of Phase 2 (Setup Script) and Phase 3 (Rules Generator) for the Network Isolator project.
+This document summarizes the implementation of Phase 2 (Setup Script) and Phase 3 (Rules Generator) for the PerimeterControl project.
 
 ## 📦 Files Created
 
 ### Core Implementation
 
-#### 1. **server/setup-isolator.sh** (Main Installer)
+#### 1. **server/setup-perimetercontrol.sh** (Main Installer)
 - 🎯 **Purpose:** One-command installation script for Raspberry Pi
 - **Features:**
   - Installs all required packages (hostapd, dnsmasq, nftables, tcpdump, Python)
-  - Creates directory structure (`/opt/isolator`, `/var/log/isolator`, `/mnt/isolator`)
+  - Creates directory structure (`/opt/perimetercontrol`, `/var/log/perimetercontrol`, `/mnt/perimetercontrol`)
   - Sets up Python virtual environment for dashboard
   - Enables IP forwarding
   - Disables conflicting services (NetworkManager, default dnsmasq)
   - Generates configuration files from YAML
   - Installs and starts systemd services
   - Provides installation verification and status output
-- **Usage:** `sudo bash setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml`
+- **Usage:** `sudo bash setup-perimetercontrol.sh --config /mnt/perimetercontrol/conf/perimetercontrol.conf.yaml`
 
 #### 2. **scripts/apply-rules.py** (Configuration Generator)
 - 🎯 **Purpose:** Reads `isolator.conf.yaml` and generates all system configuration files

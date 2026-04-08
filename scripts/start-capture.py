@@ -11,17 +11,23 @@ Usage:
 The capture service (isolator-capture@.service) will be started with the device ID.
 """
 
+
 import argparse
 import subprocess
 import logging
 import sys
 from pathlib import Path
+import os
+
+# ---------------- Configurable Constants ----------------
+SERVICE_TEMPLATE = os.environ.get('PERIMETERCONTROL_CAPTURE_SERVICE_TEMPLATE', 'perimetercontrol-capture@{mac}.service')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.start-capture')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('start-capture')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def normalize_mac(mac: str) -> str:
@@ -42,7 +48,7 @@ def start_capture(mac: str, device_id: str, enabled: bool = True):
     
     # Normalize MAC for service name
     mac_normalized = normalize_mac(mac)
-    service_name = f"isolator-capture@{mac_normalized}.service"
+    service_name = SERVICE_TEMPLATE.format(mac=mac_normalized)
     
     logger.info(f"Starting capture for {device_id} (MAC: {mac})")
     

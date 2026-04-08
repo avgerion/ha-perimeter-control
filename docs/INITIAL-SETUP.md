@@ -47,8 +47,6 @@ Click **"Choose OS"** and select:
 
 ### 1.3 Choose Storage
 
-Click **"Choose Storage"** and select your microSD card.
-
 ### 1.4 Configure Advanced Options (CRITICAL!)
 
 **Click the ⚙️ gear icon** (or press `Ctrl+Shift+X`) to access advanced options.

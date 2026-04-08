@@ -1,6 +1,7 @@
 #!/bin/bash
+
 # =============================================================================
-# BLE Sniffing Diagnostic Script
+# PerimeterControl BLE Sniffing Diagnostic Script
 # Run this ON THE PI over SSH to find out why sniffing produces no results.
 #
 # Usage:
@@ -12,11 +13,15 @@
 #   ssh -i ./y paul@192.168.69.11 'bash -s' < scripts/ble-debug.sh -- AA:BB:CC:DD:EE:FF
 # =============================================================================
 
+
+# ─── Configurable Constants ─────────────────────────────────────────────
 TARGET_MAC="${1:-}"
-VENV_PY="/opt/isolator/venv/bin/python3"
-SNIFFER_PY="/opt/isolator/scripts/ble-sniffer.py"
-SCANNER_PY="/opt/isolator/scripts/ble-scanner-v2.py"
-BLE_LOG_DIR="/var/log/isolator/ble"
+PERIMETERCONTROL_OPT_PATH="${PERIMETERCONTROL_OPT_PATH:-/opt/perimetercontrol}"
+PERIMETERCONTROL_LOG_DIR="${PERIMETERCONTROL_LOG_DIR:-/var/log/perimetercontrol/ble}"
+VENV_PY="$PERIMETERCONTROL_OPT_PATH/venv/bin/python3"
+SNIFFER_PY="$PERIMETERCONTROL_OPT_PATH/scripts/ble-sniffer.py"
+SCANNER_PY="$PERIMETERCONTROL_OPT_PATH/scripts/ble-scanner-v2.py"
+BLE_LOG_DIR="$PERIMETERCONTROL_LOG_DIR"
 
 PASS="[PASS]"
 WARN="[WARN]"
@@ -243,7 +248,7 @@ echo "  ls -lh $BLE_LOG_DIR/"
 echo "  tail -f $BLE_LOG_DIR/*.log  # follow the live log"
 echo
 echo "  # 4. Watch dashboard log:"
-echo "  sudo journalctl -u isolator-dashboard -f"
+echo "  sudo journalctl -u perimetercontrol-dashboard -f"
 echo
 if [ -n "$TARGET_MAC" ]; then
     echo "  # 5. Targeted sniffer run:"

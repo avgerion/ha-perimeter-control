@@ -22,11 +22,18 @@ from pathlib import Path
 from typing import Dict, Set
 import sys
 
+
+# ---------------- Configurable Constants ----------------
+import os
+LEASES_FILE = os.environ.get('PERIMETERCONTROL_LEASES_FILE', '/var/lib/misc/dnsmasq.leases')
+CAPTURE_SCRIPT = os.environ.get('PERIMETERCONTROL_CAPTURE_SCRIPT', '/opt/PerimeterControl/scripts/start-capture.py')
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.device-monitor')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger('device-monitor')
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class DeviceMonitor:
@@ -56,7 +63,7 @@ class DeviceMonitor:
     
     def _get_active_leases(self) -> Dict[str, Dict]:
         """Parse dnsmasq.leases file"""
-        leases_file = Path('/var/lib/misc/dnsmasq.leases')
+        leases_file = Path(LEASES_FILE)
         
         if not leases_file.exists():
             return {}
@@ -97,13 +104,12 @@ class DeviceMonitor:
         # Start capture using helper script
         try:
             subprocess.run([
-                'python3', '/opt/isolator/scripts/start-capture.py',
+                'python3', CAPTURE_SCRIPT,
                 '--mac', mac,
                 '--device-id', device_id,
                 '--action', 'start',
                 '--enabled' if capture_enabled else '--no-enabled'
             ], check=True)
-            
             logger.info(f"✓ Started capture for {device_id} ({mac})")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to start capture for {device_id}: {e}")
@@ -136,7 +142,7 @@ class DeviceMonitor:
         # Stop capture
         try:
             subprocess.run([
-                'python3', '/opt/isolator/scripts/start-capture.py',
+                'python3', CAPTURE_SCRIPT,
                 '--mac', mac,
                 '--device-id', device_id,
                 '--action', 'stop'
@@ -176,7 +182,7 @@ class DeviceMonitor:
 
 def main():
     parser = argparse.ArgumentParser(description='Monitor devices and manage captures')
-    parser.add_argument('--config', default='/mnt/isolator/conf/isolator.conf.yaml', help='Path to config file')
+    parser.add_argument('--config', default=os.environ.get('PERIMETERCONTROL_CONFIG', '/mnt/PerimeterControl/conf/perimeterControl.conf.yaml'), help='Path to config file')
     parser.add_argument('--interval', type=int, default=5, help='Check interval in seconds')
     
     args = parser.parse_args()

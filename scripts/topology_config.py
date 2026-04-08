@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helpers for resolving network topology from isolator.conf.yaml."""
+"""Helpers for resolving network topology from perimetercontrol.conf.yaml."""
 
 from __future__ import annotations
 

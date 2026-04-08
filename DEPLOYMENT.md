@@ -16,113 +16,114 @@ This guide walks you through deploying the Network Isolator to your Raspberry Pi
 First, customize your configuration on your development machine:
 
 ```bash
-# Edit the config file
+# PerimeterControl - Deployment Guide
 cd C:\Users\avger\Offline\Documents\NetworkIsolator
-notepad config\isolator.conf.yaml
-```
+This guide walks you through deploying PerimeterControl to your Raspberry Pi.
+- USB drive mounted at `/mnt/perimetercontrol` (recommended for config and captures)
 
-Key settings to customize:
-- `ap.ssid` - Your WiFi AP name
+cd C:\Users\avger\Offline\Documents\PerimeterControl
+notepad config\perimetercontrol.conf.yaml
 - `ap.password` - WiFi password (min 8 characters)
-- `devices` - Add your devices with MAC addresses
+ssh -i $KEY ${PI_USER}@${PI_IP} "sudo mkdir -p /mnt/perimetercontrol/conf /tmp/perimetercontrol-deploy"
 
-### 2. Copy Files to Raspberry Pi
-
+scp -i $KEY config/perimetercontrol.conf.yaml ${PI_USER}@${PI_IP}:/tmp/perimetercontrol.conf.yaml
+ssh -i $KEY ${PI_USER}@${PI_IP} "sudo mv /tmp/perimetercontrol.conf.yaml /mnt/perimetercontrol/conf/"
 From your Windows machine:
-
+scp -i $KEY -r . ${PI_USER}@${PI_IP}:/tmp/perimetercontrol-deploy/
 ```powershell
-# Set variables
+cd /tmp/perimetercontrol-deploy
 $PI_IP = "192.168.69.11"
+sudo bash system_services/setup-perimetercontrol.sh --config /mnt/perimetercontrol/conf/perimetercontrol.conf.yaml
 $PI_USER = "paul"
-$KEY = "./y"
+sudo systemctl status perimetercontrol
 
-# Create directories on Pi
+sudo systemctl status perimetercontrol-dashboard
 ssh -i $KEY ${PI_USER}@${PI_IP} "sudo mkdir -p /mnt/isolator/conf /tmp/isolator-deploy"
-
+sudo systemctl status perimetercontrol-monitor
 # Copy config file
-scp -i $KEY config/isolator.conf.yaml ${PI_USER}@${PI_IP}:/tmp/isolator.conf.yaml
-ssh -i $KEY ${PI_USER}@${PI_IP} "sudo mv /tmp/isolator.conf.yaml /mnt/isolator/conf/"
-
-# Copy entire project
-scp -i $KEY -r . ${PI_USER}@${PI_IP}:/tmp/isolator-deploy/
-```
-
+sudo journalctl -u perimetercontrol -f
+PerimeterControl consists of several systemd services:
+| `perimetercontrol.service` | Main service - applies firewall rules | `systemctl status perimetercontrol` |
+| `perimetercontrol-monitor.service` | Monitors for new devices, starts captures | `systemctl status perimetercontrol-monitor` |
+| `perimetercontrol-dashboard.service` | Web dashboard (Bokeh server) | `systemctl status perimetercontrol-dashboard` |
+| `perimetercontrol-capture@MAC.service` | Per-device packet capture (template) | Auto-started for each device |
+| `perimetercontrol-bridge.service` | Bridge mode (optional) | Manual start when needed |
 ### 3. Run the Setup Script
-
+sudo nano /mnt/perimetercontrol/conf/perimetercontrol.conf.yaml
 SSH into the Pi and run the installer:
-
+sudo systemctl reload perimetercontrol
 ```bash
-# SSH into Pi
+sudo systemctl restart perimetercontrol perimetercontrol-monitor perimetercontrol-dashboard
 ssh -i ./y paul@192.168.69.11
-
+ls -lh /mnt/perimetercontrol/captures/
 # Run setup script
-cd /tmp/isolator-deploy
+Captures are stored in `/mnt/perimetercontrol/captures/`:
 sudo bash system_services/setup-isolator.sh --config /mnt/isolator/conf/isolator.conf.yaml
-```
+ls -lh /mnt/perimetercontrol/captures/aa-bb-cc-dd-ee-ff/
 
-The setup script will:
+sudo tcpdump -r /mnt/perimetercontrol/captures/aa-bb-cc-dd-ee-ff/capture_20240101_120000.pcap
 - ✓ Install all required packages (hostapd, dnsmasq, nftables, tcpdump, Python)
-- ✓ Create directory structure
+scp -i ./y paul@192.168.69.11:/mnt/perimetercontrol/captures/aa-bb-cc-dd-ee-ff/*.pcap ./
 - ✓ Set up Python virtual environment for dashboard
-- ✓ Generate configuration files from your YAML
+sudo journalctl -u perimetercontrol -u perimetercontrol-monitor -u perimetercontrol-dashboard -f
 - ✓ Install and start systemd services
-- ✓ Configure IP forwarding and firewall rules
+tail -f /var/log/perimetercontrol/traffic.log
 
-### 4. Verify Installation
+cat /etc/perimetercontrol/hostapd.conf
 
-After setup completes, verify everything is running:
+sudo hostapd -dd /etc/perimetercontrol/hostapd.conf
 
-```bash
+cat /etc/perimetercontrol/dnsmasq.conf
 # Check service status
-sudo systemctl status isolator
+sudo journalctl -u perimetercontrol-dashboard
 sudo systemctl status isolator-dashboard
-sudo systemctl status isolator-monitor
+sudo systemctl status perimetercontrol-dashboard
 sudo systemctl status hostapd
-sudo systemctl status dnsmasq
+sudo systemctl status perimetercontrol-monitor
 
-# View live logs
+systemctl list-units 'perimetercontrol-capture@*'
 sudo journalctl -u isolator -f
-
+sudo systemctl status perimetercontrol-capture@aa-bb-cc-dd-ee-ff.service
 # Check WiFi AP
-iw dev wlan0 info
+ls -la /mnt/perimetercontrol/captures/
 
-# Check for connected clients
+sudo systemctl start perimetercontrol-bridge
 iw dev wlan0 station dump
-```
+Captures will be in `/mnt/perimetercontrol/captures/bridge/`
 
-### 5. Access the Web Dashboard
+sudo mkdir -p /mnt/perimetercontrol
 
-From your Windows machine:
+sudo mount /dev/sda1 /mnt/perimetercontrol
 
-```powershell
+echo "/dev/sda1 /mnt/perimetercontrol ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
 # Create SSH tunnel to dashboard
-ssh -i ./y -L 5006:localhost:5006 paul@192.168.69.11
+sudo mkdir -p /mnt/perimetercontrol/{conf,captures}
 ```
-
+sudo cp /tmp/perimetercontrol.conf.yaml /mnt/perimetercontrol/conf/
 Then open your browser to: **http://localhost:5006**
-
+ # Edit /opt/perimetercontrol/scripts/start-capture.py
 ## Services Overview
-
+ # Edit capture service to add:
 The Network Isolator consists of several systemd services:
-
+ # Edit /etc/systemd/system/perimetercontrol-monitor.service
 | Service | Purpose | Status Check |
-|---------|---------|--------------|
+sudo systemctl restart perimetercontrol-monitor
 | `isolator.service` | Main service - applies firewall rules | `systemctl status isolator` |
-| `isolator-monitor.service` | Monitors for new devices, starts captures | `systemctl status isolator-monitor` |
+notepad config\perimetercontrol.conf.yaml
 | `isolator-dashboard.service` | Web dashboard (Bokeh server) | `systemctl status isolator-dashboard` |
-| `isolator-capture@MAC.service` | Per-device packet capture (template) | Auto-started for each device |
+scp -i ./y config/perimetercontrol.conf.yaml paul@192.168.69.11:/tmp/
 | `isolator-bridge.service` | Bridge mode (optional) | Manual start when needed |
-| `hostapd.service` | WiFi access point | `systemctl status hostapd` |
+ssh -i ./y paul@192.168.69.11 "sudo mv /tmp/perimetercontrol.conf.yaml /mnt/perimetercontrol/conf/"
 | `dnsmasq.service` | DHCP/DNS server | `systemctl status dnsmasq` |
-
+ssh -i ./y paul@192.168.69.11 "sudo systemctl reload perimetercontrol"
 ## Configuration Changes
-
+scp -i ./y -r paul@192.168.69.11:/mnt/perimetercontrol/conf ./backup/
 To modify the configuration after installation:
-
+scp -i ./y -r paul@192.168.69.11:/mnt/perimetercontrol/captures ./backup/
 ```bash
-# Edit config on Pi
+ssh -i ./y paul@192.168.69.11 "sudo cp -r /tmp/conf/* /mnt/perimetercontrol/conf/"
 sudo nano /mnt/isolator/conf/isolator.conf.yaml
-
+sudo journalctl -u perimetercontrol -u perimetercontrol-monitor --since "10 minutes ago"
 # Reload configuration (regenerates and applies rules)
 sudo systemctl reload isolator
 

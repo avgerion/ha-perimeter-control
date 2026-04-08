@@ -5,10 +5,10 @@
     }
   ],
   "settings": {
-    "isolator.remote.user": "paul",
-    "isolator.remote.host": "192.168.50.47",
-    "isolator.remote.sshKey": "./y",
-    "isolator.dashboard.port": "5006",
+    "perimeterControl.remote.user": "paul",
+    "perimeterControl.remote.host": "192.168.50.47",
+    "perimeterControl.remote.sshKey": "./y",
+    "perimeterControl.dashboard.port": "5006",
     "files.associations": {
       "*.conf.yaml": "yaml",
       "*.nft": "plaintext"

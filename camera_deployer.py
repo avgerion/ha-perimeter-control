@@ -25,7 +25,8 @@ class CameraDeployer(BaseDeployer):
         progress_cb: ProgressCallback | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
-        self.service_id = "photo_booth"
+        import os
+        self.service_id = os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth')
 
     async def deploy(self) -> bool:
         """Deploy Photo Booth service."""

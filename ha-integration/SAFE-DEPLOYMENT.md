@@ -21,10 +21,11 @@
 
 **Do NOT deploy to production until all items are checked:**
 
-### Step 1: Verify Isolator Supervisor is Stable
+
+### Step 1: Verify PerimeterControl Supervisor is Stable
 ```bash
-# On your Isolator Supervisor Pi:
-sudo systemctl status isolator-supervisor
+# On your PerimeterControl Supervisor Pi:
+sudo systemctl status perimetercontrol-supervisor
 curl http://localhost:8080/api/v1/services  # Should return JSON
 curl http://localhost:8080/api/v1/node/features  # Should return JSON
 ```

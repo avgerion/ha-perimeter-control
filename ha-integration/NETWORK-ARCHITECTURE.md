@@ -36,7 +36,7 @@ Website → api/v1/services/ble_gatt_repeater on 8080
 └────────────────────────┬────────────────────────────────┘
                          │ HTTP/HTTPS
                          v
-        Isolator Supervisor (port: 8080)
+  PerimeterControl Supervisor (port: 8080)
         ├─ /api/v1/services  (list all services)
         ├─ /api/v1/services/photo_booth/access  (edit photo_booth)
         ├─ /api/v1/services/wildlife_monitor/access  (edit wildlife_monitor)
@@ -55,6 +55,7 @@ Website → api/v1/services/ble_gatt_repeater on 8080
 ### Pattern 1: Single Pi (Most Common)
 
 **Setup**: One Raspberry Pi running Isolator Supervisor
+**Setup**: One Raspberry Pi running PerimeterControl Supervisor
 
 ```yaml
 # All services point to the SAME Pi, SAME port
@@ -68,7 +69,7 @@ cards:
     api_base_url: http://192.168.69.11:8080  # Same Pi, same port
 
   - type: custom:perimeter-control-card
-    service_id: network_isolator
+    service_id: perimetercontrol
     api_base_url: http://192.168.69.11:8080  # Same Pi, same port
 ```
 

@@ -17,7 +17,7 @@ ExecStart=/usr/sbin/wpa_supplicant -B -i wlan1 -c /etc/wpa_supplicant/wpa_suppli
 ExecStart=/usr/sbin/dhclient wlan1
 
 # Start packet capture on wlan1
-ExecStart=/usr/bin/tcpdump -i wlan1 -w /mnt/isolator/captures/bridge/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root
+ExecStart=/usr/bin/tcpdump -i wlan1 -w /mnt/PerimeterControl/captures/bridge/capture_$(date +%%Y%%m%%d_%%H%%M%%S).pcap -G 3600 -W 24 -Z root
 
 # Cleanup
 ExecStop=/usr/bin/pkill -f "tcpdump.*wlan1"

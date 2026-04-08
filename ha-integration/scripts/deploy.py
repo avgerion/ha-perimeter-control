@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Isolator Deploy Script — HA-Compatible Python Replacement for deploy-dashboard-web.ps1
-========================================================================================
+PerimeterControl Deploy Script — HA-Compatible Python Replacement for deploy-dashboard-web.ps1
+==============================================================================================
 
 Reads config/services/*.service.yaml to determine which apt packages are needed
 (gstreamer, i2c, etc.) and installs ONLY those required by the configured services.
@@ -9,10 +9,10 @@ Fixes the chmod bug from the PowerShell script by using --no-same-permissions wi
 sudo tar extraction instead of a post-extraction find+chmod.
 
 Usage from HA configuration.yaml (shell_command):
-    isolator_deploy: >-
-        python3 /config/isolator-repo/ha-integration/scripts/deploy.py
-        --config /config/isolator-repo/deployment.yaml
-        2>&1 | tee /config/isolator-repo/deploy.log
+    perimetercontrol_deploy: >-
+        python3 /config/perimetercontrol-repo/ha-integration/scripts/deploy.py
+        --config /config/perimetercontrol-repo/deployment.yaml
+        2>&1 | tee /config/perimetercontrol-repo/deploy.log
 
 Usage from command line:
     python3 deploy.py --host 192.168.69.11 --user paul --ssh-key ~/y
@@ -41,22 +41,28 @@ except ImportError:
 
 import subprocess
 
+# ── Configurable Constants ─────────────────────────────────────────────
+PERIMETERCONTROL_SUPERVISOR_SERVICE = os.environ.get('PERIMETERCONTROL_SUPERVISOR_SERVICE', 'PerimeterControl-supervisor')
+PERIMETERCONTROL_DASHBOARD_SERVICE = os.environ.get('PERIMETERCONTROL_DASHBOARD_SERVICE', 'PerimeterControl-dashboard')
+PERIMETERCONTROL_OPT_PATH = os.environ.get('PERIMETERCONTROL_OPT_PATH', '/opt/PerimeterControl')
+PERIMETERCONTROL_TMP_PATH = os.environ.get('PERIMETERCONTROL_TMP_PATH', '/tmp')
+
 # ── Repo layout (relative to repo root) ─────────────────────────────────────
 WEB_FILES = [
-    ("server/web/dashboard.py",   "/tmp/dashboard.py",   "web", "0644"),
-    ("server/web/layouts.py",     "/tmp/layouts.py",     "web", "0644"),
-    ("server/web/callbacks.py",   "/tmp/callbacks.py",   "web", "0644"),
-    ("server/web/data_sources.py","/tmp/data_sources.py","web", "0644"),
+    ("server/web/dashboard.py",   f"{PERIMETERCONTROL_TMP_PATH}/dashboard.py",   "web", "0644"),
+    ("server/web/layouts.py",     f"{PERIMETERCONTROL_TMP_PATH}/layouts.py",     "web", "0644"),
+    ("server/web/callbacks.py",   f"{PERIMETERCONTROL_TMP_PATH}/callbacks.py",   "web", "0644"),
+    ("server/web/data_sources.py",f"{PERIMETERCONTROL_TMP_PATH}/data_sources.py","web", "0644"),
 ]
 
 SCRIPT_FILES = [
-    ("scripts/ble-scanner-v2.py",      "/tmp/ble-scanner-v2.py",      "scripts", "0755"),
-    ("scripts/ble-sniffer.py",         "/tmp/ble-sniffer.py",          "scripts", "0755"),
-    ("scripts/ble-proxy-profiler.py",  "/tmp/ble-proxy-profiler.py",   "scripts", "0755"),
-    ("scripts/ble-gatt-mirror.py",     "/tmp/ble-gatt-mirror.py",      "scripts", "0755"),
-    ("scripts/apply-rules.py",         "/tmp/apply-rules.py",          "scripts", "0755"),
-    ("scripts/network-topology.py",    "/tmp/network-topology.py",     "scripts", "0755"),
-    ("scripts/topology_config.py",     "/tmp/topology_config.py",      "scripts", "0644"),
+    ("scripts/ble-scanner-v2.py",      f"{PERIMETERCONTROL_TMP_PATH}/ble-scanner-v2.py",      "scripts", "0755"),
+    ("scripts/ble-sniffer.py",         f"{PERIMETERCONTROL_TMP_PATH}/ble-sniffer.py",          "scripts", "0755"),
+    ("scripts/ble-proxy-profiler.py",  f"{PERIMETERCONTROL_TMP_PATH}/ble-proxy-profiler.py",   "scripts", "0755"),
+    ("scripts/ble-gatt-mirror.py",     f"{PERIMETERCONTROL_TMP_PATH}/ble-gatt-mirror.py",      "scripts", "0755"),
+    ("scripts/apply-rules.py",         f"{PERIMETERCONTROL_TMP_PATH}/apply-rules.py",          "scripts", "0755"),
+    ("scripts/network-topology.py",    f"{PERIMETERCONTROL_TMP_PATH}/network-topology.py",     "scripts", "0755"),
+    ("scripts/topology_config.py",     f"{PERIMETERCONTROL_TMP_PATH}/topology_config.py",      "scripts", "0644"),
 ]
 
 # ── Supervisor pip packages ───────────────────────────────────────────────────
@@ -87,11 +93,11 @@ APT_TAG_PACKAGES: dict[str, list[str]] = {
     ],
 }
 
-# Script to symlink system PyGObject into the isolator venv (needed for GStreamer)
-_PYGOBJECT_LINK = """\
-GI_SRC=$(python3 -c "import gi,os; print(os.path.dirname(gi.__file__))" 2>/dev/null)
-VENV_SITE=$(sudo /opt/isolator/venv/bin/python3 -c "import site; print(site.getsitepackages()[0])")
-[ -n "$GI_SRC" ] && [ ! -e "$VENV_SITE/gi" ] && sudo ln -sf "$GI_SRC" "$VENV_SITE/gi"
+# Script to symlink system PyGObject into the PerimeterControl venv (needed for GStreamer)
+_PYGOBJECT_LINK = f"""\
+GI_SRC=$(python3 -c \"import gi,os; print(os.path.dirname(gi.__file__))\" 2>/dev/null)
+VENV_SITE=$(sudo {PERIMETERCONTROL_OPT_PATH}/venv/bin/python3 -c \"import site; print(site.getsitepackages()[0])\")
+[ -n \"$GI_SRC\" ] && [ ! -e \"$VENV_SITE/gi\" ] && sudo ln -sf \"$GI_SRC\" \"$VENV_SITE/gi\"
 echo GI_LINK_OK
 """
 
@@ -240,8 +246,8 @@ def deploy(
     # ── 4. Preflight: check Python interpreter ───────────────────────────
     rc, out, _ = _ssh(
         host, user, ssh_key,
-        "py=$(systemctl status isolator-dashboard --no-pager 2>/dev/null"
-        " | grep -oE '/opt/isolator/[^ ]*python3' | head -n 1);"
+        f"py=$(systemctl status {PERIMETERCONTROL_DASHBOARD_SERVICE} --no-pager 2>/dev/null"
+        f" | grep -oE '{PERIMETERCONTROL_OPT_PATH}/[^ ]*python3' | head -n 1);"
         " if [ -z \"$py\" ]; then echo PY_NOT_FOUND; elif [ -x \"$py\" ]; then echo PY_OK:$py;"
         " else echo PY_NOT_EXEC:$py; fi",
     )
@@ -250,18 +256,18 @@ def deploy(
     # ── 5. Resolve active deploy directory ───────────────────────────────
     rc, out, _ = _ssh(
         host, user, ssh_key,
-        "d=$(systemctl status isolator-dashboard --no-pager 2>/dev/null"
-        " | grep -oE '/opt/isolator/[^ ]*dashboard\\.py' | head -n 1);"
-        " if [ -n \"$d\" ]; then dirname \"$d\"; else echo /opt/isolator/web; fi",
+        f"d=$(systemctl status {PERIMETERCONTROL_DASHBOARD_SERVICE} --no-pager 2>/dev/null"
+        f" | grep -oE '{PERIMETERCONTROL_OPT_PATH}/[^ ]*dashboard\\.py' | head -n 1);"
+        f" if [ -n \"$d\" ]; then dirname \"$d\"; else echo {PERIMETERCONTROL_OPT_PATH}/web; fi",
     )
     active_dir = out.strip()
-    if not active_dir.startswith("/opt/isolator/"):
-        active_dir = "/opt/isolator/web"
+    if not active_dir.startswith(f"{PERIMETERCONTROL_OPT_PATH}/"):
+        active_dir = f"{PERIMETERCONTROL_OPT_PATH}/web"
     _log("resolve active dir", True, active_dir)
 
     # ── 6. Create remote backup ──────────────────────────────────────────
     backup_tag = time.strftime("%Y%m%d_%H%M%S")
-    backup_dir = f"/tmp/isolator-dashboard-backup-{backup_tag}"
+    backup_dir = f"/tmp/network-isolator-dashboard-backup-{backup_tag}"
     web_names = " ".join(Path(r).name for r, *_ in WEB_FILES)
     script_names = " ".join(Path(r).name for r, *_ in SCRIPT_FILES)
     backup_cmd = (
@@ -270,7 +276,7 @@ def deploy(
         f"  [ -f {active_dir}/$f ] && sudo cp -a {active_dir}/$f {backup_dir}/$f 2>/dev/null || true; "
         f"done; "
         f"for f in {script_names}; do"
-        f"  [ -f /opt/isolator/scripts/$f ] && sudo cp -a /opt/isolator/scripts/$f {backup_dir}/$f 2>/dev/null || true; "
+        f"  [ -f /opt/network-isolator/scripts/$f ] && sudo cp -a /opt/network-isolator/scripts/$f {backup_dir}/$f 2>/dev/null || true; "
         f"done"
     )
     rc, _, err = _ssh(host, user, ssh_key, backup_cmd)
@@ -293,7 +299,7 @@ def deploy(
     # ── 8. Install files via sudo install (sets permissions atomically) ──
     rc, _, _ = _ssh(
         host, user, ssh_key,
-        f"sudo mkdir -p {active_dir} /opt/isolator/scripts"
+        f"sudo mkdir -p {active_dir} /opt/network-isolator/scripts"
     )
     install_cmds = []
     for rel, tmp_path, dest, mode in all_files:
@@ -302,7 +308,7 @@ def deploy(
             continue
         remote_dest = (
             f"{active_dir}/{local_f.name}" if dest == "web"
-            else f"/opt/isolator/scripts/{local_f.name}"
+            else f"/opt/network-isolator/scripts/{local_f.name}"
         )
         install_cmds.append(
             f"sudo install -o root -g root -m {mode} {tmp_path} {remote_dest}"
@@ -314,15 +320,15 @@ def deploy(
 
     # ── 9. Sync config (optional) ────────────────────────────────────────
     if sync_config:
-        conf_src = repo_root / "config" / "isolator.conf.yaml"
+        conf_src = repo_root / "config" / "network-isolator.conf.yaml"
         if conf_src.exists():
-            rc, _, err = _scp(host, user, ssh_key, str(conf_src), "/tmp/isolator.conf.yaml")
+            rc, _, err = _scp(host, user, ssh_key, str(conf_src), "/tmp/network-isolator.conf.yaml")
             if rc == 0:
                 rc, _, err = _ssh(
                     host, user, ssh_key,
-                    "set -e; sudo mkdir -p /mnt/isolator/conf; "
-                    "sudo install -o root -g root -m 0644 /tmp/isolator.conf.yaml "
-                    "/mnt/isolator/conf/isolator.conf.yaml",
+                    "set -e; sudo mkdir -p /mnt/network-isolator/conf; "
+                    "sudo install -o root -g root -m 0644 /tmp/network-isolator.conf.yaml "
+                    "/mnt/network-isolator/conf/network-isolator.conf.yaml",
                 )
             _log("sync config", rc == 0, err.strip() if rc != 0 else "")
         else:
@@ -330,9 +336,9 @@ def deploy(
 
     # ── 10. Restart dashboard (with rollback on failure) ─────────────────
     if not no_restart:
-        _ssh(host, user, ssh_key, "sudo systemctl restart isolator-dashboard")
+        _ssh(host, user, ssh_key, "sudo systemctl restart network-isolator-dashboard")
         time.sleep(2)
-        rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active isolator-dashboard")
+        rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active network-isolator-dashboard")
         if rc != 0:
             _log("restart dashboard", False, "Service unhealthy — rolling back")
             # Build rollback using backup copies
@@ -342,12 +348,12 @@ def deploy(
                 bk = f"{backup_dir}/{fname}"
                 target = (
                     f"{active_dir}/{fname}" if dest == "web"
-                    else f"/opt/isolator/scripts/{fname}"
+                    else f"/opt/network-isolator/scripts/{fname}"
                 )
                 rollback_parts.append(
                     f"[ -f {bk} ] && sudo install -o root -g root -m {mode} {bk} {target} || true"
                 )
-            rollback_cmd = "; ".join(rollback_parts) + "; sudo systemctl restart isolator-dashboard"
+            rollback_cmd = "; ".join(rollback_parts) + "; sudo systemctl restart network-isolator-dashboard"
             _ssh(host, user, ssh_key, rollback_cmd)
             _log("rollback dashboard", True)
             sys.exit(1)
@@ -362,7 +368,7 @@ def deploy(
         return
 
     supervisor_dir = repo_root / "supervisor"
-    supervisor_svc = repo_root / "server" / "isolator-supervisor.service"
+    supervisor_svc = repo_root / "server" / "network-isolator-supervisor.service"
 
     if not supervisor_dir.is_dir():
         _log("supervisor phase", True, "supervisor/ not found locally — skipping")
@@ -380,14 +386,14 @@ def deploy(
             _abort("upload supervisor.tar.gz", err.strip())
         _log("upload supervisor.tar.gz", True)
 
-        rc, _, err = _scp(host, user, ssh_key, str(supervisor_svc), "/tmp/isolator-supervisor.service")
+        rc, _, err = _scp(host, user, ssh_key, str(supervisor_svc), "/tmp/network-isolator-supervisor.service")
         if rc != 0:
             _abort("upload supervisor.service", err.strip())
         _log("upload supervisor.service", True)
 
         # Backup existing supervisor
-        _ssh(host, user, ssh_key,
-             "sudo cp -a /opt/isolator/supervisor /tmp/isolator-supervisor-backup 2>/dev/null; true")
+           _ssh(host, user, ssh_key,
+               "sudo cp -a /opt/network-isolator/supervisor /tmp/network-isolator-supervisor-backup 2>/dev/null; true")
 
         # Extract with sudo + --no-same-permissions so tar sets permissions respecting umask.
         # This avoids the 'chmod: Operation not permitted' bug from the PowerShell script
@@ -397,9 +403,9 @@ def deploy(
             "cd /tmp && rm -rf /tmp/supervisor && "
             "sudo tar -xzf /tmp/supervisor.tar.gz "
             "  --no-same-owner --no-same-permissions --mode='u=rw,go=r,a+X' && "
-            "sudo mkdir -p /opt/isolator/supervisor && "
-            "sudo cp -a /tmp/supervisor/. /opt/isolator/supervisor/ && "
-            "sudo chown -R root:root /opt/isolator/supervisor && "
+            "sudo mkdir -p /opt/network-isolator/supervisor && "
+            "sudo cp -a /tmp/supervisor/. /opt/network-isolator/supervisor/ && "
+            "sudo chown -R root:root /opt/network-isolator/supervisor && "
             "echo SUPERVISOR_INSTALLED"
         )
         rc, out, err = _ssh(host, user, ssh_key, sup_extract)
@@ -411,10 +417,10 @@ def deploy(
         rc, out, err = _ssh(
             host, user, ssh_key,
             "set -e; "
-            "sudo install -o root -g root -m 0644 /tmp/isolator-supervisor.service "
-            "  /etc/systemd/system/isolator-supervisor.service && "
+            "sudo install -o root -g root -m 0644 /tmp/network-isolator-supervisor.service "
+            "  /etc/systemd/system/network-isolator-supervisor.service && "
             "sudo systemctl daemon-reload && "
-            "sudo systemctl enable isolator-supervisor.service && "
+            "sudo systemctl enable network-isolator-supervisor.service && "
             "echo SERVICE_UNIT_OK",
         )
         _log("install supervisor.service", rc == 0 and "SERVICE_UNIT_OK" in out,
@@ -424,7 +430,7 @@ def deploy(
         pkgs = " ".join(SUPERVISOR_PIP)
         rc, out, err = _ssh(
             host, user, ssh_key,
-            f"set -e; sudo /opt/isolator/venv/bin/pip install --quiet {pkgs} && echo PIP_OK",
+            f"set -e; sudo /opt/network-isolator/venv/bin/pip install --quiet {pkgs} && echo PIP_OK",
         )
         _log("pip install supervisor deps", rc == 0 and "PIP_OK" in out,
              err.strip() if rc != 0 else "")
@@ -455,7 +461,7 @@ def deploy(
         # Ensure runtime directories exist
         rc, _, err = _ssh(
             host, user, ssh_key,
-            "sudo mkdir -p /opt/isolator/state /var/log/isolator /mnt/isolator/conf && echo DIRS_OK",
+            "sudo mkdir -p /opt/network-isolator/state /var/log/network-isolator /mnt/network-isolator/conf && echo DIRS_OK",
         )
         _log("runtime directories", rc == 0, err.strip() if rc != 0 else "")
 
@@ -468,7 +474,7 @@ def deploy(
                     if f.stem.replace(".service", "") in svc_filter
                 ]
             if svc_yamls:
-                _ssh(host, user, ssh_key, "sudo mkdir -p /mnt/isolator/conf/services")
+                _ssh(host, user, ssh_key, "sudo mkdir -p /mnt/network-isolator/conf/services")
                 deployed = 0
                 for sf in svc_yamls:
                     rc, _, err = _scp(host, user, ssh_key, str(sf), f"/tmp/{sf.name}")
@@ -476,7 +482,7 @@ def deploy(
                         rc, _, err = _ssh(
                             host, user, ssh_key,
                             f"sudo install -o root -g root -m 0644 /tmp/{sf.name} "
-                            f"/mnt/isolator/conf/services/{sf.name}",
+                            f"/mnt/network-isolator/conf/services/{sf.name}",
                         )
                     if rc == 0:
                         deployed += 1
@@ -487,18 +493,18 @@ def deploy(
                 # Validate descriptors on Pi
                 rc, out, _ = _ssh(
                     host, user, ssh_key,
-                    "sudo /opt/isolator/venv/bin/python3 "
-                    "/opt/isolator/supervisor/resources/validate-service-descriptors.py "
-                    "--dir /mnt/isolator/conf/services 2>/dev/null; echo VALIDATE_DONE",
+                    "sudo /opt/network-isolator/venv/bin/python3 "
+                    "/opt/network-isolator/supervisor/resources/validate-service-descriptors.py "
+                    "--dir /mnt/network-isolator/conf/services 2>/dev/null; echo VALIDATE_DONE",
                 )
                 _log("validate descriptors", "VALIDATE_DONE" in out,
                      out.strip() if "VALIDATE_DONE" not in out else "")
 
         # Restart supervisor
         if not no_restart:
-            _ssh(host, user, ssh_key, "sudo systemctl restart isolator-supervisor")
+            _ssh(host, user, ssh_key, "sudo systemctl restart network-isolator-supervisor")
             time.sleep(3)
-            rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active isolator-supervisor")
+            rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active network-isolator-supervisor")
             _log("restart supervisor", rc == 0)
         else:
             _log("restart supervisor", True, "skipped (--no-restart)")
@@ -513,7 +519,7 @@ def deploy(
 # ── CLI entry point ───────────────────────────────────────────────────────────
 def main() -> None:
     p = argparse.ArgumentParser(
-        description="Isolator deploy script — cross-platform replacement for deploy-dashboard-web.ps1"
+        description="Network Isolator deploy script — cross-platform replacement for deploy-dashboard-web.ps1"
     )
     p.add_argument("--config", metavar="FILE",
                    help="YAML deployment config file (all flags below can also live here)")
@@ -534,7 +540,7 @@ def main() -> None:
     p.add_argument("--skip-supervisor", action="store_true",
                    help="Skip Phase 2 supervisor package deploy")
     p.add_argument("--sync-config", action="store_true",
-                   help="Push config/isolator.conf.yaml to Pi runtime path")
+                   help="Push config/network-isolator.conf.yaml to Pi runtime path")
     args = p.parse_args()
 
     # Load YAML config file if provided

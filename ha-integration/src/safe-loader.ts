@@ -3,7 +3,7 @@
  * 
  * Handles async loading of API-dependent components with timeout protection.
  * Guarantees:
- * - Won't hang Home Assistant if Isolator Supervisor API is unreachable
+ * - Won't hang Home Assistant if PerimeterControl Supervisor API is unreachable
  * - Shows loading state with timeout (default 10 seconds)
  * - Graceful fallback if API doesn't respond
  * - Auto-retry with exponential backoff
@@ -14,140 +14,143 @@ import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 export interface SafeLoaderConfig {
-    apiUrl: string;
-    timeout?: number; // milliseconds, default 10000
-    maxRetries?: number; // default 3
-    backoffMultiplier?: number; // default 1.5
-    healthCheckPath?: string; // default '/api/v1/services'
+  apiUrl: string;
+  timeout?: number; // milliseconds, default 10000
+  maxRetries?: number; // default 3
+  backoffMultiplier?: number; // default 1.5
+  healthCheckPath?: string; // default '/api/v1/services'
 }
 
 type LoaderState = 'loading' | 'ready' | 'timeout' | 'error' | 'offline';
 
 @customElement('perimeter-control-safe-loader')
 export class SafeLoader extends LitElement {
-    @property({ attribute: false }) config?: SafeLoaderConfig;
+  @property({ attribute: false }) config?: SafeLoaderConfig;
 
-    @state() private state: LoaderState = 'loading';
-    @state() private isApiHealthy = false;
-    @state() private retryCount = 0;
-    @state() private lastError?: string;
+  @state() private state: LoaderState = 'loading';
+  @state() private isApiHealthy = false;
+  @state() private retryCount = 0;
+  @state() private lastError?: string;
 
-    private loadingTimeout?: NodeJS.Timeout;
-    private healthCheckAbort?: AbortController;
+  private loadingTimeout?: NodeJS.Timeout;
+  private healthCheckAbort?: AbortController;
 
-    connectedCallback() {
-        super.connectedCallback();
-        this.performHealthCheck();
+  connectedCallback() {
+    super.connectedCallback();
+    this.performHealthCheck();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+    if (this.healthCheckAbort) this.healthCheckAbort.abort();
+  }
+
+  private async performHealthCheck() {
+    if (!this.config) {
+      this.state = 'error';
+      this.lastError = 'No configuration provided';
+      return;
     }
 
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
-        if (this.healthCheckAbort) this.healthCheckAbort.abort();
-    }
+    const timeout = this.config.timeout || 10000;
+    const healthCheckPath = this.config.healthCheckPath || '/api/v1/services';
+    const apiUrl = this.config.apiUrl.replace(/\/$/, ''); // Remove trailing slash
 
-    private async performHealthCheck() {
-        if (!this.config) {
-            this.state = 'error';
-            this.lastError = 'No configuration provided';
-            return;
-        }
+    this.state = 'loading';
+    this.healthCheckAbort = new AbortController();
 
-        const timeout = this.config.timeout || 10000;
-        const healthCheckPath = this.config.healthCheckPath || '/api/v1/services';
-        const apiUrl = this.config.apiUrl.replace(/\/$/, ''); // Remove trailing slash
+    // Set timeout timer
+    const timeoutTimer = setTimeout(() => {
+      this.healthCheckAbort?.abort();
+      this.state = 'timeout';
+      const SAFE_LOADER_LABEL = (window as any).PERIMETERCONTROL_SAFE_LOADER_LABEL || 'PerimeterControl Safe Loader';
+      this.lastError = `API did not respond within ${timeout}ms`;
+      console.warn(`[${SAFE_LOADER_LABEL}] Health check timeout: ${apiUrl}`);
+    }, timeout);
 
-        this.state = 'loading';
-        this.healthCheckAbort = new AbortController();
+    try {
+      const response = await fetch(`${apiUrl}${healthCheckPath}`, {
+        method: 'GET',
+        signal: this.healthCheckAbort.signal,
+        headers: { 'Accept': 'application/json' }
+      });
 
-        // Set timeout timer
-        const timeoutTimer = setTimeout(() => {
-            this.healthCheckAbort?.abort();
-            this.state = 'timeout';
-            this.lastError = `API did not respond within ${timeout}ms`;
-            console.warn(`[Isolator Safe Loader] Health check timeout: ${apiUrl}`);
-        }, timeout);
+      clearTimeout(timeoutTimer);
 
-        try {
-            const response = await fetch(`${apiUrl}${healthCheckPath}`, {
-                method: 'GET',
-                signal: this.healthCheckAbort.signal,
-                headers: { 'Accept': 'application/json' }
-            });
-
-            clearTimeout(timeoutTimer);
-
-            if (response.ok) {
-                this.isApiHealthy = true;
-                this.state = 'ready';
-                this.retryCount = 0;
-                console.log('[Isolator Safe Loader] API health check passed:', apiUrl);
-            } else {
-                throw new Error(`API returned ${response.status}: ${response.statusText}`);
-            }
-        } catch (error) {
-            clearTimeout(timeoutTimer);
-
-            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                this.state = 'offline';
-                this.lastError = 'Cannot reach Isolator Supervisor API (network error or CORS issue)';
-            } else if (error instanceof DOMException && error.name === 'AbortError') {
-                // Timeout already handled
-            } else {
-                this.state = 'error';
-                this.lastError = error instanceof Error ? error.message : String(error);
-            }
-
-            console.warn('[Isolator Safe Loader] Health check failed:', this.lastError);
-
-            // Schedule retry with exponential backoff
-            const maxRetries = this.config.maxRetries || 3;
-            if (this.retryCount < maxRetries) {
-                const backoffMultiplier = this.config.backoffMultiplier || 1.5;
-                const delayMs = Math.min(
-                    1000 * Math.pow(backoffMultiplier, this.retryCount),
-                    30000 // Cap at 30 seconds
-                );
-                this.retryCount++;
-                console.log(
-                    `[Isolator Safe Loader] Retrying in ${delayMs}ms (attempt ${this.retryCount}/${maxRetries})`
-                );
-                this.loadingTimeout = setTimeout(() => {
-                    if (this.isConnected) {
-                        this.performHealthCheck();
-                    }
-                }, delayMs);
-            }
-        }
-    }
-
-    retry = () => {
+      if (response.ok) {
+        this.isApiHealthy = true;
+        this.state = 'ready';
         this.retryCount = 0;
-        this.performHealthCheck();
-    };
+        const SAFE_LOADER_LABEL = (window as any).PERIMETERCONTROL_SAFE_LOADER_LABEL || 'PerimeterControl Safe Loader';
+        console.log(`[${SAFE_LOADER_LABEL}] API health check passed:`, apiUrl);
+      } else {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      clearTimeout(timeoutTimer);
 
-    protected render() {
-        switch (this.state) {
-            case 'ready':
-                return html`<slot></slot>`;
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        this.state = 'offline';
+        const SAFE_LOADER_LABEL = (window as any).PERIMETERCONTROL_SAFE_LOADER_LABEL || 'PerimeterControl Safe Loader';
+        this.lastError = `Cannot reach PerimeterControl Supervisor API (network error or CORS issue)`;
+      } else if (error instanceof DOMException && error.name === 'AbortError') {
+        // Timeout already handled
+      } else {
+        this.state = 'error';
+        this.lastError = error instanceof Error ? error.message : String(error);
+      }
 
-            case 'loading':
-                return this.renderLoading();
+      console.warn('[Isolator Safe Loader] Health check failed:', this.lastError);
 
-            case 'timeout':
-                return this.renderTimeout();
-
-            case 'offline':
-                return this.renderOffline();
-
-            case 'error':
-            default:
-                return this.renderError();
-        }
+      // Schedule retry with exponential backoff
+      const maxRetries = this.config.maxRetries || 3;
+      if (this.retryCount < maxRetries) {
+        const backoffMultiplier = this.config.backoffMultiplier || 1.5;
+        const delayMs = Math.min(
+          1000 * Math.pow(backoffMultiplier, this.retryCount),
+          30000 // Cap at 30 seconds
+        );
+        this.retryCount++;
+        console.log(
+          `[Isolator Safe Loader] Retrying in ${delayMs}ms (attempt ${this.retryCount}/${maxRetries})`
+        );
+        this.loadingTimeout = setTimeout(() => {
+          if (this.isConnected) {
+            this.performHealthCheck();
+          }
+        }, delayMs);
+      }
     }
+  }
 
-    private renderLoading() {
-        return html`
+  retry = () => {
+    this.retryCount = 0;
+    this.performHealthCheck();
+  };
+
+  protected render() {
+    switch (this.state) {
+      case 'ready':
+        return html`<slot></slot>`;
+
+      case 'loading':
+        return this.renderLoading();
+
+      case 'timeout':
+        return this.renderTimeout();
+
+      case 'offline':
+        return this.renderOffline();
+
+      case 'error':
+      default:
+        return this.renderError();
+    }
+  }
+
+  private renderLoading() {
+    return html`
       <ha-card>
         <div class="card-content" style="padding: 16px; text-align: center;">
           <div style="font-size: 14px; color: #666;">
@@ -176,10 +179,10 @@ export class SafeLoader extends LitElement {
         </div>
       </ha-card>
     `;
-    }
+  }
 
-    private renderTimeout() {
-        return html`
+  private renderTimeout() {
+    return html`
       <ha-card>
         <div class="card-content" style="padding: 16px;">
           <div style="
@@ -231,10 +234,10 @@ export class SafeLoader extends LitElement {
         </div>
       </ha-card>
     `;
-    }
+  }
 
-    private renderOffline() {
-        return html`
+  private renderOffline() {
+    return html`
       <ha-card>
         <div class="card-content" style="padding: 16px;">
           <div style="
@@ -298,10 +301,10 @@ export class SafeLoader extends LitElement {
         </div>
       </ha-card>
     `;
-    }
+  }
 
-    private renderError() {
-        return html`
+  private renderError() {
+    return html`
       <ha-card>
         <div class="card-content" style="padding: 16px;">
           <div style="
@@ -348,7 +351,7 @@ export class SafeLoader extends LitElement {
         </div>
       </ha-card>
     `;
-    }
+  }
 }
 
 @customElement('isolator-safe-loader')
@@ -356,8 +359,8 @@ export class IsolatorSafeLoaderAlias extends SafeLoader {
 }
 
 declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-safe-loader': SafeLoader;
-        'isolator-safe-loader': SafeLoader;
-    }
+  interface HTMLElementTagNameMap {
+    'perimeter-control-safe-loader': SafeLoader;
+    'isolator-safe-loader': SafeLoader;
+  }
 }

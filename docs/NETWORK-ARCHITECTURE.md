@@ -1,3 +1,4 @@
+# PerimeterControl Network Architecture
 # Network Architecture
 
 ## Overview
@@ -27,7 +28,7 @@ Home Assistant ──SSH──► Pi Target
                
 Deploy Process:
 1. HA connects to Pi via SSH  
-2. HA uploads supervisor + services code via SFTP
+2. HA uploads PerimeterControl supervisor + services code via SFTP
 3. HA runs setup commands on Pi via SSH
 4. Pi starts systemd services (supervisor on port 8080)
 ```
@@ -54,7 +55,7 @@ User Browser ──► Home Assistant UI (entity controls)
 - **Ports on Pi**: 
   - Port 22: SSH (for deployment)
   - Port 8080: Supervisor API (for HA communication)  
-  - Port 3000: Dashboard Web UI (for user access)
+  - Port 3000: PerimeterControl Dashboard Web UI (for user access)
 
 ## Example Network Setup
 

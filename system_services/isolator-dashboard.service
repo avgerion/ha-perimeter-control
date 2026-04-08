@@ -7,9 +7,9 @@ Wants=isolator.service
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/opt/isolator/web
+WorkingDirectory=/opt/PerimeterControl/web
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/opt/isolator/venv/bin/python3 /opt/isolator/web/dashboard.py
+ExecStart=/opt/PerimeterControl/venv/bin/python3 /opt/PerimeterControl/web/dashboard.py
 Restart=on-failure
 RestartSec=10
 
@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/isolator /mnt/isolator
+ReadWritePaths=/var/log/PerimeterControl /mnt/PerimeterControl
 
 [Install]
 WantedBy=multi-user.target

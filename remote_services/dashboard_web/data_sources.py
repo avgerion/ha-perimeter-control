@@ -4,6 +4,7 @@ Data source manager for the Network Isolator dashboard.
 Fetches live data from nftables, dnsmasq, tcpdump, and config files.
 """
 
+
 import logging
 import subprocess
 import json
@@ -11,11 +12,15 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
+import os
 
 import pandas as pd
 import yaml
 
-logger = logging.getLogger('isolator.data_sources')
+# ---------------- Configurable Constants ----------------
+LOGGER_NAME = os.environ.get('NETWORK_ISOLATOR_LOGGER', 'network_isolator.data_sources')
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class DataManager:

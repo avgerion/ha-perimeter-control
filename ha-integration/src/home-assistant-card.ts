@@ -127,33 +127,29 @@ export class ServiceAccessCard extends LitElement {
   }
 }
 
-@customElement('isolator-service-access-card')
-export class IsolatorServiceAccessCardAlias extends ServiceAccessCard {
-}
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'perimeter-control-card': ServiceAccessCard;
-    'isolator-service-access-card': ServiceAccessCard;
+
+  // ─── Configurable Constants ─────────────────────────────────────────────
+  const ISOLATOR_SERVICE_ACCESS_CARD_TAG = (window as any).PERIMETERCONTROL_SERVICE_ACCESS_CARD_TAG || 'perimeter-control-service-access-card';
+
+  @customElement(ISOLATOR_SERVICE_ACCESS_CARD_TAG)
+  export class PerimeterControlServiceAccessCardAlias extends ServiceAccessCard { }
+
+  declare global {
+    interface HTMLElementTagNameMap {
+      'perimeter-control-card': ServiceAccessCard;
+      [typeof ISOLATOR_SERVICE_ACCESS_CARD_TAG]: ServiceAccessCard;
+    }
   }
-}
 
-// Export card metadata for Home Assistant
-(window as any).customCards = (window as any).customCards || [];
-(window as any).customCards.push({
-  type: 'perimeter-control-card',
-  name: 'Perimeter Control',
-  description: 'Control Isolator edge node access, fleet state, and deploy operations',
-  preview: false,
-  documentationURL:
-    'https://github.com/isolator/isolator#ha-integration',
-});
+  // Export card metadata for Home Assistant
+  (window as any).customCards = (window as any).customCards || [];
+  (window as any).customCards.push({
+    type: 'perimeter-control-card',
+    name: 'Perimeter Control',
+    description: 'Control Perimeter Control edge node access, fleet state, and deploy operations',
+    preview: false,
+    documentationURL:
+      'https://github.com/avgerion/ha-perimeter-control#ha-integration',
+  });
 
-(window as any).customCards.push({
-  type: 'isolator-service-access-card',
-  name: 'Perimeter Control (Legacy Type Alias)',
-  description: 'Backward-compatible alias. Prefer custom:perimeter-control-card.',
-  preview: false,
-  documentationURL:
-    'https://github.com/isolator/isolator#ha-integration',
-});

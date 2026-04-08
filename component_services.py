@@ -86,11 +86,20 @@ class PhotoBoothService(BaseService):
         self.add_component(DataLogging(["event", "capture"]), 6)
 
 
+# ─── Configurable Constants ─────────────────────────────────────────────
+import os
+
+# Default config template paths (can be overridden by env/config)
+DEFAULT_CONF_TEMPLATE = os.environ.get('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
+DEFAULT_FIREWALL_RULES_TEMPLATE = os.environ.get('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
+
+
 class NetworkService(BaseService):
-    """Network Isolator service using component composition."""
+    """PerimeterControl network isolator service using component composition."""
     
     def __init__(self):
-        super().__init__("network_isolator")
+        NETWORK_SERVICE_NAME = os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator')
+        super().__init__(NETWORK_SERVICE_NAME)
         
         # Add hardware interface
         self.add_component(NetworkInterface(), 0)
@@ -116,8 +125,8 @@ class NetworkService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "perimeterControl.conf.yaml": "config/templates/network_isolator.conf.yaml",
-            "firewall_rules.yaml": "config/templates/firewall_rules.yaml"
+            "perimeterControl.conf.yaml": DEFAULT_CONF_TEMPLATE,
+            "firewall_rules.yaml": DEFAULT_FIREWALL_RULES_TEMPLATE
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
@@ -240,11 +249,11 @@ def register_service_components():
 
 # Service factory for creating service instances
 SERVICE_REGISTRY = {
-    "ble_gatt_repeater": BleService,
-    "photo_booth": PhotoBoothService,
-    "network_isolator": NetworkService,
-    "wildlife_monitor": WildlifeService,
-    "esl_ap": EslService,
+    os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater'): BleService,
+    os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'): PhotoBoothService,
+    os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator'): NetworkService,
+    os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'): WildlifeService,
+    os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'): EslService,
 }
 
 

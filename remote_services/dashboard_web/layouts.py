@@ -4,8 +4,10 @@ Dashboard layout definitions using Bokeh widgets and plots.
 Creates the visual structure of the Network Isolator Quick View.
 """
 
+
 import logging
 from datetime import datetime
+import os
 
 from bokeh.layouts import column, row
 from bokeh.models import (
@@ -16,7 +18,10 @@ from bokeh.models import (
 from bokeh.plotting import figure
 from bokeh.transform import linear_cmap
 
-logger = logging.getLogger('isolator.layouts')
+# ---------------- Configurable Constants ----------------
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.layouts')
+
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def create_dashboard_layout(data_manager):

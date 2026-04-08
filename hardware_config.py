@@ -1,3 +1,7 @@
+# ─── Configurable Constants ─────────────────────────────────────────────
+import os
+
+NETWORK_SERVICE_NAME = os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator')
 """Hardware-to-Service mapping configuration.
 
 This file defines which services handle which hardware types.
@@ -10,7 +14,7 @@ assigned to capabilities and services.
 HARDWARE_MAPPINGS = {
     "bluetooth": ("ble_gatt_repeater", []),
     "camera": ("photo_booth", ["wildlife_monitor"]),  # Wildlife can also use cameras
-    "network": ("network_isolator", []),
+    "network": (NETWORK_SERVICE_NAME, []),
     "i2c_sensor": ("wildlife_monitor", []),
     "bluetooth_advertising": ("esl_ap", []),
     "gpio": ("wildlife_monitor", []),
@@ -22,7 +26,7 @@ HARDWARE_MAPPINGS = {
 SERVICE_HARDWARE_REQUIREMENTS = {
     "ble_gatt_repeater": ["bluetooth"],
     "photo_booth": ["camera"],
-    "network_isolator": ["network"],
+    NETWORK_SERVICE_NAME: ["network"],
     "wildlife_monitor": ["i2c_sensor", "camera"],  # Can work with either
     "esl_ap": ["bluetooth_advertising"],
 }
