@@ -1,5 +1,10 @@
 # Network Isolator - Deployment Guide
 
+(This file was moved from the project root to avoid confusion with PerimeterControl. It contains deployment instructions for the standalone Network Isolator service.)
+
+# --- Original Content Below ---
+# Network Isolator - Deployment Guide
+
 This guide walks you through deploying the Network Isolator to your Raspberry Pi.
 
 ## Prerequisites
@@ -404,3 +409,4 @@ sudo journalctl -u isolator -u isolator-monitor --since "10 minutes ago"
 ```
 
 Common issues and solutions in [docs/](../docs/)
+
