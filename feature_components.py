@@ -132,31 +132,38 @@ class ConfigurationManager(ServiceComponent):
         
         if use_templates:
             # config_files contains filename -> template_path mapping
-            self.config_files = self._load_template_files(config_files)
+            self._template_mappings = config_files
+            self.config_files = None  # Will be loaded async
         else:
             # config_files contains filename -> content mapping (legacy)
             self.config_files = config_files
     
-    def _load_template_files(self, template_mappings: Dict[str, str]) -> Dict[str, str]:
-        """Load configuration content from template files."""
+    async def _load_template_files(self, template_mappings: Dict[str, str], hass=None) -> Dict[str, str]:
+        """Load configuration content from template files asynchronously."""
+        import os
         config_content = {}
+        # Resolve relative paths from the integration directory
+        integration_dir = os.path.dirname(os.path.abspath(__file__))
         for filename, template_path in template_mappings.items():
             try:
-                import os
-                # Resolve relative paths from workspace root
-                workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                full_path = os.path.join(workspace_root, template_path)
-                
-                with open(full_path, 'r', encoding='utf-8') as f:
-                    config_content[filename] = f.read()
-                    
+                full_path = os.path.join(integration_dir, template_path)
+                if hass is not None:
+                    # Use Home Assistant's executor to avoid blocking event loop
+                    content = await hass.async_add_executor_job(self._read_file, full_path)
+                else:
+                    with open(full_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                config_content[filename] = content
                 self.logger.debug(f"Loaded template {template_path} for {filename}")
             except Exception as exc:
                 self.logger.error(f"Failed to load template {template_path}: {exc}")
-                # Fallback to empty content
                 config_content[filename] = f"# Template load failed: {exc}"
-                
         return config_content
+
+    @staticmethod
+    def _read_file(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return f.read()
     
     @property
     def resource_requirements(self) -> ResourceRequirement:
@@ -166,17 +173,18 @@ class ConfigurationManager(ServiceComponent):
         """Configuration management is always available."""
         return True
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, hass=None) -> bool:
         """Deploy configuration files."""
         try:
+            # If using templates, load them asynchronously
+            if self.use_templates and self.config_files is None:
+                self.config_files = await self._load_template_files(self._template_mappings, hass=hass)
             for filename, content in self.config_files.items():
                 config_path = deployment_path / "config" / filename
-                
                 # Upload configuration file
                 await ssh_client.upload_file_content(content, str(config_path))
                 self.deployed_configs.add(filename)
                 self.logger.debug(f"Deployed config: {filename}")
-            
             self.logger.info(f"Deployed {len(self.config_files)} configuration files")
             return True
         except Exception as exc:

@@ -206,7 +206,7 @@ class BaseService:
         
         return True
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, hass=None) -> bool:
         """Deploy this service using component composition."""
         try:
             # Validate before deployment
@@ -220,10 +220,15 @@ class BaseService:
             for comp_name in deployment_order:
                 component = self._components[comp_name]
                 self.logger.info(f"Deploying component: {comp_name}")
-                
-                if not await component.deploy(ssh_client, deployment_path):
-                    self.logger.error(f"Component {comp_name} deployment failed")
-                    return False
+                # Pass hass to ConfigurationManager for non-blocking file I/O
+                if component.__class__.__name__ == "ConfigurationManager":
+                    if not await component.deploy(ssh_client, deployment_path, hass=hass):
+                        self.logger.error(f"Component {comp_name} deployment failed")
+                        return False
+                else:
+                    if not await component.deploy(ssh_client, deployment_path):
+                        self.logger.error(f"Component {comp_name} deployment failed")
+                        return False
             
             self.logger.info(f"Service {self.service_id} deployed successfully")
             return True
