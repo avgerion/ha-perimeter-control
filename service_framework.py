@@ -406,7 +406,7 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
         try:
             await asyncio.wait_for(
                 ssh_client.async_run("sudo apt-get update"), 
-                timeout=30.0
+                timeout=90.0
             )
         except (Exception, asyncio.TimeoutError) as update_exc:
             logger.warning(f"apt-get update failed/timed out: {update_exc}")

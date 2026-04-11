@@ -73,7 +73,7 @@ ha-integration/node_modules/
 # Temporary files
 *.tmp
 *.temp
-*.tar.gz
+*.tar.gz-get
 *.zip
 
 # Local development
