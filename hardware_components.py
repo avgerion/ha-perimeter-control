@@ -224,21 +224,35 @@ class CameraInterface(HardwareInterface):
         return entities
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Deploy camera interface components."""
+        """Deploy camera interface components with pip check and auto-install."""
         try:
             # Install camera packages using the robust utility
             packages = ["v4l-utils", "ffmpeg", "python3-opencv"]
             if not await robust_system_package_install(ssh_client, packages, self.logger):
                 return False
-            
+
+            # Ensure pip is installed for python3
+            pip_check_cmd = "python3 -m pip --version 2>/dev/null || echo 'not found'"
+            pip_result = await ssh_client.async_run(pip_check_cmd)
+            if "not found" in pip_result or "No module named pip" in pip_result:
+                self.logger.info("python3-pip not found, installing via apt-get...")
+                # Install pip using apt-get
+                pip_install_cmd = "sudo apt-get update && sudo apt-get install -y python3-pip"
+                await ssh_client.async_run(pip_install_cmd)
+                # Re-check pip
+                pip_result = await ssh_client.async_run(pip_check_cmd)
+                if "not found" in pip_result or "No module named pip" in pip_result:
+                    self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
+                    return False
+
             # Install Python camera packages
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
             pip_cmd = f"python3 -m pip install {' '.join(pip_packages)}"
             await ssh_client.async_run(pip_cmd)
-            
+
             # Enable camera interface
             await ssh_client.async_run("sudo raspi-config nonint do_camera 0")
-            
+
             return True
         except Exception as exc:
             self.logger.error(f"Camera deployment failed: {exc}")
