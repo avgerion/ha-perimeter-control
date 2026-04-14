@@ -224,18 +224,19 @@ class CameraInterface(HardwareInterface):
         return entities
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Deploy camera interface components with pip check and auto-install."""
+        """Deploy camera interface components with pip check and auto-install using venv Python."""
         try:
+            REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
             # Install camera packages using the robust utility
             packages = ["v4l-utils", "ffmpeg", "python3-opencv"]
             if not await robust_system_package_install(ssh_client, packages, self.logger):
                 return False
 
-            # Ensure pip is installed for python3
-            pip_check_cmd = "python3 -m pip --version 2>/dev/null || echo 'not found'"
+            # Ensure pip is installed for venv python
+            pip_check_cmd = f"{REMOTE_VENV}/bin/python3 -m pip --version 2>/dev/null || echo 'not found'"
             pip_result = await ssh_client.async_run(pip_check_cmd)
             if "not found" in pip_result or "No module named pip" in pip_result:
-                self.logger.info("python3-pip not found, installing via robust_system_package_install...")
+                self.logger.info("venv pip not found, installing via robust_system_package_install...")
                 if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
                     self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                     return False
@@ -245,9 +246,9 @@ class CameraInterface(HardwareInterface):
                     self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                     return False
 
-            # Install Python camera packages
+            # Install Python camera packages using venv python
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
-            pip_cmd = f"python3 -m pip install {' '.join(pip_packages)}"
+            pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
             await ssh_client.async_run(pip_cmd)
 
             # Enable camera interface
@@ -255,7 +256,6 @@ class CameraInterface(HardwareInterface):
             return True
         except Exception as exc:
             self.logger.error(f"Camera deployment failed: {exc}")
-            return False
             return False
 
 

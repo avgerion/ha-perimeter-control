@@ -61,17 +61,18 @@ class PythonDependencies(ServiceComponent):
             return True  # Allow deployment to proceed
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Install Python packages."""
+        """Install Python packages using the venv Python."""
         try:
             if not self.packages:
                 return True
-            
-            # Install packages
+
+            # Use the venv Python for installation
+            REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
             packages_str = ' '.join(self.packages)
-            install_cmd = f"python3 -m pip install {packages_str}"
+            install_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install {packages_str}"
             await ssh_client.async_run(install_cmd)
             self.installed_packages.update(self.packages)
-            
+
             self.logger.info(f"Installed Python packages: {packages_str}")
             return True
         except Exception as exc:
