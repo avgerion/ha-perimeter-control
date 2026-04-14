@@ -224,7 +224,7 @@ class CameraInterface(HardwareInterface):
         return entities
     
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Deploy camera interface components with pip check and auto-install using venv Python."""
+        """Deploy camera interface components with robust pip check and auto-install using venv Python."""
         try:
             REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
             # Install camera packages using the robust utility
@@ -235,14 +235,16 @@ class CameraInterface(HardwareInterface):
             # Ensure pip is installed for venv python
             pip_check_cmd = f"{REMOTE_VENV}/bin/python3 -m pip --version 2>/dev/null || echo 'not found'"
             pip_result = await ssh_client.async_run(pip_check_cmd)
-            if "not found" in pip_result or "No module named pip" in pip_result:
-                self.logger.info("venv pip not found, installing via robust_system_package_install...")
+            self.logger.info(f"venv pip check output: {pip_result!r}")
+            if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
+                self.logger.info("venv pip not found or not working, installing via robust_system_package_install...")
                 if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
                     self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                     return False
                 # Re-check pip
                 pip_result = await ssh_client.async_run(pip_check_cmd)
-                if "not found" in pip_result or "No module named pip" in pip_result:
+                self.logger.info(f"venv pip re-check output: {pip_result!r}")
+                if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
                     self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                     return False
 
