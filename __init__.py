@@ -89,18 +89,14 @@ async def _register_services(hass: HomeAssistant) -> None:
     """Register integration services."""
     
     async def handle_deploy(call: ServiceCall) -> None:
-        """Handle deploy service call."""
+        """Handle deploy service call (runs in background)."""
         force = call.data.get("force", False)
-        
-        # Deploy to all configured devices
+
+        # Deploy to all configured devices in background
         for entry_id, coordinator in hass.data[DOMAIN].items():
             if isinstance(coordinator, PerimeterControlCoordinator):
-                _LOGGER.info("Deploying to device %s (force=%s)", coordinator._entry.data.get("host"), force)
-                success = await coordinator.async_deploy()
-                if success:
-                    _LOGGER.info("Deployment to %s completed successfully", coordinator._entry.data.get("host"))
-                else:
-                    _LOGGER.error("Deployment to %s failed", coordinator._entry.data.get("host"))
+                _LOGGER.info("Deploying to device %s (force=%s) [background]", coordinator._entry.data.get("host"), force)
+                hass.async_create_task(coordinator.async_deploy())
 
     async def handle_trigger_capability(call: ServiceCall) -> None:
         """Handle trigger_capability service call."""
