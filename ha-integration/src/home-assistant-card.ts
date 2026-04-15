@@ -131,14 +131,14 @@ declare global {
 
   // ─── Configurable Constants ─────────────────────────────────────────────
   const ISOLATOR_SERVICE_ACCESS_CARD_TAG = (window as any).PERIMETERCONTROL_SERVICE_ACCESS_CARD_TAG || 'perimeter-control-service-access-card';
-
   @customElement(ISOLATOR_SERVICE_ACCESS_CARD_TAG)
   export class PerimeterControlServiceAccessCardAlias extends ServiceAccessCard { }
 
   declare global {
     interface HTMLElementTagNameMap {
       'perimeter-control-card': ServiceAccessCard;
-      [typeof ISOLATOR_SERVICE_ACCESS_CARD_TAG]: ServiceAccessCard;
+      // Optionally, add the alias as a string literal if you want to support it:
+      // 'perimeter-control-service-access-card-alias': ServiceAccessCard;
     }
   }
 

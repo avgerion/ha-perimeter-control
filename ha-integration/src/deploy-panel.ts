@@ -24,6 +24,8 @@ export interface DeployPanelConfig {
     services?: string[];
 }
 
+export { }
+
 interface ProgressEntry {
     phase: string;
     message: string;
@@ -104,6 +106,7 @@ export class DeployPanel extends LitElement {
             this._deploying = false;
         }
     }
+
 
     private _startPolling(entryId: string) {
         this._stopPolling();
@@ -420,21 +423,20 @@ export class DeployPanel extends LitElement {
             font-size: 11px;
         }
     `;
+
 }
 
+export { }
+
+// ─── Configurable Constants ─────────────────────────────────────────────
+const ISOLATOR_DEPLOY_PANEL_TAG = (window as any).PERIMETERCONTROL_DEPLOY_PANEL_TAG || 'perimeter-control-deploy-panel';
+@customElement(ISOLATOR_DEPLOY_PANEL_TAG)
+export class PerimeterControlDeployPanelAlias extends DeployPanel { }
+
 declare global {
-
-    // ─── Configurable Constants ─────────────────────────────────────────────
-    const ISOLATOR_DEPLOY_PANEL_TAG = (window as any).PERIMETERCONTROL_DEPLOY_PANEL_TAG || 'perimeter-control-deploy-panel';
-
-    @customElement(ISOLATOR_DEPLOY_PANEL_TAG)
-    export class PerimeterControlDeployPanelAlias extends DeployPanel { }
-
-    declare global {
-        interface HTMLElementTagNameMap {
-            'perimeter-control-deploy-panel': DeployPanel;
-            [typeof ISOLATOR_DEPLOY_PANEL_TAG]: DeployPanel;
-        }
+    interface HTMLElementTagNameMap {
+        'perimeter-control-deploy-panel': DeployPanel;
+        // Optionally, add the alias as a string literal if you want to support it:
+        // 'perimeter-control-deploy-panel-alias': DeployPanel;
     }
-
 }

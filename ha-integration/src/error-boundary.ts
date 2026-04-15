@@ -199,17 +199,19 @@ ${this.error.stack || 'No stack trace available'}</pre>
   }
 }
 
+export { }
+
 declare global {
 
   const ISOLATOR_ERROR_BOUNDARY_TAG = (window as any).PERIMETERCONTROL_ERROR_BOUNDARY_TAG || 'perimeter-control-error-boundary';
-
   @customElement(ISOLATOR_ERROR_BOUNDARY_TAG)
   export class PerimeterControlErrorBoundaryAlias extends ErrorBoundary { }
 
   declare global {
     interface HTMLElementTagNameMap {
       'perimeter-control-error-boundary': ErrorBoundary;
-      [typeof ISOLATOR_ERROR_BOUNDARY_TAG]: ErrorBoundary;
+      // Optionally, add the alias as a string literal if you want to support it:
+      // 'perimeter-control-error-boundary-alias': ErrorBoundary;
     }
   }
 }
