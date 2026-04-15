@@ -237,16 +237,29 @@ class CameraInterface(HardwareInterface):
             pip_result = await ssh_client.async_run(pip_check_cmd)
             self.logger.info(f"venv pip check output: {pip_result!r}")
             if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
-                self.logger.info("venv pip not found or not working, installing via robust_system_package_install...")
-                if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
-                    self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
-                    return False
+                self.logger.info("venv pip not found or not working, running ensurepip and pip upgrade...")
+                # Try ensurepip
+                ensurepip_cmd = f"{REMOTE_VENV}/bin/python3 -m ensurepip --upgrade || true"
+                await ssh_client.async_run(ensurepip_cmd)
+                # Upgrade pip (ignore errors)
+                upgrade_pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install --upgrade pip || true"
+                await ssh_client.async_run(upgrade_pip_cmd)
                 # Re-check pip
                 pip_result = await ssh_client.async_run(pip_check_cmd)
                 self.logger.info(f"venv pip re-check output: {pip_result!r}")
                 if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
-                    self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
-                    return False
+                    self.logger.info("venv pip still not found, installing system python3-pip as fallback...")
+                    if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
+                        self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
+                        return False
+                    # Try ensurepip and upgrade again
+                    await ssh_client.async_run(ensurepip_cmd)
+                    await ssh_client.async_run(upgrade_pip_cmd)
+                    pip_result = await ssh_client.async_run(pip_check_cmd)
+                    self.logger.info(f"venv pip final check output: {pip_result!r}")
+                    if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
+                        self.logger.error("Failed to ensure pip in venv. Aborting camera deployment.")
+                        return False
 
             # Install Python camera packages using venv python
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
