@@ -436,3 +436,5 @@ declare global {
             [typeof ISOLATOR_DEPLOY_PANEL_TAG]: DeployPanel;
         }
     }
+
+}

@@ -152,4 +152,4 @@ declare global {
     documentationURL:
       'https://github.com/avgerion/ha-perimeter-control#ha-integration',
   });
-
+}

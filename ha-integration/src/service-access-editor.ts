@@ -12,38 +12,38 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 interface AccessProfile {
-    mode: 'isolated' | 'upstream' | 'passthrough';
-    bind_address: string;
-    port: number;
-    tls_mode: 'disabled' | 'self_signed' | 'external' | 'custom';
-    cert_file?: string;
-    key_file?: string;
-    auth_mode: 'none' | 'token' | 'oauth2' | 'mTLS';
-    allowed_origins: string[];
-    exposure_scope: 'local_only' | 'lan_only' | 'wan_limited' | 'wan_full';
+  mode: 'isolated' | 'upstream' | 'passthrough';
+  bind_address: string;
+  port: number;
+  tls_mode: 'disabled' | 'self_signed' | 'external' | 'custom';
+  cert_file?: string;
+  key_file?: string;
+  auth_mode: 'none' | 'token' | 'oauth2' | 'mTLS';
+  allowed_origins: string[];
+  exposure_scope: 'local_only' | 'lan_only' | 'wan_limited' | 'wan_full';
 }
 
 interface ServiceInfo {
-    id: string;
-    name: string;
-    version: string;
-    descriptor_file: string;
-    config_file: string;
+  id: string;
+  name: string;
+  version: string;
+  descriptor_file: string;
+  config_file: string;
 }
 
 @customElement('perimeter-control-service-access-editor')
 export class ServiceAccessEditor extends LitElement {
-    @property({ type: String }) apiBaseUrl = 'http://localhost:8080'; // Supervisor API URL
-    @property({ type: String }) serviceId: string = '';
-    @property({ type: Object }) service?: ServiceInfo;
+  @property({ type: String }) apiBaseUrl = 'http://localhost:8080'; // Supervisor API URL
+  @property({ type: String }) serviceId: string = '';
+  @property({ type: Object }) service?: ServiceInfo;
 
-    @state() private accessProfile: AccessProfile | null = null;
-    @state() private loading = true;
-    @state() private saving = false;
-    @state() private error: string | null = null;
-    @state() private successMessage: string | null = null;
+  @state() private accessProfile: AccessProfile | null = null;
+  @state() private loading = true;
+  @state() private saving = false;
+  @state() private error: string | null = null;
+  @state() private successMessage: string | null = null;
 
-    static styles = css`
+  static styles = css`
     :host {
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
@@ -266,93 +266,93 @@ export class ServiceAccessEditor extends LitElement {
     }
   `;
 
-    async connectedCallback() {
-        super.connectedCallback();
-        if (this.serviceId) {
-            await this.loadAccessProfile();
-        }
+  async connectedCallback() {
+    super.connectedCallback();
+    if (this.serviceId) {
+      await this.loadAccessProfile();
     }
+  }
 
-    async loadAccessProfile() {
-        this.loading = true;
-        this.error = null;
-        try {
-            const url = `${this.apiBaseUrl}/api/v1/services/${this.serviceId}/access`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`API returned ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-            this.accessProfile = data.access_profile;
-        } catch (err) {
-            this.error = err instanceof Error ? err.message : 'Failed to load access profile';
-        } finally {
-            this.loading = false;
-        }
+  async loadAccessProfile() {
+    this.loading = true;
+    this.error = null;
+    try {
+      const url = `${this.apiBaseUrl}/api/v1/services/${this.serviceId}/access`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      this.accessProfile = data.access_profile;
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : 'Failed to load access profile';
+    } finally {
+      this.loading = false;
     }
+  }
 
-    private async saveAccessProfile() {
-        if (!this.accessProfile) return;
+  private async saveAccessProfile() {
+    if (!this.accessProfile) return;
 
-        this.saving = true;
-        this.error = null;
-        this.successMessage = null;
+    this.saving = true;
+    this.error = null;
+    this.successMessage = null;
 
-        try {
-            const url = `${this.apiBaseUrl}/api/v1/services/${this.serviceId}/access`;
-            const response = await fetch(url, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(this.accessProfile),
-            });
+    try {
+      const url = `${this.apiBaseUrl}/api/v1/services/${this.serviceId}/access`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.accessProfile),
+      });
 
-            if (!response.ok) {
-                const errorBody = await response.text();
-                throw new Error(`API returned ${response.status}: ${errorBody || response.statusText}`);
-            }
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`API returned ${response.status}: ${errorBody || response.statusText}`);
+      }
 
-            this.successMessage = 'Access profile updated successfully!';
-            setTimeout(() => { this.successMessage = null; }, 3000);
-        } catch (err) {
-            this.error = err instanceof Error ? err.message : 'Failed to save access profile';
-        } finally {
-            this.saving = false;
-        }
+      this.successMessage = 'Access profile updated successfully!';
+      setTimeout(() => { this.successMessage = null; }, 3000);
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : 'Failed to save access profile';
+    } finally {
+      this.saving = false;
     }
+  }
 
-    private updateField(field: keyof AccessProfile, value: any) {
-        if (!this.accessProfile) return;
-        this.accessProfile = { ...this.accessProfile, [field]: value };
+  private updateField(field: keyof AccessProfile, value: any) {
+    if (!this.accessProfile) return;
+    this.accessProfile = { ...this.accessProfile, [field]: value };
+  }
+
+  private addOrigin(origin: string) {
+    if (!this.accessProfile || !origin.trim()) return;
+    const newOrigins = [...(this.accessProfile.allowed_origins || [])];
+    if (!newOrigins.includes(origin)) {
+      newOrigins.push(origin);
+      this.updateField('allowed_origins', newOrigins);
     }
+  }
 
-    private addOrigin(origin: string) {
-        if (!this.accessProfile || !origin.trim()) return;
-        const newOrigins = [...(this.accessProfile.allowed_origins || [])];
-        if (!newOrigins.includes(origin)) {
-            newOrigins.push(origin);
-            this.updateField('allowed_origins', newOrigins);
-        }
-    }
+  private removeOrigin(index: number) {
+    if (!this.accessProfile) return;
+    const newOrigins = this.accessProfile.allowed_origins.filter((_, i) => i !== index);
+    this.updateField('allowed_origins', newOrigins);
+  }
 
-    private removeOrigin(index: number) {
-        if (!this.accessProfile) return;
-        const newOrigins = this.accessProfile.allowed_origins.filter((_, i) => i !== index);
-        this.updateField('allowed_origins', newOrigins);
-    }
-
-    protected render() {
-        if (this.loading) {
-            return html`
+  protected render() {
+    if (this.loading) {
+      return html`
         <div class="container">
           <div class="info-box loading">
             <span class="spinner"></span> Loading access profile...
           </div>
         </div>
       `;
-        }
+    }
 
-        if (this.error) {
-            return html`
+    if (this.error) {
+      return html`
         <div class="container">
           <div class="info-box error">${this.error}</div>
           <div class="actions">
@@ -362,13 +362,13 @@ export class ServiceAccessEditor extends LitElement {
           </div>
         </div>
       `;
-        }
+    }
 
-        if (!this.accessProfile) {
-            return html`<div class="container">No access profile available</div>`;
-        }
+    if (!this.accessProfile) {
+      return html`<div class="container">No access profile available</div>`;
+    }
 
-        return html`
+    return html`
       <div class="container">
         <div class="header">
           <h3>${this.service?.name || this.serviceId}</h3>
@@ -376,8 +376,8 @@ export class ServiceAccessEditor extends LitElement {
         </div>
 
         ${this.successMessage
-                ? html` <div class="info-box success">${this.successMessage}</div> `
-                : ''}
+        ? html` <div class="info-box success">${this.successMessage}</div> `
+        : ''}
         ${this.error ? html` <div class="info-box error">${this.error}</div> ` : ''}
 
         <div class="form-grid">
@@ -478,16 +478,16 @@ export class ServiceAccessEditor extends LitElement {
               ?disabled=${this.saving}
               placeholder="https://example.com (one per line)"
               @blur=${(e: Event) => {
-                const value = (e.target as HTMLTextAreaElement).value.trim();
-                if (value) {
-                    this.addOrigin(value);
-                    (e.target as HTMLTextAreaElement).value = '';
-                }
-            }}
+        const value = (e.target as HTMLTextAreaElement).value.trim();
+        if (value) {
+          this.addOrigin(value);
+          (e.target as HTMLTextAreaElement).value = '';
+        }
+      }}
               rows="2"
             ></textarea>
             ${this.accessProfile.allowed_origins.length > 0
-                ? html`
+        ? html`
                   <div class="origins-list">
                     ${this.accessProfile.allowed_origins.map((origin, idx) => html`
                       <div class="origin-item">
@@ -503,7 +503,7 @@ export class ServiceAccessEditor extends LitElement {
                     `)}
                   </div>
                 `
-                : ''}
+        : ''}
           </div>
         </div>
 
@@ -525,7 +525,7 @@ export class ServiceAccessEditor extends LitElement {
         </div>
       </div>
     `;
-    }
+  }
 }
 
 @customElement('isolator-service-access-editor')
@@ -533,8 +533,8 @@ export class IsolatorServiceAccessEditorAlias extends ServiceAccessEditor {
 }
 
 declare global {
-    interface HTMLElementTagNameMap {
-        'perimeter-control-service-access-editor': ServiceAccessEditor;
-        'isolator-service-access-editor': ServiceAccessEditor;
-    }
+  interface HTMLElementTagNameMap {
+    'perimeter-control-service-access-editor': ServiceAccessEditor;
+    'isolator-service-access-editor': ServiceAccessEditor;
+  }
 }

@@ -212,3 +212,4 @@ declare global {
       [typeof ISOLATOR_ERROR_BOUNDARY_TAG]: ErrorBoundary;
     }
   }
+}
