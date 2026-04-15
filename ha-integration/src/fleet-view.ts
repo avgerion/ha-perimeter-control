@@ -639,3 +639,4 @@ declare global {
       [typeof ISOLATOR_FLEET_VIEW_TAG]: FleetView;
     }
   }
+}
