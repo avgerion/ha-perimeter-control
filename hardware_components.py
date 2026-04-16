@@ -223,8 +223,9 @@ class CameraInterface(HardwareInterface):
         
         return entities
     
+
     async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
-        """Deploy camera interface components with robust pip check and auto-install using venv Python."""
+        """Deploy camera interface components with robust pip check and auto-install using venv Python, with detailed logging of stdout/stderr."""
         try:
             REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
             # Install camera packages using the robust utility
@@ -238,12 +239,14 @@ class CameraInterface(HardwareInterface):
             self.logger.info(f"venv pip check output: {pip_result!r}")
             if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
                 self.logger.info("venv pip not found or not working, running ensurepip and pip upgrade...")
-                # Try ensurepip
+                # Try ensurepip with logging
                 ensurepip_cmd = f"{REMOTE_VENV}/bin/python3 -m ensurepip --upgrade || true"
-                await ssh_client.async_run(ensurepip_cmd)
-                # Upgrade pip (ignore errors)
+                ensurepip_out = await ssh_client.async_run(f"{ensurepip_cmd} 2>&1")
+                self.logger.warning(f"ensurepip stdout/stderr: {ensurepip_out!r}")
+                # Upgrade pip (ignore errors, log output)
                 upgrade_pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install --upgrade pip || true"
-                await ssh_client.async_run(upgrade_pip_cmd)
+                upgradepip_out = await ssh_client.async_run(f"{upgrade_pip_cmd} 2>&1")
+                self.logger.warning(f"pip install --upgrade pip stdout/stderr: {upgradepip_out!r}")
                 # Re-check pip
                 pip_result = await ssh_client.async_run(pip_check_cmd)
                 self.logger.info(f"venv pip re-check output: {pip_result!r}")
@@ -252,9 +255,11 @@ class CameraInterface(HardwareInterface):
                     if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
                         self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                         return False
-                    # Try ensurepip and upgrade again
-                    await ssh_client.async_run(ensurepip_cmd)
-                    await ssh_client.async_run(upgrade_pip_cmd)
+                    # Try ensurepip and upgrade again, with logging
+                    ensurepip_out2 = await ssh_client.async_run(f"{ensurepip_cmd} 2>&1")
+                    self.logger.warning(f"ensurepip (2nd) stdout/stderr: {ensurepip_out2!r}")
+                    upgradepip_out2 = await ssh_client.async_run(f"{upgrade_pip_cmd} 2>&1")
+                    self.logger.warning(f"pip install --upgrade pip (2nd) stdout/stderr: {upgradepip_out2!r}")
                     pip_result = await ssh_client.async_run(pip_check_cmd)
                     self.logger.info(f"venv pip final check output: {pip_result!r}")
                     if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
@@ -264,7 +269,8 @@ class CameraInterface(HardwareInterface):
             # Install Python camera packages using venv python
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
             pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
-            await ssh_client.async_run(pip_cmd)
+            pip_install_out = await ssh_client.async_run(f"{pip_cmd} 2>&1")
+            self.logger.warning(f"pip install camera packages stdout/stderr: {pip_install_out!r}")
 
             # Enable camera interface
             await ssh_client.async_run("sudo raspi-config nonint do_camera 0")
