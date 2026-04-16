@@ -362,9 +362,11 @@ export class PerimeterControlPanel extends LitElement {
 
     } catch (error: any) {
       let err = error;
-      if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      if (!(err instanceof Error)) {
+        err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      }
       console.error('[Panel] Error in render:', err);
-      this.handleError(err);
+      this.handleError(err as Error);
       return this.renderError();
     }
   }
@@ -413,107 +415,74 @@ export class PerimeterControlPanel extends LitElement {
       await action();
     } catch (error) {
       let err = error;
-      if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
-      this.handleError(err);
+      if (!(err instanceof Error)) {
+        err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      }
+      this.handleError(err as Error);
     }
   }
 
   private getPerimeterControlDevices() {
-    try {
-      // Defensive check - ensure HA and entities exist
-      if (!this.hass || !this.hass.entities) {
-        return [];
-      }
-
-      // Get all entities - be generic about detection
-      const entities = Object.values(this.hass.entities || {});
-
-      // Filter for entities from our integration - look for our integration attributes
-      const integrationEntities = entities.filter(entity => {
-        try {
-          const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
-          const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
-          const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
-
-          // Accept entities that have integration markers or supervisor-style attributes  
-          return hasCapabilityId || hasIntegrationDomain ||
-            (hasSupervisorAttributes && (entity.entity_id.includes('camera') ||
-              entity.entity_id.includes('sensor') ||
-              entity.entity_id.includes('button') ||
-              entity.entity_id.includes('binary_sensor')));
-          // Defensive check - ensure HA and entities exist
-          if (!this.hass || !this.hass.entities) {
-            return [];
-          }
-
-          // Get all entities - be generic about detection
-          const entities = Object.values(this.hass.entities || {});
-
-          // Filter for entities from our integration - look for our integration attributes
-          const integrationEntities = entities.filter(entity => {
-            try {
-              const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
-              const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
-              const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
-
-              // Accept entities that have integration markers or supervisor-style attributes  
-              return hasCapabilityId || hasIntegrationDomain ||
-                (hasSupervisorAttributes && (entity.entity_id.includes('camera') ||
-                  entity.entity_id.includes('sensor') ||
-                  entity.entity_id.includes('button') ||
-                  entity.entity_id.includes('binary_sensor')));
-            } catch (e) {
-              let err = e;
-              if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
-              console.warn('Error filtering entity:', entity.entity_id, err);
-              return false;
-            }
-          });
-
-          return integrationEntities;
-        }
-
-    private groupEntitiesByDevice(entities: HassEntity[]) {
-        const groups: Record<string, HassEntity[]> = {};
-
-      entities.forEach(entity => {
-        // Get device key from various sources
-        let deviceKey = 'default';
-
-        // Try to get device info
-        const deviceInfo = entity.attributes?.device_info;
-        if (deviceInfo?.name) {
-          deviceKey = deviceInfo.name;
-        } else if (deviceInfo?.identifiers) {
-          deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
-        }
-        // Fallback to capability grouping
-        else if (entity.attributes?.capability_id) {
-          deviceKey = entity.attributes.capability_id;
-        }
-        // Fallback to host extraction
-        else if (entity.attributes?.host) {
-          deviceKey = entity.attributes.host;
-        }
-        // Last resort - extract from entity ID pattern
-        else {
-          const parts = entity.entity_id.split('.');
-          if (parts.length > 1) {
-            const idParts = parts[1].split('_');
-            if (idParts.length > 2) {
-              deviceKey = idParts.slice(0, -1).join('_');
-            }
-          }
-        }
-
-        if (!groups[deviceKey]) groups[deviceKey] = [];
-        groups[deviceKey].push(entity);
-      });
-
-      return groups;
+    // Defensive check - ensure HA and entities exist
+    if (!this.hass || !this.hass.entities) {
+      return [];
     }
 
-    private getDeviceNameFromEntities(entities: HassEntity[]): string {
+    // Get all entities - be generic about detection
+    const entities = Object.values(this.hass.entities || {});
+
+    // Filter for entities from our integration - look for our integration attributes
+    return entities.filter(entity => {
+      try {
+        const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
+        const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
+        const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
+
+        // Accept entities that have integration markers or supervisor-style attributes  
+        return hasCapabilityId || hasIntegrationDomain ||
+          (hasSupervisorAttributes && (entity.entity_id.includes('camera') ||
+            entity.entity_id.includes('sensor') ||
+            entity.entity_id.includes('button') ||
+            entity.entity_id.includes('binary_sensor')));
+      } catch (e) {
+        let err = e;
+        if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+        console.warn('Error filtering entity:', entity.entity_id, err);
+        return false;
+      }
+
+    });
+  }
+
+  private groupEntitiesByDevice(entities: HassEntity[]) {
+    const groups: Record<string, HassEntity[]> = {};
+    entities.forEach(entity => {
+      let deviceKey = 'default';
+      const deviceInfo = entity.attributes?.device_info;
+      if (deviceInfo?.name) {
+        deviceKey = deviceInfo.name;
+      } else if (deviceInfo?.identifiers) {
+        deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
+      } else if (entity.attributes?.capability_id) {
+        deviceKey = entity.attributes.capability_id;
+      } else if (entity.attributes?.host) {
+        deviceKey = entity.attributes.host;
+      } else {
+        const parts = entity.entity_id.split('.');
+        if (parts.length > 1) {
+          const idParts = parts[1].split('_');
+          if (idParts.length > 2) {
+            deviceKey = idParts.slice(0, -1).join('_');
+          }
+        }
+      }
+      if (!groups[deviceKey]) groups[deviceKey] = [];
+      groups[deviceKey].push(entity);
+    });
+    return groups;
+  }
+
+  private getDeviceNameFromEntities(entities: HassEntity[]): string {
     // Try device_info first
     for (const entity of entities) {
       const deviceName = entity.attributes?.device_info?.name;
