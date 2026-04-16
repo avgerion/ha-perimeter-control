@@ -234,35 +234,99 @@ class CameraInterface(HardwareInterface):
                 return False
 
             # Ensure pip is installed for venv python
-            pip_check_cmd = f"{REMOTE_VENV}/bin/python3 -m pip --version 2>/dev/null || echo 'not found'"
-            pip_result = await ssh_client.async_run(pip_check_cmd)
-            self.logger.info(f"venv pip check output: {pip_result!r}")
-            if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
+
+            pip_check_cmd = f"{REMOTE_VENV}/bin/python3 -m pip --version 2>/dev/null"
+            try:
+                proc = await ssh_client._conn.create_process(pip_check_cmd)
+                pip_stdout, pip_stderr = await proc.communicate()
+                pip_exit = proc.exit_status
+            except Exception as exc:
+                self.logger.error(f"Error running pip check: {exc}")
+                pip_stdout, pip_stderr, pip_exit = '', str(exc), 1
+            self.logger.info(f"venv pip check: exit={pip_exit}, stdout={pip_stdout!r}, stderr={pip_stderr!r}")
+            pip_missing = (
+                pip_exit != 0 or
+                "not found" in (pip_stdout or "") or
+                "No module named pip" in (pip_stdout or "") or
+                not (pip_stdout or "").strip() or
+                not (pip_stdout or "").lower().startswith("pip ")
+            )
+            if pip_missing:
                 self.logger.info("venv pip not found or not working, running ensurepip and pip upgrade...")
-                # Try ensurepip with logging
-                ensurepip_cmd = f"{REMOTE_VENV}/bin/python3 -m ensurepip --upgrade || true"
-                ensurepip_out = await ssh_client.async_run(f"{ensurepip_cmd} 2>&1")
-                self.logger.warning(f"ensurepip stdout/stderr: {ensurepip_out!r}")
-                # Upgrade pip (ignore errors, log output)
-                upgrade_pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install --upgrade pip || true"
-                upgradepip_out = await ssh_client.async_run(f"{upgrade_pip_cmd} 2>&1")
-                self.logger.warning(f"pip install --upgrade pip stdout/stderr: {upgradepip_out!r}")
+                # Try ensurepip
+                ensurepip_cmd = f"{REMOTE_VENV}/bin/python3 -m ensurepip --upgrade"
+                try:
+                    proc = await ssh_client._conn.create_process(ensurepip_cmd)
+                    ensurepip_stdout, ensurepip_stderr = await proc.communicate()
+                    ensurepip_exit = proc.exit_status
+                except Exception as exc:
+                    self.logger.error(f"Error running ensurepip: {exc}")
+                    ensurepip_stdout, ensurepip_stderr, ensurepip_exit = '', str(exc), 1
+                self.logger.warning(f"ensurepip: exit={ensurepip_exit}, stdout={ensurepip_stdout!r}, stderr={ensurepip_stderr!r}")
+                # Upgrade pip
+                upgrade_pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install --upgrade pip"
+                try:
+                    proc = await ssh_client._conn.create_process(upgrade_pip_cmd)
+                    upgradepip_stdout, upgradepip_stderr = await proc.communicate()
+                    upgradepip_exit = proc.exit_status
+                except Exception as exc:
+                    self.logger.error(f"Error running pip upgrade: {exc}")
+                    upgradepip_stdout, upgradepip_stderr, upgradepip_exit = '', str(exc), 1
+                self.logger.warning(f"pip upgrade: exit={upgradepip_exit}, stdout={upgradepip_stdout!r}, stderr={upgradepip_stderr!r}")
                 # Re-check pip
-                pip_result = await ssh_client.async_run(pip_check_cmd)
-                self.logger.info(f"venv pip re-check output: {pip_result!r}")
-                if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
+                try:
+                    proc = await ssh_client._conn.create_process(pip_check_cmd)
+                    pip_stdout, pip_stderr = await proc.communicate()
+                    pip_exit = proc.exit_status
+                except Exception as exc:
+                    self.logger.error(f"Error running pip re-check: {exc}")
+                    pip_stdout, pip_stderr, pip_exit = '', str(exc), 1
+                self.logger.info(f"venv pip re-check: exit={pip_exit}, stdout={pip_stdout!r}, stderr={pip_stderr!r}")
+                pip_missing = (
+                    pip_exit != 0 or
+                    "not found" in (pip_stdout or "") or
+                    "No module named pip" in (pip_stdout or "") or
+                    not (pip_stdout or "").strip() or
+                    not (pip_stdout or "").lower().startswith("pip ")
+                )
+                if pip_missing:
                     self.logger.info("venv pip still not found, installing system python3-pip as fallback...")
                     if not await robust_system_package_install(ssh_client, ["python3-pip"], self.logger):
                         self.logger.error("Failed to install python3-pip. Aborting camera deployment.")
                         return False
-                    # Try ensurepip and upgrade again, with logging
-                    ensurepip_out2 = await ssh_client.async_run(f"{ensurepip_cmd} 2>&1")
-                    self.logger.warning(f"ensurepip (2nd) stdout/stderr: {ensurepip_out2!r}")
-                    upgradepip_out2 = await ssh_client.async_run(f"{upgrade_pip_cmd} 2>&1")
-                    self.logger.warning(f"pip install --upgrade pip (2nd) stdout/stderr: {upgradepip_out2!r}")
-                    pip_result = await ssh_client.async_run(pip_check_cmd)
-                    self.logger.info(f"venv pip final check output: {pip_result!r}")
-                    if ("not found" in pip_result or "No module named pip" in pip_result or not pip_result.strip() or not pip_result.lower().startswith("pip ")):
+                    # Try ensurepip and upgrade again
+                    try:
+                        proc = await ssh_client._conn.create_process(ensurepip_cmd)
+                        ensurepip_stdout, ensurepip_stderr = await proc.communicate()
+                        ensurepip_exit = proc.exit_status
+                    except Exception as exc:
+                        self.logger.error(f"Error running ensurepip (2nd): {exc}")
+                        ensurepip_stdout, ensurepip_stderr, ensurepip_exit = '', str(exc), 1
+                    self.logger.warning(f"ensurepip (2nd): exit={ensurepip_exit}, stdout={ensurepip_stdout!r}, stderr={ensurepip_stderr!r}")
+                    try:
+                        proc = await ssh_client._conn.create_process(upgrade_pip_cmd)
+                        upgradepip_stdout, upgradepip_stderr = await proc.communicate()
+                        upgradepip_exit = proc.exit_status
+                    except Exception as exc:
+                        self.logger.error(f"Error running pip upgrade (2nd): {exc}")
+                        upgradepip_stdout, upgradepip_stderr, upgradepip_exit = '', str(exc), 1
+                    self.logger.warning(f"pip upgrade (2nd): exit={upgradepip_exit}, stdout={upgradepip_stdout!r}, stderr={upgradepip_stderr!r}")
+                    try:
+                        proc = await ssh_client._conn.create_process(pip_check_cmd)
+                        pip_stdout, pip_stderr = await proc.communicate()
+                        pip_exit = proc.exit_status
+                    except Exception as exc:
+                        self.logger.error(f"Error running pip final check: {exc}")
+                        pip_stdout, pip_stderr, pip_exit = '', str(exc), 1
+                    self.logger.info(f"venv pip final check: exit={pip_exit}, stdout={pip_stdout!r}, stderr={pip_stderr!r}")
+                    pip_missing = (
+                        pip_exit != 0 or
+                        "not found" in (pip_stdout or "") or
+                        "No module named pip" in (pip_stdout or "") or
+                        not (pip_stdout or "").strip() or
+                        not (pip_stdout or "").lower().startswith("pip ")
+                    )
+                    if pip_missing:
                         self.logger.error("Failed to ensure pip in venv. Aborting camera deployment.")
                         return False
 

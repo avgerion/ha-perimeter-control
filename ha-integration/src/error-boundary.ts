@@ -52,13 +52,16 @@ export class ErrorBoundary extends LitElement {
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     // Only handle if this error originated from our subtree
     if (this.contains(event.target as Node)) {
-      this.handleError(new Error(`Promise rejection: ${event.reason}`));
+      let err = event.reason;
+      if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      this.handleError(err);
       event.preventDefault();
     }
   };
 
   private handleError = (event: ErrorEvent | Error) => {
-    const error = event instanceof ErrorEvent ? event.error : event;
+    let error = event instanceof ErrorEvent ? event.error : event;
+    if (!(error instanceof Error)) error = new Error(typeof error === 'string' ? error : JSON.stringify(error));
     this.errorCount++;
 
     if (!error) {

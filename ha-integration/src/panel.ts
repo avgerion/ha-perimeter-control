@@ -361,8 +361,10 @@ export class PerimeterControlPanel extends LitElement {
       `;
 
     } catch (error: any) {
-      console.error('[Panel] Error in render:', error);
-      this.handleError(error instanceof Error ? error : new Error(String(error)));
+      let err = error;
+      if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      console.error('[Panel] Error in render:', err);
+      this.handleError(err);
       return this.renderError();
     }
   }
@@ -410,7 +412,9 @@ export class PerimeterControlPanel extends LitElement {
     try {
       await action();
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error(String(error)));
+      let err = error;
+      if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+      this.handleError(err);
     }
   }
 
@@ -437,79 +441,79 @@ export class PerimeterControlPanel extends LitElement {
               entity.entity_id.includes('sensor') ||
               entity.entity_id.includes('button') ||
               entity.entity_id.includes('binary_sensor')));
-        } catch (e) {
-          console.warn('Error filtering entity:', entity.entity_id, e);
-          return false;
+          // Defensive check - ensure HA and entities exist
+          if (!this.hass || !this.hass.entities) {
+            return [];
+          }
+
+          // Get all entities - be generic about detection
+          const entities = Object.values(this.hass.entities || {});
+
+          // Filter for entities from our integration - look for our integration attributes
+          const integrationEntities = entities.filter(entity => {
+            try {
+              const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
+              const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
+              const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
+
+              // Accept entities that have integration markers or supervisor-style attributes  
+              return hasCapabilityId || hasIntegrationDomain ||
+                (hasSupervisorAttributes && (entity.entity_id.includes('camera') ||
+                  entity.entity_id.includes('sensor') ||
+                  entity.entity_id.includes('button') ||
+                  entity.entity_id.includes('binary_sensor')));
+            } catch (e) {
+              let err = e;
+              if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+              console.warn('Error filtering entity:', entity.entity_id, err);
+              return false;
+            }
+          });
+
+          return integrationEntities;
         }
-      });
 
-      if (integrationEntities.length === 0) {
-        return [];
-      }
+    private groupEntitiesByDevice(entities: HassEntity[]) {
+        const groups: Record<string, HassEntity[]> = {};
 
-      // Group entities by device/capability rather than hardcoded patterns
-      const deviceGroups = this.groupEntitiesByDevice(integrationEntities);
+      entities.forEach(entity => {
+        // Get device key from various sources
+        let deviceKey = 'default';
 
-      return Object.entries(deviceGroups).map(([deviceKey, entities]) => {
-        const deviceName = this.getDeviceNameFromEntities(entities);
-        const deviceHost = this.getDeviceHostFromEntities(entities);
-
-        return {
-          name: deviceName,
-          host: deviceHost,
-          entities: entities,
-          status: this.getDeviceStatus(entities),
-          capabilities: this.getDeviceCapabilities(entities)
-        };
-      });
-    } catch (error) {
-      console.error('Error getting Perimeter Control devices:', error);
-      // Return empty array on error to prevent panel crash
-      return [];
-    }
-  }
-
-  private groupEntitiesByDevice(entities: HassEntity[]) {
-    const groups: Record<string, HassEntity[]> = {};
-
-    entities.forEach(entity => {
-      // Get device key from various sources
-      let deviceKey = 'default';
-
-      // Try to get device info
-      const deviceInfo = entity.attributes?.device_info;
-      if (deviceInfo?.name) {
-        deviceKey = deviceInfo.name;
-      } else if (deviceInfo?.identifiers) {
-        deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
-      }
-      // Fallback to capability grouping
-      else if (entity.attributes?.capability_id) {
-        deviceKey = entity.attributes.capability_id;
-      }
-      // Fallback to host extraction
-      else if (entity.attributes?.host) {
-        deviceKey = entity.attributes.host;
-      }
-      // Last resort - extract from entity ID pattern
-      else {
-        const parts = entity.entity_id.split('.');
-        if (parts.length > 1) {
-          const idParts = parts[1].split('_');
-          if (idParts.length > 2) {
-            deviceKey = idParts.slice(0, -1).join('_');
+        // Try to get device info
+        const deviceInfo = entity.attributes?.device_info;
+        if (deviceInfo?.name) {
+          deviceKey = deviceInfo.name;
+        } else if (deviceInfo?.identifiers) {
+          deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
+        }
+        // Fallback to capability grouping
+        else if (entity.attributes?.capability_id) {
+          deviceKey = entity.attributes.capability_id;
+        }
+        // Fallback to host extraction
+        else if (entity.attributes?.host) {
+          deviceKey = entity.attributes.host;
+        }
+        // Last resort - extract from entity ID pattern
+        else {
+          const parts = entity.entity_id.split('.');
+          if (parts.length > 1) {
+            const idParts = parts[1].split('_');
+            if (idParts.length > 2) {
+              deviceKey = idParts.slice(0, -1).join('_');
+            }
           }
         }
-      }
 
-      if (!groups[deviceKey]) groups[deviceKey] = [];
-      groups[deviceKey].push(entity);
-    });
+        if (!groups[deviceKey]) groups[deviceKey] = [];
+        groups[deviceKey].push(entity);
+      });
 
-    return groups;
-  }
+      return groups;
+    }
 
-  private getDeviceNameFromEntities(entities: HassEntity[]): string {
+    private getDeviceNameFromEntities(entities: HassEntity[]): string {
     // Try device_info first
     for (const entity of entities) {
       const deviceName = entity.attributes?.device_info?.name;
