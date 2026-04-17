@@ -315,7 +315,7 @@ export class PerimeterControlPanel extends LitElement {
 
   render() {
     // Early return with loading state if HA isn't ready yet
-    if (!this_hass || !this.isInitialized) {
+    if (!this._hass || !this.isInitialized) {
       return html`
         <div style="padding: 16px; text-align: center;">
           <p>Loading Home Assistant connection...</p>
@@ -330,7 +330,7 @@ export class PerimeterControlPanel extends LitElement {
 
     try {
       // Defensive check - ensure entities object exists
-      if (!this_hass.entities) {
+      if (!this._hass.entities) {
         return html`
           <div style="padding: 16px; text-align: center;">
             <p>Waiting for Home Assistant entities...</p>
@@ -347,9 +347,9 @@ export class PerimeterControlPanel extends LitElement {
         </div>
 
         <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
-          <strong>Debug:</strong> Found ${devices.length} devices, ${this_hass ? Object.keys(this_hass.entities).length : 0} total entities
-          <br><strong>Sample entities:</strong> ${this_hass ? Object.keys(this_hass.entities).slice(0, 5).join(', ') : 'None'}
-          <br><strong>Perimeter entities:</strong> ${this_hass ? Object.keys(this_hass.entities).filter(id => id.includes('perimeter')).join(', ') : 'None'}
+          <strong>Debug:</strong> Found ${devices.length} devices, ${this._hass ? Object.keys(this._hass.entities).length : 0} total entities
+          <br><strong>Sample entities:</strong> ${this._hass ? Object.keys(this._hass.entities).slice(0, 5).join(', ') : 'None'}
+          <br><strong>Perimeter entities:</strong> ${this._hass ? Object.keys(this._hass.entities).filter(id => id.includes('perimeter')).join(', ') : 'None'}
         </div>
 
         ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
@@ -434,12 +434,12 @@ export class PerimeterControlPanel extends LitElement {
 
   private getPerimeterControlDevices() {
     // Defensive check - ensure HA and entities exist
-    if (!this_hass || !this_hass.entities) {
+    if (!this._hass || !this._hass.entities) {
       return [];
     }
 
     // Get all entities - be generic about detection
-    const entities = Object.values(this_hass.entities || {});
+    const entities = Object.values(this._hass.entities || {});
 
     // Filter for entities from our integration - look for our integration attributes
     return entities.filter(entity => {
@@ -563,7 +563,7 @@ export class PerimeterControlPanel extends LitElement {
   }
 
   private renderNoDevices() {
-    const entityList = this_hass ? Object.keys(this_hass.entities) : [];
+    const entityList = this._hass ? Object.keys(this._hass.entities) : [];
     return html`
       <div class="no-devices">
         <h2>No Perimeter Control devices found</h2>
@@ -731,7 +731,7 @@ export class PerimeterControlPanel extends LitElement {
   private async callEntityService(entityId: string, action: string) {
     try {
       const domain = entityId.split('.')[0];
-      await this_hass?.callService(domain, action, { entity_id: entityId });
+      await this._hass?.callService(domain, action, { entity_id: entityId });
     } catch (error) {
       console.error(`Failed to call ${action} on ${entityId}:`, error);
     }
@@ -769,15 +769,15 @@ export class PerimeterControlPanel extends LitElement {
   }
 
   private async deployAll() {
-    await this_hass?.callService('perimeter_control', 'deploy', { force: true });
+    await this._hass?.callService('perimeter_control', 'deploy', { force: true });
   }
 
   private async reloadConfig() {
-    await this_hass?.callService('perimeter_control', 'reload_config', {});
+    await this._hass?.callService('perimeter_control', 'reload_config', {});
   }
 
   private async refreshDevices() {
-    await this_hass?.callService('perimeter_control', 'get_device_info', {});
+    await this._hass?.callService('perimeter_control', 'get_device_info', {});
   }
 }
 
