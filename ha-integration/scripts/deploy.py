@@ -243,7 +243,28 @@ def deploy(
         _abort("ssh connection", err.strip() or f"exit {rc}")
     _log("ssh connection", True, f"{user}@{host}")
 
-    # ── 4. Preflight: check Python interpreter ───────────────────────────
+
+    # ── 4. Ensure venv exists and pip is installed ─────────────────────
+    venv_path = f"{PERIMETERCONTROL_OPT_PATH}/venv"
+    venv_python = f"{venv_path}/bin/python3"
+    venv_pip = f"{venv_path}/bin/pip"
+    ensure_venv_cmd = (
+        f"if [ ! -x '{venv_python}' ]; then "
+        f"  sudo mkdir -p '{PERIMETERCONTROL_OPT_PATH}'; "
+        f"  sudo python3 -m venv '{venv_path}'; "
+        f"fi; "
+        f"if [ ! -x '{venv_pip}' ]; then "
+        f"  sudo {venv_python} -m ensurepip || true; "
+        f"  sudo {venv_pip} install --upgrade pip setuptools wheel || true; "
+        f"fi; "
+        f"if [ ! -x '{venv_python}' ]; then echo VENV_CREATE_FAIL; else echo VENV_OK; fi"
+    )
+    rc, out, err = _ssh(host, user, ssh_key, ensure_venv_cmd)
+    if rc != 0 or "VENV_OK" not in out:
+        _abort("venv setup", err.strip() or out.strip())
+    _log("venv setup", True, out.strip())
+
+    # ── 4b. Preflight: check Python interpreter ───────────────────────────
     rc, out, _ = _ssh(
         host, user, ssh_key,
         f"py=$(systemctl status {PERIMETERCONTROL_DASHBOARD_SERVICE} --no-pager 2>/dev/null"
