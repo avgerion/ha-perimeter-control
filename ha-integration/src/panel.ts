@@ -572,7 +572,7 @@ export class PerimeterControlPanel extends LitElement {
         <details style="margin-top: 16px; text-align: left;">
           <summary>Debug: All entities (${entityList.length})</summary>
           <div style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; margin: 8px 0;">
-            ${entityList.map(id => html`<div>${id}</div>`)}
+            ${(entityList ?? []).map(id => html`<div>${id}</div>`)}
           </div>
         </details>
       </div>
@@ -582,7 +582,7 @@ export class PerimeterControlPanel extends LitElement {
   private renderDevices(devices: any[]) {
     return html`
       <div class="devices-grid">
-        ${devices.map(device => html`
+        ${(devices ?? []).map(device => html`
           <div class="device-card">
             <div class="device-header">
               <div class="device-icon">π</div>
@@ -597,7 +597,7 @@ export class PerimeterControlPanel extends LitElement {
             </div>
             
             <div class="entities-grid">
-              ${device.entities.map((entity: HassEntity) => this.renderGenericEntity(entity))}
+              ${(device.entities ?? []).map((entity: HassEntity) => this.renderGenericEntity(entity))}
               ${device.host ? this.renderDashboardLinks(device.host, device.capabilities) : ''}
             </div>
           </div>
@@ -713,7 +713,7 @@ export class PerimeterControlPanel extends LitElement {
             🌐 API
           </button>
           
-          ${capabilities.map(cap => html`
+          ${(capabilities ?? []).map(cap => html`
             <button class="action-btn secondary" @click=${() => this.openCapabilityDashboard(host, cap)} style="font-size: 11px; padding: 4px 8px;">
               📊 ${cap}
             </button>

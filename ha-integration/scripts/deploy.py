@@ -116,36 +116,44 @@ def _abort(step: str, detail: str = "") -> None:
 
 
 # ── SSH / SCP helpers ─────────────────────────────────────────────────────────
-def _ssh(host: str, user: str, key: str, cmd: str) -> tuple[int, str, str]:
+def _ssh(host: str, user: str, key: str, cmd: str, timeout: int = 300) -> tuple[int, str, str]:
+    """
+    Run an SSH command with a configurable timeout (default 300s).
+    """
     result = subprocess.run(
         [
             "ssh",
             "-i", key,
             "-o", "StrictHostKeyChecking=no",
             "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=15",
+            f"-o", f"ConnectTimeout={timeout}",
             f"{user}@{host}",
             cmd,
         ],
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
     return result.returncode, result.stdout, result.stderr
 
 
-def _scp(host: str, user: str, key: str, local: str, remote: str) -> tuple[int, str, str]:
+def _scp(host: str, user: str, key: str, local: str, remote: str, timeout: int = 300) -> tuple[int, str, str]:
+    """
+    Run an SCP command with a configurable timeout (default 300s).
+    """
     result = subprocess.run(
         [
             "scp",
             "-i", key,
             "-o", "StrictHostKeyChecking=no",
             "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=15",
+            f"-o", f"ConnectTimeout={timeout}",
             local,
             f"{user}@{host}:{remote}",
         ],
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -250,14 +258,22 @@ def deploy(
     venv_pip = f"{venv_path}/bin/pip"
     ensure_venv_cmd = (
         f"if [ ! -x '{venv_python}' ]; then "
+        f"  echo '[DEPLOY] Creating venv...'; "
         f"  sudo mkdir -p '{PERIMETERCONTROL_OPT_PATH}'; "
         f"  sudo python3 -m venv '{venv_path}'; "
         f"fi; "
+        f"if [ ! -x '{venv_python}' ]; then echo '[DEPLOY] ERROR: venv creation failed.'; exit 1; fi; "
+        f"{venv_python} --version || echo '[DEPLOY] ERROR: python3 not found in venv.'; "
         f"if [ ! -x '{venv_pip}' ]; then "
+        f"  echo '[DEPLOY] Installing pip...'; "
         f"  sudo {venv_python} -m ensurepip || true; "
-        f"  sudo {venv_pip} install --upgrade pip setuptools wheel || true; "
         f"fi; "
-        f"if [ ! -x '{venv_python}' ]; then echo VENV_CREATE_FAIL; else echo VENV_OK; fi"
+        f"if [ ! -x '{venv_pip}' ]; then echo '[DEPLOY] ERROR: pip not found after ensurepip.'; exit 1; fi; "
+        f"{venv_pip} --version || echo '[DEPLOY] ERROR: pip not working.'; "
+        f"sudo {venv_pip} install --upgrade pip setuptools wheel || true; "
+        f"{venv_pip} --version; "
+        f"if [ ! -x '{venv_python}' ]; then echo '[DEPLOY] ERROR: venv missing after all steps.'; exit 1; fi; "
+        f"echo VENV_OK"
     )
     rc, out, err = _ssh(host, user, ssh_key, ensure_venv_cmd)
     if rc != 0 or "VENV_OK" not in out:
@@ -413,7 +429,7 @@ def deploy(
         _log("upload supervisor.service", True)
 
         # Backup existing supervisor
-           _ssh(host, user, ssh_key,
+        _ssh(host, user, ssh_key,
                "sudo cp -a /opt/network-isolator/supervisor /tmp/network-isolator-supervisor-backup 2>/dev/null; true")
 
         # Extract with sudo + --no-same-permissions so tar sets permissions respecting umask.

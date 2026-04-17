@@ -66,13 +66,13 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
         <details style="margin-top: 16px; text-align: left;">
           <summary>Debug: All entities (${t.length})</summary>
           <div style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; margin: 8px 0;">
-            ${t.map(t=>B`<div>${t}</div>`)}
+            ${(t??[]).map(t=>B`<div>${t}</div>`)}
           </div>
         </details>
       </div>
     `}renderDevices(t){return B`
       <div class="devices-grid">
-        ${t.map(t=>B`
+        ${(t??[]).map(t=>B`
           <div class="device-card">
             <div class="device-header">
               <div class="device-icon">π</div>
@@ -87,7 +87,7 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
             </div>
             
             <div class="entities-grid">
-              ${t.entities.map(t=>this.renderGenericEntity(t))}
+              ${(t.entities??[]).map(t=>this.renderGenericEntity(t))}
               ${t.host?this.renderDashboardLinks(t.host,t.capabilities):""}
             </div>
           </div>
@@ -141,7 +141,7 @@ function t(t,e,i,s){var r,n=arguments.length,o=n<3?e:null===s?s=Object.getOwnPro
             🌐 API
           </button>
           
-          ${e.map(e=>B`
+          ${(e??[]).map(e=>B`
             <button class="action-btn secondary" @click=${()=>this.openCapabilityDashboard(t,e)} style="font-size: 11px; padding: 4px 8px;">
               📊 ${e}
             </button>
