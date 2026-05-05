@@ -346,7 +346,7 @@ class CameraInterface(HardwareInterface):
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
             pip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
             pip_install_out = await ssh_client.async_run(f"{pip_cmd} 2>&1")
-            self.logger.warning(f"pip install camera packages stdout/stderr: {pip_install_out!r}")
+            self.logger.info(f"pip install camera packages: {pip_install_out!r}")
 
             # Enable camera interface
             await ssh_client.async_run("sudo raspi-config nonint do_camera 0")
