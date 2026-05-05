@@ -265,8 +265,8 @@ class CameraInterface(HardwareInterface):
             )
             if pip_missing:
                 self.logger.info("venv pip not found or not working, running ensurepip and pip upgrade...")
-                # Try ensurepip
-                ensurepip_cmd = f"{REMOTE_VENV}/bin/python3 -m ensurepip --upgrade"
+                # Try ensurepip (sudo required: venv is root-owned)
+                ensurepip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m ensurepip --upgrade"
                 try:
                     proc = await ssh_client._conn.create_process(ensurepip_cmd)
                     ensurepip_stdout, ensurepip_stderr = await proc.communicate()
@@ -275,8 +275,8 @@ class CameraInterface(HardwareInterface):
                     self.logger.error(f"Error running ensurepip: {exc}")
                     ensurepip_stdout, ensurepip_stderr, ensurepip_exit = '', str(exc), 1
                 self.logger.warning(f"ensurepip: exit={ensurepip_exit}, stdout={ensurepip_stdout!r}, stderr={ensurepip_stderr!r}")
-                # Upgrade pip
-                upgrade_pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install --upgrade pip"
+                # Upgrade pip (sudo required: venv is root-owned)
+                upgrade_pip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install --upgrade pip"
                 try:
                     proc = await ssh_client._conn.create_process(upgrade_pip_cmd)
                     upgradepip_stdout, upgradepip_stderr = await proc.communicate()
@@ -342,9 +342,9 @@ class CameraInterface(HardwareInterface):
                         self.logger.error("Failed to ensure pip in venv. Aborting camera deployment.")
                         return False
 
-            # Install Python camera packages using venv python
+            # Install Python camera packages using venv python (sudo required: venv is root-owned)
             pip_packages = ["opencv-python-headless", "pillow", "numpy"]
-            pip_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
+            pip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
             pip_install_out = await ssh_client.async_run(f"{pip_cmd} 2>&1")
             self.logger.warning(f"pip install camera packages stdout/stderr: {pip_install_out!r}")
 
