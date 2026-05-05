@@ -6,9 +6,9 @@
     "documentation": "https://github.com/avgerion/ha-perimeter-control",
     "iot_class": "local_push",
     "requirements": [
-        "asyncssh==2.22.0"
+        "asyncssh==2.21.1"
     ],
-    "version": "0.7.51",
+    "version": "0.7.52",
     "icon": "icon.svg",
     "frontend": true
 }
