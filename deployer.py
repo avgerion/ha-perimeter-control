@@ -116,10 +116,12 @@ class Deployer(BaseDeployer):
         selected_services: list[str],
         service_descriptors: dict[str, ServiceDescriptor] | None = None,
         progress_cb: Optional[ProgressCallback] = None,
+        hass=None,
     ) -> None:
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
         self._service_descriptors = service_descriptors or {}
+        self._hass = hass
         
         # Register component types
         register_service_components()
@@ -248,7 +250,7 @@ class Deployer(BaseDeployer):
                 _LOGGER.info(f"Service {service_id} components: {components}")
                 
                 # Deploy using component composition
-                success = await service.deploy(self._client, deployment_path)
+                success = await service.deploy(self._client, deployment_path, hass=self._hass)
                 if not success:
                     raise Exception(f"Service {service_id} component deployment failed")
                 

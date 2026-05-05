@@ -60,7 +60,7 @@ class PythonDependencies(ServiceComponent):
             self.logger.info(f"Python validation skipped: {e}")
             return True  # Allow deployment to proceed
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Install Python packages using the venv Python."""
         try:
             if not self.packages:
@@ -113,7 +113,7 @@ class SystemDependencies(ServiceComponent):
             self.logger.warning(f"Could not validate system package requirements: {e}")
             return True  # Allow deployment to proceed
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Install system packages with dpkg recovery."""
         # Use shared robust package installation utility
         success = await robust_system_package_install(ssh_client, self.packages, self.logger)
@@ -142,6 +142,7 @@ class ConfigurationManager(ServiceComponent):
     async def _load_template_files(self, template_mappings: Dict[str, str], hass=None) -> Dict[str, str]:
         """Load configuration content from template files asynchronously."""
         import os
+        import asyncio
         config_content = {}
         # Resolve relative paths from the integration directory
         integration_dir = os.path.dirname(os.path.abspath(__file__))
@@ -149,11 +150,9 @@ class ConfigurationManager(ServiceComponent):
             try:
                 full_path = os.path.join(integration_dir, template_path)
                 if hass is not None:
-                    # Use Home Assistant's executor to avoid blocking event loop
                     content = await hass.async_add_executor_job(self._read_file, full_path)
                 else:
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                    content = await asyncio.to_thread(self._read_file, full_path)
                 config_content[filename] = content
                 self.logger.debug(f"Loaded template {template_path} for {filename}")
             except Exception as exc:
@@ -174,12 +173,12 @@ class ConfigurationManager(ServiceComponent):
         """Configuration management is always available."""
         return True
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path, hass=None) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy configuration files."""
         try:
             # If using templates, load them asynchronously
             if self.use_templates and self.config_files is None:
-                self.config_files = await self._load_template_files(self._template_mappings, hass=hass)
+                self.config_files = await self._load_template_files(self._template_mappings, hass=kwargs.get('hass'))
             await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'config'}")
             for filename, content in self.config_files.items():
                 config_path = deployment_path / "config" / filename
@@ -221,7 +220,7 @@ class DataLogging(ServiceComponent):
             self.logger.warning(f"Logging validation failed: {e}")
             return True  # Allow deployment to proceed
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Set up data logging infrastructure."""
         try:
             # Create logging directories
@@ -285,7 +284,7 @@ class MotionDetection(ServiceComponent):
             self.logger.warning(f"Motion detection validation failed: {e}")
             return True  # Allow deployment to proceed
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy motion detection components."""
         try:
             # Deploy motion detection script
@@ -342,7 +341,7 @@ class AlertSystem(ServiceComponent):
         """Alert system is always available."""
         return True
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy alert system components."""
         try:
             # Deploy alert configuration
@@ -442,7 +441,7 @@ class BluetoothAdvertiser(ServiceComponent):
             self.logger.warning(f"Bluetooth advertising validation failed: {e}")
             return True  # Allow deployment to proceed
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy Bluetooth advertising components."""
         try:
             # Install BLE advertising packages
