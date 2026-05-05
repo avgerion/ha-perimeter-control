@@ -310,9 +310,11 @@ if __name__ == "__main__":
 '''
             
             script_path = deployment_path / "scripts" / "motion_detection.py"
+            tmp_path = "/tmp/motion_detection.py"
             await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'scripts'}")
-            await ssh_client.upload_file_content(motion_script, str(script_path))
-            await ssh_client.async_run(f"chmod +x {script_path}")
+            await ssh_client.upload_file_content(motion_script, tmp_path)
+            await ssh_client.async_run(f"sudo mv {tmp_path} {script_path}")
+            await ssh_client.async_run(f"sudo chmod +x {script_path}")
             
             self.logger.info("Motion detection deployed")
             return True
