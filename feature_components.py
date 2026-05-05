@@ -180,10 +180,12 @@ class ConfigurationManager(ServiceComponent):
             # If using templates, load them asynchronously
             if self.use_templates and self.config_files is None:
                 self.config_files = await self._load_template_files(self._template_mappings, hass=hass)
+            await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'config'}")
             for filename, content in self.config_files.items():
                 config_path = deployment_path / "config" / filename
-                # Upload configuration file
-                await ssh_client.upload_file_content(content, str(config_path))
+                tmp_path = f"/tmp/{filename}"
+                await ssh_client.upload_file_content(content, tmp_path)
+                await ssh_client.async_run(f"sudo mv {tmp_path} {config_path}")
                 self.deployed_configs.add(filename)
                 self.logger.debug(f"Deployed config: {filename}")
             self.logger.info(f"Deployed {len(self.config_files)} configuration files")
@@ -243,7 +245,9 @@ class DataLogging(ServiceComponent):
             
             config_content = json.dumps(logging_config, indent=2)
             config_path = deployment_path / "config" / "logging.json"
-            await ssh_client.upload_file_content(config_content, str(config_path))
+            await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'config'}")
+            await ssh_client.upload_file_content(config_content, "/tmp/logging.json")
+            await ssh_client.async_run(f"sudo mv /tmp/logging.json {config_path}")
             
             self.logger.info(f"Set up data logging for: {self.log_types}")
             return True
@@ -362,7 +366,9 @@ class AlertSystem(ServiceComponent):
             
             config_content = json.dumps(alert_config, indent=2)
             config_path = deployment_path / "config" / "alerts.json"
-            await ssh_client.upload_file_content(config_content, str(config_path))
+            await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'config'}")
+            await ssh_client.upload_file_content(config_content, "/tmp/alerts.json")
+            await ssh_client.async_run(f"sudo mv /tmp/alerts.json {config_path}")
             
             # Deploy alert script
             alert_script = '''#!/usr/bin/env python3
@@ -396,8 +402,10 @@ if __name__ == "__main__":
 '''
             
             script_path = deployment_path / "scripts" / "alert_system.py"
-            await ssh_client.upload_file_content(alert_script, str(script_path))
-            await ssh_client.async_run(f"chmod +x {script_path}")
+            await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'scripts'}")
+            await ssh_client.upload_file_content(alert_script, "/tmp/alert_system.py")
+            await ssh_client.async_run(f"sudo mv /tmp/alert_system.py {script_path}")
+            await ssh_client.async_run(f"sudo chmod +x {script_path}")
             
             self.logger.info(f"Alert system deployed with types: {self.alert_types}")
             return True
@@ -469,8 +477,10 @@ if __name__ == "__main__":
 '''
             
             script_path = deployment_path / "scripts" / "ble_advertising.py"
-            await ssh_client.upload_file_content(advertising_script, str(script_path))
-            await ssh_client.async_run(f"chmod +x {script_path}")
+            await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'scripts'}")
+            await ssh_client.upload_file_content(advertising_script, "/tmp/ble_advertising.py")
+            await ssh_client.async_run(f"sudo mv /tmp/ble_advertising.py {script_path}")
+            await ssh_client.async_run(f"sudo chmod +x {script_path}")
             
             self.logger.info("Bluetooth advertising deployed")
             return True
