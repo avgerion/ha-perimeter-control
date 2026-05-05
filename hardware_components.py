@@ -233,8 +233,20 @@ class CameraInterface(HardwareInterface):
             if not await robust_system_package_install(ssh_client, packages, self.logger):
                 return False
 
-            # Ensure pip is installed for venv python
+            # Ensure the venv exists before trying to use it
+            venv_check = await ssh_client.async_run(
+                f"[ -x {REMOTE_VENV}/bin/python3 ] && echo VENV_OK || echo VENV_MISSING"
+            )
+            if "VENV_MISSING" in venv_check:
+                self.logger.info("Venv not found, creating %s...", REMOTE_VENV)
+                await ssh_client.async_run(
+                    f"sudo mkdir -p $(dirname {REMOTE_VENV}) && "
+                    f"cd $(dirname {REMOTE_VENV}) && "
+                    f"sudo python3 -m venv --system-site-packages $(basename {REMOTE_VENV})"
+                )
+                self.logger.info("Venv created at %s", REMOTE_VENV)
 
+            # Ensure pip is installed for venv python
             pip_check_cmd = f"{REMOTE_VENV}/bin/python3 -m pip --version 2>/dev/null"
             try:
                 proc = await ssh_client._conn.create_process(pip_check_cmd)

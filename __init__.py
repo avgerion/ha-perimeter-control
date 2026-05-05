@@ -36,35 +36,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Perimeter Control integration."""
     hass.data.setdefault(DOMAIN, {})
     async_register_views(hass)
-
-    # --- Detailed environment and dependency logging for diagnostics ---
-    import sys
-    import platform
-    import importlib.util
-    def _log_env_info():
-        _LOGGER.info("[DIAG] Python version: %s", sys.version)
-        _LOGGER.info("[DIAG] Platform: %s", platform.platform())
-        _LOGGER.info("[DIAG] Executable: %s", sys.executable)
-        for pkg in ["asyncssh", "fido2", "ctypes", "importlib"]:
-            spec = importlib.util.find_spec(pkg)
-            if spec is not None and spec.origin:
-                _LOGGER.info("[DIAG] Package '%s' found at: %s", pkg, spec.origin)
-            else:
-                _LOGGER.info("[DIAG] Package '%s' NOT FOUND", pkg)
-            try:
-                mod = importlib.import_module(pkg)
-                _LOGGER.info("[DIAG] Package '%s' version: %s", pkg, getattr(mod, "__version__", "(no __version__ attribute)"))
-            except Exception as exc:
-                _LOGGER.warning("[DIAG] Could not import '%s': %r", pkg, exc)
-        # List all installed packages (short list)
-        try:
-            import pkg_resources
-            dists = sorted([(d.project_name, d.version) for d in pkg_resources.working_set])
-            _LOGGER.info("[DIAG] Installed packages: %s", dists)
-        except Exception as exc:
-            _LOGGER.warning("[DIAG] Could not list installed packages: %r", exc)
-    _log_env_info()
-
     return True
 
 
