@@ -112,7 +112,7 @@ class BluetoothInterface(HardwareInterface):
         
         return entities
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy Bluetooth interface components."""
         try:
             # Install required system packages using the robust utility
@@ -224,7 +224,7 @@ class CameraInterface(HardwareInterface):
         return entities
     
 
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy camera interface components with robust pip check and auto-install using venv Python, with detailed logging of stdout/stderr."""
         try:
             REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
@@ -429,7 +429,7 @@ class NetworkInterface(HardwareInterface):
         
         return entities
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy network interface components.""" 
         try:
             # Install network packages using the robust utility
@@ -530,7 +530,7 @@ class I2CSensorInterface(HardwareInterface):
         
         return entities
     
-    async def deploy(self, ssh_client: SshClient, deployment_path: Path) -> bool:
+    async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy I2C interface components."""
         try:
             # Install I2C packages using the robust utility
