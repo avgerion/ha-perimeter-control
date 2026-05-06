@@ -224,10 +224,11 @@ class DataLogging(ServiceComponent):
         """Set up data logging infrastructure."""
         try:
             # Create logging directories
+            remote_user = ssh_client._user
             log_dirs = [f"/var/log/perimeter/{log_type}" for log_type in self.log_types]
             for log_dir in log_dirs:
                 await ssh_client.async_run(f"sudo mkdir -p {log_dir}")
-                await ssh_client.async_run(f"sudo chown pi:pi {log_dir}")
+                await ssh_client.async_run(f"sudo chown {remote_user}:{remote_user} {log_dir}")
             
             # Deploy logging configuration
             logging_config = {
