@@ -124,9 +124,10 @@ class BluetoothInterface(HardwareInterface):
             await ssh_client.async_run("sudo systemctl enable bluetooth")
             await ssh_client.async_run("sudo systemctl start bluetooth")
             
-            # Install Python BLE packages
+            # Install Python BLE packages into the managed venv
+            REMOTE_VENV = "/opt/PerimeterControl/venv"
             pip_packages = ["bleak", "asyncio-mqtt"]
-            pip_cmd = f"python3 -m pip install {' '.join(pip_packages)}"
+            pip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
             await ssh_client.async_run(pip_cmd)
             
             return True

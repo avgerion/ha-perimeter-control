@@ -445,9 +445,10 @@ class BluetoothAdvertiser(ServiceComponent):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy Bluetooth advertising components."""
         try:
-            # Install BLE advertising packages
+            # Install BLE advertising packages into the managed venv
+            REMOTE_VENV = "/opt/PerimeterControl/venv"
             pip_packages = ["construct", "cryptography", "bluepy"]
-            pip_cmd = f"python3 -m pip install {' '.join(pip_packages)}"
+            pip_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {' '.join(pip_packages)}"
             await ssh_client.async_run(pip_cmd)
             
             # Deploy advertising script
