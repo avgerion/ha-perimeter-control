@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_DASHBOARD_PORT,
     DEFAULT_SSH_PORT,
     DOMAIN,
+    SYSTEMD_SUPERVISOR,
 )
 from .deployer import DeployProgress, Deployer
 from .ssh_client import SshClient, SshConnectionError
@@ -388,6 +389,38 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return True
         except UpdateFailed:
             return False
+
+    async def _ssh_supervisor_local_health(self) -> tuple[bool, str]:
+        """Check supervisor health from the remote host itself via SSH."""
+        if not self._client_initialized or not self._client:
+            return False, "SSH client not initialized"
+
+        cmd = (
+            "curl -fsS --max-time 3 http://127.0.0.1:8080/api/v1/health >/dev/null 2>&1 "
+            "&& echo LOCAL_HEALTH_OK || echo LOCAL_HEALTH_FAIL"
+        )
+        try:
+            result = await self._client.async_run(cmd)
+            ok = "LOCAL_HEALTH_OK" in result
+            return ok, result.strip()
+        except Exception as exc:
+            return False, str(exc)
+
+    async def _ssh_restart_supervisor_for_recovery(self) -> None:
+        """Attempt a one-shot supervisor restart and log status for diagnosis."""
+        if not self._client_initialized or not self._client:
+            _LOGGER.warning("Cannot run supervisor recovery restart: SSH client not initialized")
+            return
+
+        try:
+            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
+            await asyncio.sleep(2)
+            status = await self._client.async_run(
+                f"systemctl is-active {SYSTEMD_SUPERVISOR} 2>/dev/null || echo inactive"
+            )
+            _LOGGER.warning("Supervisor recovery restart status: %s", status.strip())
+        except Exception as exc:
+            _LOGGER.warning("Supervisor recovery restart failed: %s", exc)
     
     async def _fetch_services_config(self) -> dict[str, Any]:
         """Fetch service configurations from Supervisor API."""
@@ -802,7 +835,44 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.debug("Supervisor not ready yet (attempt %d/6): %s", attempt + 1, exc)
 
                 if last_exc is not None:
-                    _LOGGER.warning("Deployment succeeded but supervisor connection failed after retries: %s", last_exc)
+                    # Diagnose from remote host perspective: service may be up locally but unreachable from HA.
+                    local_ok, local_detail = await self._ssh_supervisor_local_health()
+                    if local_ok:
+                        _LOGGER.warning(
+                            "Deployment succeeded and supervisor is healthy on remote host, but HA cannot reach %s. "
+                            "Check network path/firewall to %s:%s. Local check: %s",
+                            self._supervisor_base_url,
+                            self._entry.data[CONF_HOST],
+                            self._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT),
+                            local_detail,
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Deployment succeeded but supervisor connection failed after retries; local health also failed (%s). "
+                            "Attempting one supervisor restart and final retries.",
+                            local_detail,
+                        )
+                        await self._ssh_restart_supervisor_for_recovery()
+
+                        recovery_exc = None
+                        for attempt in range(4):
+                            try:
+                                await asyncio.sleep(2 + attempt * 2)
+                                await self._supervisor_get("/health")
+                                await self._start_websocket_listener()
+                                _LOGGER.info("Connected to supervisor API after recovery restart (attempt %d)", attempt + 1)
+                                await self.async_request_refresh()
+                                recovery_exc = None
+                                break
+                            except Exception as exc:
+                                recovery_exc = exc
+                                _LOGGER.debug("Recovery connect attempt %d/4 failed: %s", attempt + 1, exc)
+
+                        if recovery_exc is not None:
+                            _LOGGER.warning(
+                                "Deployment succeeded but supervisor connection failed after recovery restart: %s",
+                                recovery_exc,
+                            )
             else:
                 _LOGGER.error("Automatic supervisor deployment failed. Please check the integration logs and try manual deployment.")
         except Exception as exc:
