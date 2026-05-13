@@ -315,11 +315,27 @@ class Deployer(BaseDeployer):
         
         # Start supervisor service
         try:
+            # Clear rate-limit counter so systemd allows a fresh start after crash loop
+            await self._client.async_run(
+                f"sudo systemctl reset-failed {SYSTEMD_SUPERVISOR} 2>/dev/null || true"
+            )
             await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
             await asyncio.sleep(2)
             _LOGGER.info("Supervisor service restarted successfully")
         except Exception as exc:
-            _LOGGER.warning("Supervisor service failed to restart: %s", exc)
+            try:
+                journal = await self._client.async_run(
+                    f"sudo journalctl -u {SYSTEMD_SUPERVISOR} -n 50 --no-pager 2>&1 || true"
+                )
+                status_out = await self._client.async_run(
+                    f"sudo systemctl status {SYSTEMD_SUPERVISOR} --no-pager 2>&1 || true"
+                )
+                _LOGGER.warning(
+                    "Supervisor service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
+                    exc, status_out.strip(), journal.strip(),
+                )
+            except Exception:
+                _LOGGER.warning("Supervisor service failed to restart: %s", exc)
         
         # Start dashboard service
         try:

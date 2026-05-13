@@ -413,6 +413,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         try:
+            # Clear systemd rate-limit counter so a fresh restart is allowed
+            await self._client.async_run(
+                f"sudo systemctl reset-failed {SYSTEMD_SUPERVISOR} 2>/dev/null || true"
+            )
             await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
             await asyncio.sleep(2)
             status = await self._client.async_run(
@@ -420,7 +424,20 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             _LOGGER.warning("Supervisor recovery restart status: %s", status.strip())
         except Exception as exc:
-            _LOGGER.warning("Supervisor recovery restart failed: %s", exc)
+            # Capture crash logs so the root cause is visible in HA logs
+            try:
+                journal = await self._client.async_run(
+                    f"sudo journalctl -u {SYSTEMD_SUPERVISOR} -n 50 --no-pager 2>&1 || true"
+                )
+                status_out = await self._client.async_run(
+                    f"sudo systemctl status {SYSTEMD_SUPERVISOR} --no-pager 2>&1 || true"
+                )
+                _LOGGER.warning(
+                    "Supervisor recovery restart failed: %s\nStatus:\n%s\nJournal:\n%s",
+                    exc, status_out.strip(), journal.strip(),
+                )
+            except Exception:
+                _LOGGER.warning("Supervisor recovery restart failed: %s", exc)
     
     async def _fetch_services_config(self) -> dict[str, Any]:
         """Fetch service configurations from Supervisor API."""

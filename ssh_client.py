@@ -20,6 +20,9 @@ import asyncssh
 
 _LOGGER = logging.getLogger(__name__)
 
+# asyncssh emits very chatty DEBUG/INFO messages — cap at WARNING to avoid HA log spam
+logging.getLogger("asyncssh").setLevel(logging.WARNING)
+
 # Preflight checks run on the remote node
 _PREFLIGHT_SCRIPT = r"""
 set -e
