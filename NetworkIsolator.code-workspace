@@ -7,7 +7,7 @@
   "settings": {
     "perimeterControl.remote.user": "paul",
     "perimeterControl.remote.host": "192.168.50.47",
-    "perimeterControl.remote.sshKey": "./y",
+    "perimeterControl.remote.sshKey": "./perimeterNode1",
     "perimeterControl.dashboard.port": "5006",
     "files.associations": {
       "*.conf.yaml": "yaml",

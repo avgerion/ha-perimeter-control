@@ -46,6 +46,8 @@ PERIMETERCONTROL_SUPERVISOR_SERVICE = os.environ.get('PERIMETERCONTROL_SUPERVISO
 PERIMETERCONTROL_DASHBOARD_SERVICE = os.environ.get('PERIMETERCONTROL_DASHBOARD_SERVICE', 'PerimeterControl-dashboard')
 PERIMETERCONTROL_OPT_PATH = os.environ.get('PERIMETERCONTROL_OPT_PATH', '/opt/PerimeterControl')
 PERIMETERCONTROL_TMP_PATH = os.environ.get('PERIMETERCONTROL_TMP_PATH', '/tmp')
+PERIMETERCONTROL_CONF_PATH = os.environ.get('PERIMETERCONTROL_CONF_PATH', '/mnt/PerimeterControl/conf')
+PERIMETERCONTROL_LOG_PATH = os.environ.get('PERIMETERCONTROL_LOG_PATH', '/var/log/PerimeterControl')
 
 # ── Repo layout (relative to repo root) ─────────────────────────────────────
 WEB_FILES = [
@@ -313,7 +315,7 @@ def deploy(
         f"  [ -f {active_dir}/$f ] && sudo cp -a {active_dir}/$f {backup_dir}/$f 2>/dev/null || true; "
         f"done; "
         f"for f in {script_names}; do"
-        f"  [ -f /opt/network-isolator/scripts/$f ] && sudo cp -a /opt/network-isolator/scripts/$f {backup_dir}/$f 2>/dev/null || true; "
+        f"  [ -f {PERIMETERCONTROL_OPT_PATH}/scripts/$f ] && sudo cp -a {PERIMETERCONTROL_OPT_PATH}/scripts/$f {backup_dir}/$f 2>/dev/null || true; "
         f"done"
     )
     rc, _, err = _ssh(host, user, ssh_key, backup_cmd)
@@ -336,7 +338,7 @@ def deploy(
     # ── 8. Install files via sudo install (sets permissions atomically) ──
     rc, _, _ = _ssh(
         host, user, ssh_key,
-        f"sudo mkdir -p {active_dir} /opt/network-isolator/scripts"
+        f"sudo mkdir -p {active_dir} {PERIMETERCONTROL_OPT_PATH}/scripts"
     )
     install_cmds = []
     for rel, tmp_path, dest, mode in all_files:
@@ -345,7 +347,7 @@ def deploy(
             continue
         remote_dest = (
             f"{active_dir}/{local_f.name}" if dest == "web"
-            else f"/opt/network-isolator/scripts/{local_f.name}"
+            else f"{PERIMETERCONTROL_OPT_PATH}/scripts/{local_f.name}"
         )
         install_cmds.append(
             f"sudo install -o root -g root -m {mode} {tmp_path} {remote_dest}"
@@ -357,15 +359,15 @@ def deploy(
 
     # ── 9. Sync config (optional) ────────────────────────────────────────
     if sync_config:
-        conf_src = repo_root / "config" / "network-isolator.conf.yaml"
+        conf_src = repo_root / "config" / "perimeterControl.conf.yaml"
         if conf_src.exists():
-            rc, _, err = _scp(host, user, ssh_key, str(conf_src), "/tmp/network-isolator.conf.yaml")
+            rc, _, err = _scp(host, user, ssh_key, str(conf_src), "/tmp/perimeterControl.conf.yaml")
             if rc == 0:
                 rc, _, err = _ssh(
                     host, user, ssh_key,
-                    "set -e; sudo mkdir -p /mnt/network-isolator/conf; "
-                    "sudo install -o root -g root -m 0644 /tmp/network-isolator.conf.yaml "
-                    "/mnt/network-isolator/conf/network-isolator.conf.yaml",
+                    f"set -e; sudo mkdir -p {PERIMETERCONTROL_CONF_PATH}; "
+                    f"sudo install -o root -g root -m 0644 /tmp/perimeterControl.conf.yaml "
+                    f"{PERIMETERCONTROL_CONF_PATH}/perimeterControl.conf.yaml",
                 )
             _log("sync config", rc == 0, err.strip() if rc != 0 else "")
         else:
@@ -373,11 +375,20 @@ def deploy(
 
     # ── 10. Restart dashboard (with rollback on failure) ─────────────────
     if not no_restart:
-        _ssh(host, user, ssh_key, "sudo systemctl restart network-isolator-dashboard")
+        _ssh(host, user, ssh_key, f"sudo systemctl restart {PERIMETERCONTROL_DASHBOARD_SERVICE}")
         time.sleep(2)
-        rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active network-isolator-dashboard")
+        rc, _, _ = _ssh(host, user, ssh_key, f"sudo systemctl is-active {PERIMETERCONTROL_DASHBOARD_SERVICE}")
         if rc != 0:
-            _log("restart dashboard", False, "Service unhealthy — rolling back")
+            _, journal_out, _ = _ssh(
+                host, user, ssh_key,
+                f"sudo journalctl -u {PERIMETERCONTROL_DASHBOARD_SERVICE} -n 30 --no-pager 2>&1 || true",
+            )
+            _, status_out, _ = _ssh(
+                host, user, ssh_key,
+                f"sudo systemctl status {PERIMETERCONTROL_DASHBOARD_SERVICE} --no-pager 2>&1 || true",
+            )
+            _log("restart dashboard", False,
+                 f"Service unhealthy — rolling back.\nStatus:\n{status_out.strip()}\nJournal:\n{journal_out.strip()}")
             # Build rollback using backup copies
             rollback_parts = []
             for rel, _, dest, mode in all_files:
@@ -385,12 +396,12 @@ def deploy(
                 bk = f"{backup_dir}/{fname}"
                 target = (
                     f"{active_dir}/{fname}" if dest == "web"
-                    else f"/opt/network-isolator/scripts/{fname}"
+                    else f"{PERIMETERCONTROL_OPT_PATH}/scripts/{fname}"
                 )
                 rollback_parts.append(
                     f"[ -f {bk} ] && sudo install -o root -g root -m {mode} {bk} {target} || true"
                 )
-            rollback_cmd = "; ".join(rollback_parts) + "; sudo systemctl restart network-isolator-dashboard"
+            rollback_cmd = "; ".join(rollback_parts) + f"; sudo systemctl restart {PERIMETERCONTROL_DASHBOARD_SERVICE}"
             _ssh(host, user, ssh_key, rollback_cmd)
             _log("rollback dashboard", True)
             sys.exit(1)
@@ -405,7 +416,7 @@ def deploy(
         return
 
     supervisor_dir = repo_root / "supervisor"
-    supervisor_svc = repo_root / "server" / "network-isolator-supervisor.service"
+    supervisor_svc = repo_root / f"{PERIMETERCONTROL_SUPERVISOR_SERVICE}.service"
 
     if not supervisor_dir.is_dir():
         _log("supervisor phase", True, "supervisor/ not found locally — skipping")
@@ -423,14 +434,15 @@ def deploy(
             _abort("upload supervisor.tar.gz", err.strip())
         _log("upload supervisor.tar.gz", True)
 
-        rc, _, err = _scp(host, user, ssh_key, str(supervisor_svc), "/tmp/network-isolator-supervisor.service")
+        svc_tmp = f"/tmp/{PERIMETERCONTROL_SUPERVISOR_SERVICE}.service"
+        rc, _, err = _scp(host, user, ssh_key, str(supervisor_svc), svc_tmp)
         if rc != 0:
             _abort("upload supervisor.service", err.strip())
         _log("upload supervisor.service", True)
 
         # Backup existing supervisor
         _ssh(host, user, ssh_key,
-               "sudo cp -a /opt/network-isolator/supervisor /tmp/network-isolator-supervisor-backup 2>/dev/null; true")
+               f"sudo cp -a {PERIMETERCONTROL_OPT_PATH}/supervisor /tmp/{PERIMETERCONTROL_SUPERVISOR_SERVICE}-backup 2>/dev/null; true")
 
         # Extract with sudo + --no-same-permissions so tar sets permissions respecting umask.
         # This avoids the 'chmod: Operation not permitted' bug from the PowerShell script
@@ -440,9 +452,9 @@ def deploy(
             "cd /tmp && rm -rf /tmp/supervisor && "
             "sudo tar -xzf /tmp/supervisor.tar.gz "
             "  --no-same-owner --no-same-permissions --mode='u=rw,go=r,a+X' && "
-            "sudo mkdir -p /opt/network-isolator/supervisor && "
-            "sudo cp -a /tmp/supervisor/. /opt/network-isolator/supervisor/ && "
-            "sudo chown -R root:root /opt/network-isolator/supervisor && "
+            f"sudo mkdir -p {PERIMETERCONTROL_OPT_PATH}/supervisor && "
+            f"sudo cp -a /tmp/supervisor/. {PERIMETERCONTROL_OPT_PATH}/supervisor/ && "
+            f"sudo chown -R root:root {PERIMETERCONTROL_OPT_PATH}/supervisor && "
             "echo SUPERVISOR_INSTALLED"
         )
         rc, out, err = _ssh(host, user, ssh_key, sup_extract)
@@ -453,12 +465,12 @@ def deploy(
         # Install systemd service unit
         rc, out, err = _ssh(
             host, user, ssh_key,
-            "set -e; "
-            "sudo install -o root -g root -m 0644 /tmp/network-isolator-supervisor.service "
-            "  /etc/systemd/system/network-isolator-supervisor.service && "
-            "sudo systemctl daemon-reload && "
-            "sudo systemctl enable network-isolator-supervisor.service && "
-            "echo SERVICE_UNIT_OK",
+            f"set -e; "
+            f"sudo install -o root -g root -m 0644 {svc_tmp} "
+            f"  /etc/systemd/system/{PERIMETERCONTROL_SUPERVISOR_SERVICE}.service && "
+            f"sudo systemctl daemon-reload && "
+            f"sudo systemctl enable {PERIMETERCONTROL_SUPERVISOR_SERVICE}.service && "
+            f"echo SERVICE_UNIT_OK",
         )
         _log("install supervisor.service", rc == 0 and "SERVICE_UNIT_OK" in out,
              err.strip() if rc != 0 else "")
@@ -467,7 +479,7 @@ def deploy(
         pkgs = " ".join(SUPERVISOR_PIP)
         rc, out, err = _ssh(
             host, user, ssh_key,
-            f"set -e; sudo /opt/network-isolator/venv/bin/pip install --quiet {pkgs} && echo PIP_OK",
+            f"set -e; sudo {venv_pip} install --quiet {pkgs} && echo PIP_OK",
         )
         _log("pip install supervisor deps", rc == 0 and "PIP_OK" in out,
              err.strip() if rc != 0 else "")
@@ -498,7 +510,7 @@ def deploy(
         # Ensure runtime directories exist
         rc, _, err = _ssh(
             host, user, ssh_key,
-            "sudo mkdir -p /opt/network-isolator/state /var/log/network-isolator /mnt/network-isolator/conf && echo DIRS_OK",
+            f"sudo mkdir -p {PERIMETERCONTROL_OPT_PATH}/state {PERIMETERCONTROL_LOG_PATH} {PERIMETERCONTROL_CONF_PATH} && echo DIRS_OK",
         )
         _log("runtime directories", rc == 0, err.strip() if rc != 0 else "")
 
@@ -511,7 +523,7 @@ def deploy(
                     if f.stem.replace(".service", "") in svc_filter
                 ]
             if svc_yamls:
-                _ssh(host, user, ssh_key, "sudo mkdir -p /mnt/network-isolator/conf/services")
+                _ssh(host, user, ssh_key, f"sudo mkdir -p {PERIMETERCONTROL_CONF_PATH}/services")
                 deployed = 0
                 for sf in svc_yamls:
                     rc, _, err = _scp(host, user, ssh_key, str(sf), f"/tmp/{sf.name}")
@@ -519,7 +531,7 @@ def deploy(
                         rc, _, err = _ssh(
                             host, user, ssh_key,
                             f"sudo install -o root -g root -m 0644 /tmp/{sf.name} "
-                            f"/mnt/network-isolator/conf/services/{sf.name}",
+                            f"{PERIMETERCONTROL_CONF_PATH}/services/{sf.name}",
                         )
                     if rc == 0:
                         deployed += 1
@@ -530,19 +542,31 @@ def deploy(
                 # Validate descriptors on Pi
                 rc, out, _ = _ssh(
                     host, user, ssh_key,
-                    "sudo /opt/network-isolator/venv/bin/python3 "
-                    "/opt/network-isolator/supervisor/resources/validate-service-descriptors.py "
-                    "--dir /mnt/network-isolator/conf/services 2>/dev/null; echo VALIDATE_DONE",
+                    f"sudo {venv_python} "
+                    f"{PERIMETERCONTROL_OPT_PATH}/supervisor/resources/validate-service-descriptors.py "
+                    f"--dir {PERIMETERCONTROL_CONF_PATH}/services 2>/dev/null; echo VALIDATE_DONE",
                 )
                 _log("validate descriptors", "VALIDATE_DONE" in out,
                      out.strip() if "VALIDATE_DONE" not in out else "")
 
         # Restart supervisor
         if not no_restart:
-            _ssh(host, user, ssh_key, "sudo systemctl restart network-isolator-supervisor")
+            _ssh(host, user, ssh_key, f"sudo systemctl restart {PERIMETERCONTROL_SUPERVISOR_SERVICE}")
             time.sleep(3)
-            rc, _, _ = _ssh(host, user, ssh_key, "sudo systemctl is-active network-isolator-supervisor")
-            _log("restart supervisor", rc == 0)
+            rc, _, _ = _ssh(host, user, ssh_key, f"sudo systemctl is-active {PERIMETERCONTROL_SUPERVISOR_SERVICE}")
+            if rc != 0:
+                _, journal_out, _ = _ssh(
+                    host, user, ssh_key,
+                    f"sudo journalctl -u {PERIMETERCONTROL_SUPERVISOR_SERVICE} -n 50 --no-pager 2>&1 || true",
+                )
+                _, status_out, _ = _ssh(
+                    host, user, ssh_key,
+                    f"sudo systemctl status {PERIMETERCONTROL_SUPERVISOR_SERVICE} --no-pager 2>&1 || true",
+                )
+                _log("restart supervisor", False,
+                     f"Service failed to start.\nStatus:\n{status_out.strip()}\nJournal:\n{journal_out.strip()}")
+            else:
+                _log("restart supervisor", True)
         else:
             _log("restart supervisor", True, "skipped (--no-restart)")
 
