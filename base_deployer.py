@@ -359,21 +359,9 @@ fi
                 cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {package}"
                 _LOGGER.info("Installing Python package: %s", package)
                 _LOGGER.debug("Running command: %s", cmd)
-                # Run the command and capture stdout/stderr
-                result = await self._client.async_run(cmd, capture_output=True, return_full_result=True)
-                # result may be a dict with keys: stdout, stderr, exit_code
-                if isinstance(result, dict):
-                    stdout = result.get("stdout", "")
-                    stderr = result.get("stderr", "")
-                    exit_code = result.get("exit_code", None)
-                    _LOGGER.debug("pip stdout for %s: %s", package, stdout.strip())
-                    if stderr:
-                        _LOGGER.warning("pip stderr for %s: %s", package, stderr.strip())
-                    if exit_code is not None and exit_code != 0:
-                        _LOGGER.error("pip install failed for %s (exit %s)", package, exit_code)
-                else:
-                    # Fallback: just log the result
-                    _LOGGER.debug("pip result for %s: %s", package, result)
+                result = await self._client.async_run(cmd)
+                if result and result.strip():
+                    _LOGGER.debug("pip output for %s: %s", package, result.strip())
                 _LOGGER.info("Successfully installed: %s", package)
             except Exception as exc:
                 _LOGGER.error("Failed to install %s: %s", package, exc, exc_info=True)
