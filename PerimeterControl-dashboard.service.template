@@ -10,6 +10,8 @@ Group=root
 WorkingDirectory={WEB_DIR}
 Environment="PYTHONUNBUFFERED=1"
 Environment="LOG_ROOT={LOG_ROOT}"
+ExecStartPre=/usr/bin/mkdir -p {STATE_ROOT}
+ExecStartPre=/usr/bin/mkdir -p {LOG_ROOT}
 ExecStart={VENV}/bin/python3 {WEB_DIR}/dashboard.py
 Restart=on-failure
 RestartSec=10
