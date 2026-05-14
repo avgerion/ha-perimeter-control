@@ -339,11 +339,27 @@ class Deployer(BaseDeployer):
         
         # Start dashboard service
         try:
+            # Clear rate-limit counter so systemd allows a fresh start after crash loop
+            await self._client.async_run(
+                f"sudo systemctl reset-failed {SYSTEMD_DASHBOARD} 2>/dev/null || true"
+            )
             await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
             await asyncio.sleep(2)
             _LOGGER.info("Dashboard service restarted successfully")
         except Exception as exc:
-            _LOGGER.warning("Dashboard service failed to restart: %s", exc)
+            try:
+                journal = await self._client.async_run(
+                    f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
+                )
+                status_out = await self._client.async_run(
+                    f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
+                )
+                _LOGGER.warning(
+                    "Dashboard service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
+                    exc, status_out.strip(), journal.strip(),
+                )
+            except Exception:
+                _LOGGER.warning("Dashboard service failed to restart: %s", exc)
         
         self._emit(PHASE_RESTART, "Services restarted", 95)
 
@@ -372,9 +388,39 @@ class Deployer(BaseDeployer):
         elif supervisor_active:
             self._emit(PHASE_VERIFY, "Deploy complete — supervisor running", 100)
             _LOGGER.warning("Deployment completed with warnings - supervisor active but dashboard failed")
+            try:
+                journal = await self._client.async_run(
+                    f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
+                )
+                status_out = await self._client.async_run(
+                    f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
+                )
+                _LOGGER.warning(
+                    "Dashboard diagnostics:\nStatus:\n%s\nJournal:\n%s",
+                    status_out.strip(), journal.strip(),
+                )
+            except Exception as diag_exc:
+                _LOGGER.debug("Could not capture dashboard diagnostics: %s", diag_exc)
         else:
             self._emit(PHASE_VERIFY, "Deploy complete — services need attention", 100)
             _LOGGER.error("Deployment completed with errors - services need attention")
+            for svc_name, svc_const in (
+                ("Supervisor", SYSTEMD_SUPERVISOR),
+                ("Dashboard", SYSTEMD_DASHBOARD),
+            ):
+                try:
+                    journal = await self._client.async_run(
+                        f"sudo journalctl -u {svc_const} -n 50 --no-pager 2>&1 || true"
+                    )
+                    status_out = await self._client.async_run(
+                        f"sudo systemctl status {svc_const} --no-pager 2>&1 || true"
+                    )
+                    _LOGGER.error(
+                        "%s diagnostics:\nStatus:\n%s\nJournal:\n%s",
+                        svc_name, status_out.strip(), journal.strip(),
+                    )
+                except Exception as diag_exc:
+                    _LOGGER.debug("Could not capture %s diagnostics: %s", svc_name, diag_exc)
 
 
 # ------------------------------------------------------------------
