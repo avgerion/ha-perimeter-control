@@ -459,7 +459,16 @@ def _build_install_script() -> str:
 
 
 def _build_supervisor_install_script() -> str:
+    _path = get_remote_path_config()
+    _state_root = _path["STATE_ROOT"]
+    _log_root = _path["LOG_ROOT"]
     return f"""set -e
+# Ensure required directories exist before service units are started
+sudo mkdir -p {_state_root} {_log_root}
+sudo chmod 755 {_state_root} {_log_root}
+# Deploy tmpfiles.d config so directories survive reboots (runs before services at boot)
+printf 'd {_state_root} 0755 root root -\nd {_log_root} 0755 root root -\n' | sudo tee /etc/tmpfiles.d/perimeter-control.conf > /dev/null
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/perimeter-control.conf 2>/dev/null || true
 sudo cp -a {REMOTE_SUPERVISOR_DIR} {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor-backup 2>/dev/null || true
 cd {REMOTE_TEMP_ROOT}
 rm -rf {REMOTE_TEMP_ROOT}/supervisor
