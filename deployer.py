@@ -304,6 +304,13 @@ class Deployer(BaseDeployer):
                 _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
         await self.phase_install()
 
+        # Install Python packages required by the dashboard (always needed, regardless of
+        # which component services were selected)
+        await self.install_python_packages(
+            ["bokeh", "tornado", "pyyaml", "pandas"],
+            "dashboard",
+        )
+
         # Install supervisor package
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 78)
         tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
