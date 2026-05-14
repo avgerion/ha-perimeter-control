@@ -292,6 +292,18 @@ class Deployer(BaseDeployer):
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
             return
 
+        # Upload and install dashboard web files so WorkingDirectory always exists
+        # (phase_install from service deployers may not have run if no component services selected)
+        self._emit(PHASE_SUPERVISOR, "Deploying dashboard web files...", 77)
+        _web_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
+        for _fname in _web_files:
+            _src = _SERVER_FILES_DIR / _fname
+            if _src.exists():
+                await self._client.async_put_file(_src, f"{REMOTE_TEMP_ROOT}/{_fname}")
+            else:
+                _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
+        await self.phase_install()
+
         # Install supervisor package
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 78)
         tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
