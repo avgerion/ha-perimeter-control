@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
+from urllib.parse import urljoin
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
 from homeassistant.components.camera import Camera
+from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
@@ -87,6 +91,10 @@ class SupervisorEntity(Entity):
         current_state = entity_states.get(self._entity_id, {})
         if "attributes" in current_state:
             attrs.update(current_state["attributes"])
+
+        pin_label = self._gpio_pin_label()
+        if pin_label:
+            attrs["gpio_pin_label"] = pin_label
             
         return attrs
 
@@ -111,6 +119,54 @@ class SupervisorEntity(Entity):
         if "state" in entity_data:
             return entity_data["state"]
         return entity_data
+
+    def _gpio_pin_label(self) -> str | None:
+        """Return normalized GPIO pin label from schema/state attributes."""
+        attrs = self._get_current_state().get("attributes", {})
+
+        gpio_pin = attrs.get("gpio_pin")
+        if gpio_pin is None:
+            gpio_pin = attrs.get("pin")
+        if gpio_pin is None:
+            gpio_pin = attrs.get("bcm_pin")
+        if gpio_pin is None:
+            gpio_pin = attrs.get("gpio")
+        if gpio_pin is None:
+            gpio_pin = self.entity_schema.get("gpio_pin")
+
+        if gpio_pin is not None:
+            return f"GPIO {gpio_pin}"
+
+        line = attrs.get("line")
+        if line is None:
+            line = attrs.get("line_offset")
+        if line is None:
+            line = attrs.get("gpio_line")
+        chip = attrs.get("chip") or attrs.get("gpio_chip")
+
+        if line is not None and chip is not None:
+            return f"{chip} line {line}"
+        if line is not None:
+            return f"line {line}"
+
+        # Fallback: infer GPIO pin from entity ID patterns like gpio17, gpio_17, gpio-17.
+        match = re.search(r"gpio[_:-]?(\d+)", self._entity_id, re.IGNORECASE)
+        if match:
+            return f"GPIO {match.group(1)}"
+
+        return None
+
+    def _append_gpio_pin_to_name(self) -> None:
+        """Append GPIO pin identifier to entity display name when available."""
+        pin_label = self._gpio_pin_label()
+        if not pin_label:
+            return
+
+        current_name = self._attr_name or self._entity_id
+        if pin_label in current_name:
+            return
+
+        self._attr_name = f"{current_name} ({pin_label})"
 
 
 class DynamicSensorEntity(SupervisorEntity, SensorEntity):
@@ -191,6 +247,147 @@ class DynamicButtonEntity(SupervisorEntity, ButtonEntity):
         )
 
 
+class DynamicSwitchEntity(SupervisorEntity, SwitchEntity):
+    """Switch entity created from Supervisor schema."""
+
+    def __init__(
+        self,
+        coordinator: PerimeterControlCoordinator,
+        entity_schema: Dict[str, Any],
+        dimension_values: Optional[Dict[str, str]] = None,
+    ) -> None:
+        super().__init__(coordinator, entity_schema, dimension_values)
+        self._append_gpio_pin_to_name()
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if switch is on."""
+        current_state = self._get_current_state()
+        value = current_state.get("state")
+
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+
+        state = str(value).strip().lower()
+        return state in {"on", "true", "1", "active", "enabled", "open"}
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn switch on via capability action."""
+        await self._call_capability_action(
+            self.entity_schema.get("turn_on_action_id")
+            or self.entity_schema.get("turn_on_action")
+            or "turn_on",
+            {"entity_id": self._entity_id},
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn switch off via capability action."""
+        await self._call_capability_action(
+            self.entity_schema.get("turn_off_action_id")
+            or self.entity_schema.get("turn_off_action")
+            or "turn_off",
+            {"entity_id": self._entity_id},
+        )
+
+    async def _call_capability_action(self, action_id: str, payload: Dict[str, Any]) -> None:
+        """Call supervisor capability action for this entity."""
+        capability = self.entity_schema.get("capability")
+        if not capability:
+            _LOGGER.debug("No capability found for switch entity %s", self._entity_id)
+            return
+
+        await self.coordinator._supervisor_post(
+            f"/capabilities/{capability}/actions/{action_id}",
+            payload,
+        )
+        await self.coordinator.async_request_refresh()
+
+
+class DynamicLightEntity(SupervisorEntity, LightEntity):
+    """Light entity created from Supervisor schema."""
+
+    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+
+    def __init__(
+        self,
+        coordinator: PerimeterControlCoordinator,
+        entity_schema: Dict[str, Any],
+        dimension_values: Optional[Dict[str, str]] = None,
+    ) -> None:
+        super().__init__(coordinator, entity_schema, dimension_values)
+        self._append_gpio_pin_to_name()
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if light is on."""
+        current_state = self._get_current_state()
+        value = current_state.get("state")
+
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+
+        state = str(value).strip().lower()
+        return state in {"on", "true", "1", "active", "enabled"}
+
+    @property
+    def brightness(self) -> int | None:
+        """Return brightness on a 0-255 scale when provided by supervisor."""
+        attrs = self._get_current_state().get("attributes", {})
+
+        if isinstance(attrs.get("brightness"), (int, float)):
+            level = int(attrs["brightness"])
+            return max(0, min(255, level))
+
+        if isinstance(attrs.get("brightness_pct"), (int, float)):
+            pct = float(attrs["brightness_pct"])
+            return max(0, min(255, round((pct / 100.0) * 255)))
+
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn light on via capability action."""
+        payload: Dict[str, Any] = {"entity_id": self._entity_id}
+
+        if "brightness" in kwargs and kwargs["brightness"] is not None:
+            brightness = int(kwargs["brightness"])
+            brightness = max(0, min(255, brightness))
+            payload["brightness"] = brightness
+            payload["brightness_pct"] = round((brightness / 255.0) * 100)
+
+        await self._call_capability_action(
+            self.entity_schema.get("turn_on_action_id")
+            or self.entity_schema.get("turn_on_action")
+            or "turn_on",
+            payload,
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn light off via capability action."""
+        await self._call_capability_action(
+            self.entity_schema.get("turn_off_action_id")
+            or self.entity_schema.get("turn_off_action")
+            or "turn_off",
+            {"entity_id": self._entity_id},
+        )
+
+    async def _call_capability_action(self, action_id: str, payload: Dict[str, Any]) -> None:
+        """Call supervisor capability action for this entity."""
+        capability = self.entity_schema.get("capability")
+        if not capability:
+            _LOGGER.debug("No capability found for light entity %s", self._entity_id)
+            return
+
+        await self.coordinator._supervisor_post(
+            f"/capabilities/{capability}/actions/{action_id}",
+            payload,
+        )
+        await self.coordinator.async_request_refresh()
+
+
 class DynamicCameraEntity(SupervisorEntity, Camera):
     """Camera entity created from Supervisor schema."""
 
@@ -243,20 +440,54 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
     ) -> bytes | None:
         """Return camera image."""
         try:
-            # Try to get image from supervisor API
             current_state = self._get_current_state()
-            image_url = current_state.get("attributes", {}).get("image_url")
-            
+            attrs = current_state.get("attributes", {})
+
+            image_url = attrs.get("image_url") or attrs.get("snapshot_url")
             if not image_url:
-                # If no image URL, return a minimal placeholder image
+                capability = self.entity_schema.get("capability")
+                if capability:
+                    image_url = f"/api/v1/cameras/{capability}/latest.jpg"
+
+            if not image_url:
                 return self._generate_placeholder_image()
-                
-            # For now, return placeholder until we implement full image fetching
-            return self._generate_placeholder_image()
+
+            image_url = self._resolve_camera_url(str(image_url))
+
+            session = self.coordinator._http_session
+            if not session or session.closed:
+                _LOGGER.debug("HTTP session unavailable for camera %s", self._entity_id)
+                return self._generate_placeholder_image()
+
+            async with session.get(image_url) as response:
+                if response.status != 200:
+                    _LOGGER.debug(
+                        "Camera image fetch returned HTTP %s for %s (%s)",
+                        response.status,
+                        self._entity_id,
+                        image_url,
+                    )
+                    return self._generate_placeholder_image()
+                data = await response.read()
+                return data or self._generate_placeholder_image()
             
         except Exception as e:
             _LOGGER.warning("Failed to get camera image for %s: %s", self._entity_id, e)
             return self._generate_placeholder_image()
+
+    def _resolve_camera_url(self, image_url: str) -> str:
+        """Resolve relative camera URLs against the supervisor base URL."""
+        if image_url.startswith("http://") or image_url.startswith("https://"):
+            return image_url
+
+        host = self.coordinator._entry.data.get("host")
+        port = self.coordinator._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
+        base = f"http://{host}:{port}"
+
+        if image_url.startswith("/"):
+            return f"{base}{image_url}"
+
+        return urljoin(f"{base}/", image_url)
             
     def _generate_placeholder_image(self) -> bytes:
         """Generate a minimal placeholder image."""
@@ -299,6 +530,10 @@ def create_entity_from_schema(
             return DynamicButtonEntity(coordinator, entity_schema, dimension_values)
         elif entity_type == "camera":
             return DynamicCameraEntity(coordinator, entity_schema, dimension_values)
+        elif entity_type == "switch":
+            return DynamicSwitchEntity(coordinator, entity_schema, dimension_values)
+        elif entity_type == "light":
+            return DynamicLightEntity(coordinator, entity_schema, dimension_values)
         else:
             _LOGGER.warning("Unknown entity type '%s' in schema: %s", entity_type, entity_schema)
             return None

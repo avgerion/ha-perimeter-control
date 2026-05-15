@@ -15,6 +15,7 @@ Access methods:
 import logging
 import socket
 import subprocess
+import os
 from pathlib import Path
 from collections import Counter
 from typing import Any, Dict, List, Optional
@@ -32,16 +33,22 @@ from layouts import create_dashboard_layout
 from callbacks import setup_callbacks
 from data_sources import DataManager
 
+LOG_ROOT = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_ROOT', '/var/log/PerimeterControl')
+DASHBOARD_LOG_FILE = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_FILE', os.path.join(LOG_ROOT, 'dashboard.log'))
+LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.dashboard')
+
+os.makedirs(LOG_ROOT, exist_ok=True)
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler('/var/log/isolator/dashboard.log'),
+        logging.FileHandler(DASHBOARD_LOG_FILE),
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger('isolator.dashboard')
+logger = logging.getLogger(LOGGER_NAME)
 logging.getLogger('bokeh.server.views.ws').setLevel(logging.DEBUG)
 logging.getLogger('bokeh.server.session').setLevel(logging.DEBUG)
 logging.getLogger('bokeh.server.protocol_handler').setLevel(logging.DEBUG)
@@ -239,6 +246,7 @@ def _resolve_server_network(config: Dict[str, Any]) -> Dict[str, Any]:
         'localhost',
         '127.0.0.1',
         'isolator.local',
+        'perimetercontrol.local',
         socket.gethostname(),
     }
     if upstream_ip:

@@ -360,6 +360,40 @@ class EntityStatesBulkHandler(_Base):
         self._json({"states": states, "count": len(states)})
 
 
+class CameraLatestImageHandler(_Base):
+    """Serve latest JPEG image for camera-capable capabilities."""
+
+    def get(self, capability_id: str):
+        cap = getattr(self.supervisor, "_active", {}).get(capability_id)
+        if cap is None:
+            self._err(404, f"Capability '{capability_id}' is not active")
+            return
+
+        photo_dir = Path(getattr(cap, "photo_dir", "")) if getattr(cap, "photo_dir", None) else None
+        if photo_dir is None:
+            self._err(404, f"Capability '{capability_id}' does not expose images")
+            return
+
+        latest = photo_dir / "latest.jpg"
+        if not latest.exists():
+            candidates = sorted(photo_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if not candidates:
+                self._err(404, "No image available")
+                return
+            latest = candidates[0]
+
+        try:
+            data = latest.read_bytes()
+        except Exception as exc:
+            self._err(500, f"Failed to read camera image: {exc}")
+            return
+
+        self.set_status(200)
+        self.set_header("Content-Type", "image/jpeg")
+        self.set_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.write(data)
+
+
 class CapabilitiesHandler(_Base):
     def get(self):
         capabilities = self.supervisor.db.list_capabilities()
@@ -939,6 +973,7 @@ def make_app(supervisor) -> tornado.web.Application:
         [
             (r"/api/v1/node/info",                          NodeInfoHandler),
             (r"/api/v1/node/features",                      NodeFeaturesHandler),
+            (r"/api/v1/cameras/([^/]+)/latest\.jpg",       CameraLatestImageHandler),
             (r"/api/v1/entities/states/query",              EntityStatesBulkHandler),
             (r"/api/v1/entities/([^/]+)",                   EntityStateHandler),
             (r"/api/v1/entities",                           EntitiesHandler),

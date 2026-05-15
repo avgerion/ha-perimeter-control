@@ -50,7 +50,7 @@ class PhotoBoothCapability(CapabilityModule):
         
         # Configuration
         self.camera_device = config.get("camera_device", "/dev/video0")
-        self.photo_dir = Path(config.get("photo_directory", "/opt/isolator/photos"))
+        self.photo_dir = Path(config.get("photo_directory", "/opt/PerimeterControl/state/photos"))
         self.resolution = config.get("resolution", "1920x1080")
         self.quality = config.get("quality", 85)
         self.max_storage_mb = config.get("max_storage_mb", 1000)
@@ -61,6 +61,14 @@ class PhotoBoothCapability(CapabilityModule):
         self._timelapse_active = False
         self._motion_detection = config.get("motion_detection", False)
         self._last_capture_time: Optional[datetime] = None
+
+    def _latest_photo_path(self) -> Path:
+        """Return path to the canonical latest camera image."""
+        return self.photo_dir / "latest.jpg"
+
+    def _camera_image_url(self) -> str:
+        """Return Supervisor-relative URL that serves the latest camera image."""
+        return f"/api/v1/cameras/{self.cap_id}/latest.jpg"
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -237,9 +245,17 @@ class PhotoBoothCapability(CapabilityModule):
             
             if result.returncode == 0:
                 self._last_capture_time = datetime.now()
+
+                # Keep a stable image path for API and HA camera polling.
+                latest_path = self._latest_photo_path()
+                try:
+                    shutil.copyfile(photo_path, latest_path)
+                except Exception as copy_exc:
+                    logger.warning("[%s] Failed to update latest image symlink/copy: %s", self.cap_id, copy_exc)
                 
                 # Update entities
                 await self._update_capture_entities()
+                await self._update_camera_stream_entity()
                 
                 # Emit event
                 self._emit_event("photo_captured", {
@@ -263,6 +279,25 @@ class PhotoBoothCapability(CapabilityModule):
         except Exception as e:
             logger.error("[%s] Photo capture error: %s", self.cap_id, e)
             raise
+
+    async def _update_camera_stream_entity(self) -> None:
+        """Refresh primary camera entity attributes after captures/config changes."""
+        camera_entity_id = "photo_booth:camera:stream"
+        if camera_entity_id not in self.entity_cache._entities:
+            return
+
+        entity = self.entity_cache._entities[camera_entity_id].copy()
+        entity["id"] = camera_entity_id
+        attrs = dict(entity.get("attributes", {}))
+
+        latest = self._latest_photo_path()
+        attrs["last_image"] = str(latest) if latest.exists() else None
+        attrs["image_url"] = self._camera_image_url()
+        attrs["resolution"] = self.resolution
+        attrs["quality"] = self.quality
+
+        entity["attributes"] = attrs
+        self._publish_entity(entity)
 
     async def _set_resolution(self, resolution: str) -> Dict[str, Any]:
         """Set camera resolution."""
@@ -401,17 +436,19 @@ class PhotoBoothCapability(CapabilityModule):
         """Create all camera-related entities."""
         
         # Main camera entity (placeholder for now - real MJPEG streaming would need more setup)
+        latest_path = self._latest_photo_path()
         camera_entity = {
             "id": "photo_booth:camera:stream",
             "type": "camera",
-            "friendly_name": "Wildlife Camera",
+            "friendly_name": "Photo Booth Camera",
             "capability": self.cap_id,
             "state": "available" if self._camera_available else "unavailable",
             "attributes": {
                 "device": self.camera_device,
                 "resolution": self.resolution,
                 "quality": self.quality,
-                "last_image": str(self.photo_dir / "latest.jpg") if self._camera_available else None,
+                "last_image": str(latest_path) if latest_path.exists() else None,
+                "image_url": self._camera_image_url(),
             }
         }
         self._publish_entity(camera_entity)

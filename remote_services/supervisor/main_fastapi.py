@@ -1,5 +1,5 @@
 """
-Isolator Supervisor — FastAPI-based entry point.
+PerimeterControl Supervisor — FastAPI-based entry point.
 
 Usage
 -----
@@ -7,8 +7,8 @@ Usage
 
 Options
 -------
-    --config   PATH   Config directory          (default: /opt/isolator/config)
-    --state    PATH   State directory           (default: /opt/isolator/state)
+    --config   PATH   Config directory          (default: /mnt/PerimeterControl/conf)
+    --state    PATH   State directory           (default: /opt/PerimeterControl/state)
     --port     INT    REST API listener port    (default: 8080)
     --log-level STR   Logging level             (default: INFO)
 """
@@ -80,7 +80,7 @@ async def _run(args) -> None:
     global app_supervisor
     
     logger = logging.getLogger(__name__)
-    logger.info("Starting Isolator Supervisor with FastAPI")
+    logger.info("Starting PerimeterControl Supervisor with FastAPI")
 
     Path(args.config).mkdir(parents=True, exist_ok=True)
     Path(args.state).mkdir(parents=True, exist_ok=True)
@@ -109,7 +109,7 @@ async def _run(args) -> None:
     # Store supervisor in app state for access
     app.state.supervisor = supervisor
 
-    logger.info("Isolator Supervisor starting on port %d with FastAPI", args.port)
+    logger.info("PerimeterControl Supervisor starting on port %d with FastAPI", args.port)
 
     # Create uvicorn server configuration
     config = uvicorn.Config(
@@ -157,11 +157,11 @@ async def _run(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Isolator Supervisor (FastAPI)",
+        description="PerimeterControl Supervisor (FastAPI)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--config",     default="/opt/isolator/config", help="Config directory")
-    parser.add_argument("--state",      default="/opt/isolator/state",  help="State directory")
+    parser.add_argument("--config",     default="/mnt/PerimeterControl/conf", help="Config directory")
+    parser.add_argument("--state",      default="/opt/PerimeterControl/state",  help="State directory")
     parser.add_argument("--port",       type=int, default=8080,         help="REST API port")
     parser.add_argument("--log-level",  default="INFO",                 help="Logging level")
     parser.add_argument("--cpu-cores",  type=float, default=4.0,        help="Node CPU budget (cores)")

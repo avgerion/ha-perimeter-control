@@ -1,5 +1,5 @@
 """
-Isolator Supervisor — entry point.
+PerimeterControl Supervisor — entry point.
 
 Usage
 -----
@@ -7,8 +7,8 @@ Usage
 
 Options
 -------
-    --config   PATH   Config directory          (default: /opt/isolator/config)
-    --state    PATH   State directory           (default: /opt/isolator/state)
+    --config   PATH   Config directory          (default: /mnt/PerimeterControl/conf)
+    --state    PATH   State directory           (default: /opt/PerimeterControl/state)
     --port     INT    REST API listener port    (default: 8080)
     --log-level STR   Logging level             (default: INFO)
 """
@@ -93,7 +93,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     app = make_app(supervisor)
     app.listen(args.port)
-    logger.info("Isolator Supervisor listening on port %d", args.port)
+    logger.info("PerimeterControl Supervisor listening on port %d", args.port)
 
     shutdown_event = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -114,11 +114,11 @@ async def _run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Isolator Supervisor",
+        description="PerimeterControl Supervisor",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--config",     default="/opt/isolator/config", help="Config directory")
-    parser.add_argument("--state",      default="/opt/isolator/state",  help="State directory")
+    parser.add_argument("--config",     default="/mnt/PerimeterControl/conf", help="Config directory")
+    parser.add_argument("--state",      default="/opt/PerimeterControl/state",  help="State directory")
     parser.add_argument("--port",       type=int, default=8080,         help="REST API port")
     parser.add_argument("--log-level",  default="INFO",                 help="Logging level")
     parser.add_argument("--cpu-cores",  type=float, default=4.0,        help="Node CPU budget (cores)")

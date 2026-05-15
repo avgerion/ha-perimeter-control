@@ -40,6 +40,8 @@ LOG_ROOT = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_ROOT', '/var/log/Perim
 DASHBOARD_LOG_FILE = os.environ.get('PERIMETERCONTROL_DASHBOARD_LOG_FILE', os.path.join(LOG_ROOT, 'dashboard.log'))
 LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.dashboard')
 
+os.makedirs(LOG_ROOT, exist_ok=True)
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
@@ -247,6 +249,7 @@ def _resolve_server_network(config: Dict[str, Any]) -> Dict[str, Any]:
         'localhost',
         '127.0.0.1',
         'isolator.local',
+        'perimetercontrol.local',
         socket.gethostname(),
     }
     if upstream_ip:
