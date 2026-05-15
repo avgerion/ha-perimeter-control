@@ -7,6 +7,7 @@ from typing import Any, Optional, cast
 import json
 import asyncio
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -498,10 +499,47 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get dashboard URLs for all services using efficient endpoint."""
         try:
             result = await self._supervisor_get("/ha/dashboard-urls")
-            return result.get("dashboard_urls", {})
+            raw_urls = result.get("dashboard_urls", {})
+            if not isinstance(raw_urls, dict):
+                return {}
+            return self._normalize_dashboard_urls(raw_urls)
         except UpdateFailed:
             # Fall back to manual construction
             return self._build_legacy_dashboard_urls()
+
+    def _normalize_dashboard_urls(self, dashboard_urls: dict[str, str]) -> dict[str, str]:
+        """Normalize dashboard URLs to the integration host when API returns localhost URLs."""
+        normalized: dict[str, str] = {}
+        host = self._entry.data.get(CONF_HOST)
+
+        for service_id, url in dashboard_urls.items():
+            if not isinstance(service_id, str) or not isinstance(url, str) or not url:
+                continue
+
+            candidate = url.strip()
+            if not candidate:
+                continue
+
+            try:
+                parsed = urlparse(candidate)
+                if parsed.scheme in ("http", "https") and parsed.netloc:
+                    # Replace localhost loopback URLs with configured node host.
+                    parsed_host = (parsed.hostname or "").strip().lower()
+                    if host and parsed_host in ("localhost", "127.0.0.1", "::1"):
+                        port = parsed.port
+                        netloc = f"{host}:{port}" if port else str(host)
+                        parsed = parsed._replace(netloc=netloc)
+                        candidate = urlunparse(parsed)
+                elif host and candidate.startswith(":"):
+                    # Handle malformed ":5006" style values defensively.
+                    candidate = f"http://{host}{candidate}"
+            except Exception:
+                # Keep original URL when parsing fails.
+                pass
+
+            normalized[service_id] = candidate
+
+        return normalized
 
     def get_dashboard_url(self, service_id: str) -> str | None:
         """Get dashboard URL for service from cached data or access profile."""
@@ -571,10 +609,22 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if service_id and isinstance(dashboard_url, str) and dashboard_url and service_id not in normalized_urls:
                 normalized_urls[service_id] = dashboard_url
 
+        # If URLs are still missing, synthesize per-service links from known service ports.
+        host = self._entry.data[CONF_HOST]
+        for service in services:
+            service_id = service.get("id")
+            if not service_id or service_id in normalized_urls:
+                continue
+
+            port = service.get("port")
+            if isinstance(port, int):
+                normalized_urls[service_id] = f"http://{host}:{port}/"
+            elif isinstance(port, str) and port.isdigit():
+                normalized_urls[service_id] = f"http://{host}:{port}/"
+
         # Last-resort fallback: publish a main dashboard URL on default dashboard port.
         # This ensures at least one clickable URL entity when API-provided links are not available yet.
         if not normalized_urls:
-            host = self._entry.data[CONF_HOST]
             normalized_urls["main"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
 
         for service_id, dashboard_url in normalized_urls.items():

@@ -146,7 +146,7 @@ def _install_patch_doc_diagnostics():
 _install_patch_doc_diagnostics()
 
 # Configuration
-CONFIG_FILE = Path('/mnt/isolator/conf/isolator.conf.yaml')
+CONFIG_FILE = Path('/mnt/PerimeterControl/conf/perimeterControl.conf.yaml')
 DEFAULT_BIND_ADDRESS = '127.0.0.1'  # SSH tunnel by default
 DEFAULT_PORT = 5006
 
