@@ -234,9 +234,17 @@ def _resolve_server_network(config: Dict[str, Any]) -> Dict[str, Any]:
     if mode == 'localhost':
         bind_address = '127.0.0.1'
     elif mode == 'upstream':
-        bind_address = upstream_ip or '127.0.0.1'
+        if upstream_ip:
+            bind_address = upstream_ip
+        else:
+            logger.warning("Dashboard mode=upstream but no upstream IP found; falling back to 0.0.0.0")
+            bind_address = '0.0.0.0'
     elif mode == 'isolated':
-        bind_address = isolated_ip or '127.0.0.1'
+        if isolated_ip:
+            bind_address = isolated_ip
+        else:
+            logger.warning("Dashboard mode=isolated but no isolated IP found; falling back to 0.0.0.0")
+            bind_address = '0.0.0.0'
     elif mode == 'all':
         bind_address = '0.0.0.0'
     elif mode == 'explicit':

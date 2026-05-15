@@ -115,10 +115,21 @@ class SupervisorEntity(Entity):
         """Get current state from coordinator data."""
         entity_states = self.coordinator.data.get("entity_states", {})
         entity_data = entity_states.get(self._entity_id, {})
-        # Extract the actual state data - API returns nested structure
-        if "state" in entity_data:
-            return entity_data["state"]
-        return entity_data
+
+        current: Any = entity_data
+        # Defensively unwrap nested payloads like {"state": {"state": "...", ...}}.
+        for _ in range(3):
+            if not isinstance(current, dict):
+                break
+            nested_state = current.get("state")
+            if isinstance(nested_state, dict):
+                current = nested_state
+                continue
+            break
+
+        if isinstance(current, dict):
+            return current
+        return {"state": current}
 
     def _gpio_pin_label(self) -> str | None:
         """Return normalized GPIO pin label from schema/state attributes."""

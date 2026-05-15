@@ -317,7 +317,24 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             result = await self._supervisor_post("/entities/states/query", {"entity_ids": entity_ids})
             states = result.get("states", [])
-            return {state["entity_id"]: state for state in states if "entity_id" in state}
+            normalized: dict[str, Any] = {}
+            for item in states:
+                if not isinstance(item, dict):
+                    continue
+
+                entity_id = item.get("entity_id")
+                if not isinstance(entity_id, str) or not entity_id:
+                    continue
+
+                # API shape is typically: {"entity_id": "...", "state": {...}}
+                # Normalize to the inner state payload expected by dynamic entities.
+                payload = item.get("state")
+                if isinstance(payload, dict):
+                    normalized[entity_id] = payload
+                else:
+                    normalized[entity_id] = item
+
+            return normalized
         except UpdateFailed:
             # Fallback to empty dict if Supervisor unavailable
             return {}
