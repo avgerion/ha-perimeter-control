@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 import json
 import asyncio
 from pathlib import Path
@@ -70,16 +70,16 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
-    def _spawn_background_task(self, coro: Any, name: str) -> asyncio.Task:
+    def _spawn_background_task(self, coro: Any, name: str) -> asyncio.Task[Any]:
         """Create a background task that won't block Home Assistant startup."""
         create_bg = getattr(self.hass, "async_create_background_task", None)
         if callable(create_bg):
             try:
-                return create_bg(coro, name=name)
+                return cast(asyncio.Task[Any], create_bg(coro, name=name))
             except TypeError:
                 # Compatibility with older HA signatures.
-                return create_bg(coro, name)
-        return self.hass.async_create_task(coro, name=name)
+                return cast(asyncio.Task[Any], create_bg(coro, name))
+        return cast(asyncio.Task[Any], self.hass.async_create_task(coro, name=name))
 
     @classmethod
     async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
@@ -156,54 +156,51 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if not instance._client_initialized or not instance._client:
                     _LOGGER.error("SSH client not initialized, cannot schedule deployment")
                 else:
-                    def schedule_deployment_after_ssh_test():
+                    async def _ssh_test_and_deploy() -> None:
                         """Background task to test SSH and start deployment if successful."""
-                        async def _ssh_test_and_deploy():
-                            try:
-                                if not instance._client_initialized or not instance._client:
-                                    _LOGGER.error("SSH client not initialized, cannot test connection")
-                                    return
-                                    
-                                await instance._client.async_run("echo 'SSH test'")
-                                _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
-                                
-                                deploy_task = instance._spawn_background_task(
-                                    instance._auto_deploy_supervisor(),
-                                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                                )
-                                
-                                def deployment_completed(task):
-                                    try:
-                                        if task.exception():
-                                            _LOGGER.error("Auto-deployment task failed with exception: %s", 
-                                                        task.exception(), exc_info=task.exception())
-                                        else:
-                                            _LOGGER.debug("Auto-deployment task completed successfully")
-                                            # Start websocket connection after successful deployment
-                                            instance._spawn_background_task(
-                                                instance._delayed_websocket_start(),
-                                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                                            )
-                                    except Exception as cb_exc:
-                                        _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
-                                
-                                deploy_task.add_done_callback(deployment_completed)
-                                
-                            except Exception as ssh_exc:
-                                _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
-                                # Still try to start WebSocket in case services are actually working
-                                instance._spawn_background_task(
-                                    instance._delayed_websocket_start(),
-                                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                                )
-                    
-                    return _ssh_test_and_deploy()
+                        try:
+                            if not instance._client_initialized or not instance._client:
+                                _LOGGER.error("SSH client not initialized, cannot test connection")
+                                return
+
+                            await instance._client.async_run("echo 'SSH test'")
+                            _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+
+                            deploy_task = instance._spawn_background_task(
+                                instance._auto_deploy_supervisor(),
+                                name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                            )
+
+                            def deployment_completed(task: asyncio.Task[Any]) -> None:
+                                try:
+                                    if task.exception():
+                                        _LOGGER.error("Auto-deployment task failed with exception: %s",
+                                                    task.exception(), exc_info=task.exception())
+                                    else:
+                                        _LOGGER.debug("Auto-deployment task completed successfully")
+                                        # Start websocket connection after successful deployment
+                                        instance._spawn_background_task(
+                                            instance._delayed_websocket_start(),
+                                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                        )
+                                except Exception as cb_exc:
+                                    _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+
+                            deploy_task.add_done_callback(deployment_completed)
+
+                        except Exception as ssh_exc:
+                            _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
+                            # Still try to start WebSocket in case services are actually working
+                            instance._spawn_background_task(
+                                instance._delayed_websocket_start(),
+                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                            )
                 
-                # Schedule SSH test and deployment as background task
-                instance._spawn_background_task(
-                    schedule_deployment_after_ssh_test(),
-                    name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
-                )
+                    # Schedule SSH test and deployment as background task
+                    instance._spawn_background_task(
+                        _ssh_test_and_deploy(),
+                        name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
+                    )
                 
         except Exception as exc:
             _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
@@ -215,51 +212,48 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Try auto-deployment if supervisor is not available
             _LOGGER.info("Scheduling auto-deployment check...")
             
-            def schedule_auto_deployment():
+            async def _ssh_test_and_auto_deploy() -> None:
                 """Background task to test SSH and start deployment if successful."""
-                async def _ssh_test_and_auto_deploy():
-                    try:
-                        if not instance._client_initialized or not instance._client:
-                            _LOGGER.error("SSH client not initialized, cannot test connection")
-                            return
-                            
-                        # Quick SSH test to see if deployment is possible
-                        await instance._client.async_run("echo 'SSH test'")
-                        _LOGGER.info("SSH connection successful. Starting automatic deployment...")
-                        
-                        # Trigger automatic deployment in background with explicit task tracking
-                        deploy_task = instance._spawn_background_task(
-                            instance._auto_deploy_supervisor(),
-                            name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                        )
-                        
-                        # Add task done callback for debugging
-                        def deployment_completed(task):
-                            try:
-                                if task.exception():
-                                    _LOGGER.error("Auto-deployment task failed with exception: %s", 
-                                                task.exception(), exc_info=task.exception())
-                                else:
-                                    _LOGGER.debug("Auto-deployment task completed successfully")
-                                    # Start websocket connection after successful deployment
-                                    instance._spawn_background_task(
-                                        instance._delayed_websocket_start(),
-                                        name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                                    )
-                            except Exception as callback_exc:
-                                _LOGGER.error("Error in deployment callback: %s", callback_exc)
-                        
-                        deploy_task.add_done_callback(deployment_completed)
-                        
-                    except Exception as ssh_exc:
-                        _LOGGER.warning("SSH connection failed during auto-deployment check: %s", ssh_exc)
-                        # Integration will work in monitoring mode only
-                
-                return _ssh_test_and_auto_deploy()
+                try:
+                    if not instance._client_initialized or not instance._client:
+                        _LOGGER.error("SSH client not initialized, cannot test connection")
+                        return
+
+                    # Quick SSH test to see if deployment is possible
+                    await instance._client.async_run("echo 'SSH test'")
+                    _LOGGER.info("SSH connection successful. Starting automatic deployment...")
+
+                    # Trigger automatic deployment in background with explicit task tracking
+                    deploy_task = instance._spawn_background_task(
+                        instance._auto_deploy_supervisor(),
+                        name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                    )
+
+                    # Add task done callback for debugging
+                    def deployment_completed(task: asyncio.Task[Any]) -> None:
+                        try:
+                            if task.exception():
+                                _LOGGER.error("Auto-deployment task failed with exception: %s",
+                                            task.exception(), exc_info=task.exception())
+                            else:
+                                _LOGGER.debug("Auto-deployment task completed successfully")
+                                # Start websocket connection after successful deployment
+                                instance._spawn_background_task(
+                                    instance._delayed_websocket_start(),
+                                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                )
+                        except Exception as callback_exc:
+                            _LOGGER.error("Error in deployment callback: %s", callback_exc)
+
+                    deploy_task.add_done_callback(deployment_completed)
+
+                except Exception as ssh_exc:
+                    _LOGGER.warning("SSH connection failed during auto-deployment check: %s", ssh_exc)
+                    # Integration will work in monitoring mode only
             
             # Schedule SSH test and auto-deployment as background task - don't block startup
             instance._spawn_background_task(
-                schedule_auto_deployment(),
+                _ssh_test_and_auto_deploy(),
                 name=f"perimeter_control_auto_deploy_check_{instance._entry.entry_id}"
             )
         
@@ -364,17 +358,21 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("API reported capabilities but no services; waiting for service registration")
             
             # Transform to match expected format
-            dashboard_entities = self._create_dashboard_url_entities(services)
+            dashboard_entities = self._create_dashboard_url_entities(services, dashboard_urls)
             
-            # Transform entities array into entity_states dict for compatibility
+            # Transform entities array into entity_states dict for compatibility.
+            # Prefer live state values from /entities/states/query when available.
             entity_states = {}
             all_entities = entities + dashboard_entities  # Include dashboard entities in state processing
+            entity_ids = [e.get("id") for e in all_entities if e.get("id")]
+            live_entity_states = await self._fetch_entity_states(entity_ids)
             for entity in all_entities:
                 entity_id = entity.get("id")
                 if entity_id:
-                    # Wrap the entity data in the expected format
-                    entity_states[entity_id] = {
-                        "state": {
+                    state_payload = live_entity_states.get(entity_id, {})
+                    if not isinstance(state_payload, dict) or not state_payload.get("state"):
+                        # Fall back to schema/integration payload state when live state is unavailable
+                        state_payload = {
                             "state": entity.get("state"),
                             "attributes": entity.get("attributes", {}),
                             "last_updated": entity.get("last_updated"),
@@ -384,6 +382,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "unit_of_measurement": entity.get("unit_of_measurement"),
                             "state_class": entity.get("state_class"),
                         }
+
+                    # Wrap the entity data in the expected format
+                    entity_states[entity_id] = {
+                        "state": state_payload
                     }
             
             _LOGGER.info("Transformed %d entities (including %d dashboard URLs) into entity_states dict", len(entity_states), len(dashboard_entities))
@@ -540,18 +542,43 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 
         return dashboard_urls
     
-    def _create_dashboard_url_entities(self, services: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _create_dashboard_url_entities(
+        self,
+        services: list[dict[str, Any]],
+        dashboard_urls: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Create dashboard URL entities for each service with dashboard access."""
         from datetime import datetime
         
         dashboard_entities = []
-        
+
+        service_by_id = {
+            s.get("id"): s
+            for s in services
+            if isinstance(s, dict) and s.get("id")
+        }
+
+        normalized_urls: dict[str, str] = {}
+        if isinstance(dashboard_urls, dict):
+            for sid, url in dashboard_urls.items():
+                if isinstance(sid, str) and isinstance(url, str) and url:
+                    normalized_urls[sid] = url
+
+        # Accept URLs provided directly on service objects as a fallback.
         for service in services:
+            service_id = service.get("id")
             dashboard_url = service.get("dashboard_url")
-            if not dashboard_url:
-                continue
-                
-            service_id = service.get("id", "unknown")
+            if service_id and isinstance(dashboard_url, str) and dashboard_url and service_id not in normalized_urls:
+                normalized_urls[service_id] = dashboard_url
+
+        # Last-resort fallback: publish a main dashboard URL on default dashboard port.
+        # This ensures at least one clickable URL entity when API-provided links are not available yet.
+        if not normalized_urls:
+            host = self._entry.data[CONF_HOST]
+            normalized_urls["main"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
+
+        for service_id, dashboard_url in normalized_urls.items():
+            service = service_by_id.get(service_id, {})
             service_name = service.get("name", service_id)
             
             # Create a sensor entity for the dashboard URL
@@ -565,7 +592,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "attributes": {
                     "service_id": service_id,
                     "service_name": service_name,
-                    "port": service.get("port", 8080),
+                    "port": service.get("port", DEFAULT_DASHBOARD_PORT),
                     "access_mode": service.get("access_mode", "localhost"),
                     "status": service.get("status", "unknown"),
                     "url": dashboard_url,

@@ -213,16 +213,30 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
     def is_streaming(self) -> bool:
         """Return True if the camera is streaming."""
         current_state = self._get_current_state()
-        state_value = current_state.get("state")
-        # Camera is streaming if state is not 'unavailable' or 'offline'
-        return state_value not in ["unavailable", "offline", "unknown", None]
+        attrs = current_state.get("attributes", {})
+
+        # Prefer explicit streaming flags from API attributes when present.
+        for key in ("streaming", "is_streaming"):
+            if key in attrs and isinstance(attrs[key], bool):
+                return attrs[key]
+
+        state_value = str(current_state.get("state", "")).strip().lower()
+        # Camera is considered streaming unless explicitly offline.
+        return state_value not in {"", "unavailable", "offline", "unknown", "disconnected", "stopped"}
     
     @property
     def available(self) -> bool:
         """Return True if camera is available."""
         current_state = self._get_current_state()
-        state_value = current_state.get("state")
-        return state_value != "unavailable"
+        attrs = current_state.get("attributes", {})
+
+        # Prefer explicit connectivity flags from API attributes when present.
+        for key in ("connected", "is_connected", "online"):
+            if key in attrs and isinstance(attrs[key], bool):
+                return attrs[key]
+
+        state_value = str(current_state.get("state", "")).strip().lower()
+        return state_value not in {"", "unavailable", "offline", "unknown", "disconnected", "stopped"}
         
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
