@@ -70,6 +70,17 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
+    def _spawn_background_task(self, coro: Any, name: str) -> asyncio.Task:
+        """Create a background task that won't block Home Assistant startup."""
+        create_bg = getattr(self.hass, "async_create_background_task", None)
+        if callable(create_bg):
+            try:
+                return create_bg(coro, name=name)
+            except TypeError:
+                # Compatibility with older HA signatures.
+                return create_bg(coro, name)
+        return self.hass.async_create_task(coro, name=name)
+
     @classmethod
     async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
         # Load SSH key from file at runtime if not present in config entry, using executor
@@ -130,7 +141,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         if resp.status == 200:
                             _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
                             # Start WebSocket connection after successful health checks  
-                            instance.hass.async_create_task(
+                            instance._spawn_background_task(
                                 instance._delayed_websocket_start(),
                                 name=f"perimeter_control_websocket_{instance._entry.entry_id}"
                             )
@@ -156,7 +167,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 await instance._client.async_run("echo 'SSH test'")
                                 _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
                                 
-                                deploy_task = instance.hass.async_create_task(
+                                deploy_task = instance._spawn_background_task(
                                     instance._auto_deploy_supervisor(),
                                     name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
                                 )
@@ -169,7 +180,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                         else:
                                             _LOGGER.debug("Auto-deployment task completed successfully")
                                             # Start websocket connection after successful deployment
-                                            instance.hass.async_create_task(
+                                            instance._spawn_background_task(
                                                 instance._delayed_websocket_start(),
                                                 name=f"perimeter_control_websocket_{instance._entry.entry_id}"
                                             )
@@ -181,7 +192,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             except Exception as ssh_exc:
                                 _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
                                 # Still try to start WebSocket in case services are actually working
-                                instance.hass.async_create_task(
+                                instance._spawn_background_task(
                                     instance._delayed_websocket_start(),
                                     name=f"perimeter_control_websocket_{instance._entry.entry_id}"
                                 )
@@ -189,7 +200,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     return _ssh_test_and_deploy()
                 
                 # Schedule SSH test and deployment as background task
-                instance.hass.async_create_task(
+                instance._spawn_background_task(
                     schedule_deployment_after_ssh_test(),
                     name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
                 )
@@ -217,7 +228,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.info("SSH connection successful. Starting automatic deployment...")
                         
                         # Trigger automatic deployment in background with explicit task tracking
-                        deploy_task = instance.hass.async_create_task(
+                        deploy_task = instance._spawn_background_task(
                             instance._auto_deploy_supervisor(),
                             name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
                         )
@@ -231,7 +242,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 else:
                                     _LOGGER.debug("Auto-deployment task completed successfully")
                                     # Start websocket connection after successful deployment
-                                    instance.hass.async_create_task(
+                                    instance._spawn_background_task(
                                         instance._delayed_websocket_start(),
                                         name=f"perimeter_control_websocket_{instance._entry.entry_id}"
                                     )
@@ -247,7 +258,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return _ssh_test_and_auto_deploy()
             
             # Schedule SSH test and auto-deployment as background task - don't block startup
-            instance.hass.async_create_task(
+            instance._spawn_background_task(
                 schedule_auto_deployment(),
                 name=f"perimeter_control_auto_deploy_check_{instance._entry.entry_id}"
             )
@@ -320,26 +331,40 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch all integration data using the efficient HA endpoint."""
         try:
             result = await self._supervisor_get("/ha/integration")
-            _LOGGER.warning("Supervisor API /ha/integration response: %s", result)
+            _LOGGER.debug("Supervisor API /ha/integration response: %s", result)
             
             # Also fetch dashboard URLs for convenience
             dashboard_urls = await self.get_dashboard_urls()
             
             # Log what we're extracting
             entities = result.get("entities", [])
-            services = result.get("services", [])
+            services_raw = result.get("services", [])
             node_info = result.get("node_info", {})
-            capabilities = node_info.get("capabilities", [])  # Fixed: capabilities are nested under node_info
-            
-            _LOGGER.warning("Extracted from API - entities: %d, services: %d, capabilities: %d", 
-                        len(entities), len(services), len(capabilities))
-            _LOGGER.warning("Node info: %s", node_info)
-            _LOGGER.warning("Services: %s", services)
-            if capabilities:
-                _LOGGER.warning("Capabilities found: %s", capabilities)
+            capabilities = node_info.get("capabilities", [])
+
+            services: list[dict[str, Any]] = []
+            services_config: dict[str, Any] = {}
+            if isinstance(services_raw, list):
+                services = [s for s in services_raw if isinstance(s, dict)]
+                services_config = {
+                    (s.get("id") or f"service_{idx}"): s
+                    for idx, s in enumerate(services)
+                }
+            elif isinstance(services_raw, dict):
+                services_config = services_raw
+                services = [s for s in services_raw.values() if isinstance(s, dict)]
+
+            _LOGGER.info(
+                "Extracted from API - entities: %d, services: %d, capabilities: %d",
+                len(entities),
+                len(services),
+                len(capabilities) if isinstance(capabilities, list) else 0,
+            )
+            if not services and isinstance(capabilities, list) and capabilities:
+                _LOGGER.debug("API reported capabilities but no services; waiting for service registration")
             
             # Transform to match expected format
-            dashboard_entities = self._create_dashboard_url_entities(result.get("services", []))
+            dashboard_entities = self._create_dashboard_url_entities(services)
             
             # Transform entities array into entity_states dict for compatibility
             entity_states = {}
@@ -367,7 +392,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "supervisor_active": result.get("health", {}).get("status") == "healthy",
                 "supervisor_entities": entities + dashboard_entities,
                 "entity_states": entity_states,
-                "services_config": result.get("services", {}),
+                "services_config": services_config,
                 "config_changes": result.get("config_changes", {}),
                 "dashboard_urls": dashboard_urls,
             }
@@ -605,7 +630,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except asyncio.CancelledError:
                     pass
             
-            self._websocket_task = self.hass.async_create_task(self._websocket_event_loop())
+            self._websocket_task = self._spawn_background_task(
+                self._websocket_event_loop(),
+                name=f"perimeter_control_websocket_loop_{self._entry.entry_id}",
+            )
             
             _LOGGER.info("WebSocket listener started for Supervisor events")
         except asyncio.TimeoutError:
