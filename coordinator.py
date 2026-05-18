@@ -516,9 +516,23 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Get dashboard URLs for all services using efficient endpoint."""
         try:
             result = await self._supervisor_get("/ha/dashboard-urls")
-            raw_urls = result.get("dashboard_urls", {})
-            if not isinstance(raw_urls, dict):
+            # API returns DashboardUrls model: {"services": {id: DashboardUrl}, "timestamp": ...}
+            services_data = result.get("services", {})
+            if not isinstance(services_data, dict):
                 return {}
+            # Each value is a serialized DashboardUrl object; extract the "url" string field.
+            raw_urls: dict[str, str] = {}
+            for sid, svc in services_data.items():
+                if not isinstance(sid, str):
+                    continue
+                if isinstance(svc, dict):
+                    url = svc.get("url", "")
+                elif isinstance(svc, str):
+                    url = svc
+                else:
+                    continue
+                if url:
+                    raw_urls[sid] = url
             return self._normalize_dashboard_urls(raw_urls)
         except UpdateFailed:
             # Fall back to manual construction

@@ -61,6 +61,7 @@ class DeviceListView(HomeAssistantView):
                     "dashboard_active": data.get(KEY_DASHBOARD_ACTIVE, False),
                     "supervisor_active": data.get(KEY_SUPERVISOR_ACTIVE, False),
                     "deploy_in_progress": data.get(KEY_DEPLOY_IN_PROGRESS, False),
+                    "dashboard_urls": data.get("dashboard_urls", {}),
                 }
             )
         return self.json(devices)

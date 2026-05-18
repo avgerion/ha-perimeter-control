@@ -1,783 +1,392 @@
-﻿
-/**
+﻿/**
  * Perimeter Control Panel - Main integration panel for Home Assistant
  */
 
-import { html, LitElement, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-
-interface HassEntity {
-  entity_id: string;
-  state: string;
-  attributes: any;
-}
+import { LitElement, html, css, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 
 interface Hass {
-  entities: Record<string, HassEntity>;
-  callService: (domain: string, service: string, data?: any) => Promise<any>;
+  callApi: (method: string, path: string, parameters?: unknown) => Promise<unknown>;
+}
+
+interface DeviceSummary {
+  entry_id: string;
+  title?: string;
+  host?: string;
+  services?: string[];
+  available_services?: string[];
+  dashboard_active?: boolean;
+  supervisor_active?: boolean;
+  deploy_in_progress?: boolean;
+  dashboard_urls?: Record<string, string>;
 }
 
 @customElement('perimeter-control-panel')
 export class PerimeterControlPanel extends LitElement {
   private _hass?: Hass;
+
   @property({ attribute: false })
   get hass(): Hass | undefined {
     return this._hass;
   }
+
   set hass(value: Hass | undefined) {
     this._hass = value;
-    // Debug log to see when hass is set
-    console.log('[PerimeterControlPanel] hass set:', value);
+    if (value && this.devices.length === 0 && !this.loading) {
+      this.runAsync(() => this.refreshDevices());
+    }
     this.requestUpdate();
   }
-  @property({ state: true }) errorMessage: string | null = null;
-  @property({ state: true }) errorStack: string | null = null;
-  @property({ state: true }) private isInitialized = false;
 
-  constructor() {
-    super();
-    // Only handle errors specifically from our panel, not global errors
-    // Global error handlers can interfere with HA's internal operations
-  }
-
-  protected firstUpdated() {
-    // Mark as initialized after first render
-    this.isInitialized = true;
-  }
-
-  private handleError(error: Error): void {
-    console.error('Panel Error:', error);
-    this.errorMessage = error.message || 'Unknown error occurred';
-    this.errorStack = error.stack || 'No stack trace available';
-  }
+  @state() private devices: DeviceSummary[] = [];
+  @state() private loading = false;
+  @state() private message = '';
+  @state() private error = '';
+  @state() private serviceDrafts: Record<string, string[]> = {};
+  @state() private savingByEntry: Record<string, boolean> = {};
 
   static styles = css`
     :host {
       display: block;
       padding: 16px;
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 0 auto;
+      box-sizing: border-box;
     }
 
-    .header {
-      border-bottom: 1px solid var(--divider-color, #e0e0e0);
-      padding-bottom: 16px;
-      margin-bottom: 24px;
-    }
-
-    .header h1 {
-      margin: 0;
+    h1 {
+      margin: 0 0 8px;
       font-size: 24px;
-      font-weight: 400;
-      color: var(--primary-text-color);
+      font-weight: 600;
     }
 
-    .header p {
-      margin: 8px 0 0 0;
+    .sub {
+      margin: 0 0 16px;
       color: var(--secondary-text-color);
     }
 
-    .devices-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 16px;
-    }
-
-    .device-card {
-      background: var(--card-background-color);
-      border-radius: 8px;
-      padding: 16px;
-      border: 1px solid var(--divider-color);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .device-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .toolbar {
       margin-bottom: 16px;
     }
 
-    .device-icon {
-      width: 32px;
-      height: 32px;
-      background: var(--primary-color);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-    }
-
-    .device-info h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 500;
-    }
-
-    .device-info p {
-      margin: 4px 0 0 0;
-      font-size: 14px;
-      color: var(--secondary-text-color);
-    }
-
-    .entities-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .entity-card {
-      background: var(--card-background-color, #fafafa);
-      border-radius: 4px;
-      padding: 8px;
+    button {
       border: 1px solid var(--divider-color);
-      font-size: 12px;
+      border-radius: 6px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      padding: 8px 12px;
+      cursor: pointer;
     }
 
-    .entity-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-    }
-
-    .entity-name {
-      font-weight: 500;
-      font-size: 11px;
-    }
-
-    .entity-capability {
-      font-size: 10px;
-      color: var(--secondary-text-color);
-      margin-bottom: 4px;
-    }
-
-    .entity-status {
-      padding: 1px 6px;
-      border-radius: 8px;
-      font-size: 10px;
-      font-weight: 500;
-    }
-
-    .entity-actions {
-      margin-top: 6px;
-    }
-
-    .entity-actions .action-btn {
-      padding: 4px 8px;
-      font-size: 10px;
-      margin-right: 4px;
-    }
-
-    .dashboard-links {
+    button.primary {
       background: var(--primary-color);
-      color: white;
+      border-color: var(--primary-color);
+      color: #fff;
     }
 
-    .dashboard-links .entity-name {
-      color: white;
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
     }
 
-    .dashboard-links .entity-status {
-      background: rgba(255,255,255,0.2);
-      color: white;
+    .msg {
+      margin: 8px 0 16px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 14px;
     }
 
-    .actions {
-      margin-top: 24px;
-      padding-top: 16px;
-      border-top: 1px solid var(--divider-color);
+    .ok {
+      background: #e8f5e9;
+      color: #1b5e20;
+      border: 1px solid #a5d6a7;
     }
 
-    .actions h2 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
-      font-weight: 500;
+    .err {
+      background: #ffebee;
+      color: #b71c1c;
+      border: 1px solid #ef9a9a;
     }
 
-    .action-buttons {
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      padding: 14px;
+      background: var(--card-background-color);
+    }
+
+    .title {
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+
+    .meta {
+      margin: 0 0 8px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+    }
+
+    .services {
+      border-top: 1px dashed var(--divider-color);
+      margin-top: 10px;
+      padding-top: 10px;
+    }
+
+    .svc {
+      display: block;
+      margin: 4px 0;
+      font-size: 14px;
+    }
+
+    .card-actions {
+      margin-top: 12px;
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
     }
 
-    .action-btn {
-      padding: 8px 16px;
-      border: 1px solid var(--primary-color);
-      background: var(--primary-color);
-      color: white;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s;
+    .loading {
+      opacity: 0.8;
     }
 
-    .action-btn:hover {
-      background: var(--primary-color);
-      opacity: 0.9;
+    .dashboards {
+      border-top: 1px dashed var(--divider-color);
+      margin-top: 10px;
+      padding-top: 10px;
     }
 
-    .action-btn.secondary {
-      background: transparent;
+    .dash-link {
+      display: inline-block;
+      margin: 3px 6px 3px 0;
+      font-size: 13px;
       color: var(--primary-color);
-    }
-
-    .action-btn.secondary:hover {
-      background: var(--primary-color);
-      color: white;
-    }
-
-    .error-display {
-      background: #ffebee;
-      border: 1px solid #f44336;
+      text-decoration: none;
+      border: 1px solid var(--primary-color);
       border-radius: 4px;
-      padding: 16px;
-      margin: 16px 0;
-      color: #c62828;
+      padding: 2px 8px;
     }
 
-    .error-title {
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
+    .dash-link:hover {
+      opacity: 0.8;
     }
-
-    .error-message {
-      margin-bottom: 12px;
-      font-family: monospace;
-      font-size: 14px;
-    }
-
-    .error-stack {
-      white-space: pre-wrap;
-      font-family: monospace;
-      font-size: 12px;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 8px;
-      max-height: 200px;
-      overflow-y: auto;
-      margin-top: 8px;
-    }
-
-    .error-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .error-btn {
-      padding: 6px 12px;
-      border: 1px solid #f44336;
-      background: #f44336;
-      color: white;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-
-    .error-btn:hover {
-      background: #d32f2f;
-    }
-
-    .error-btn.secondary {
-      background: transparent;
-      color: #f44336;
-    }
-
-    .error-btn.secondary:hover {
-      background: #ffebee;
-    }
-
-    .no-devices {
-      text-align: center;
-      padding: 48px 16px;
-      color: var(--secondary-text-color);
-    }
-
-    .no-devices h2 {
-      color: var(--primary-text-color);
-      margin-bottom: 8px;
-    }
-
-    .status-unknown { background: #e0e0e0; color: #666; }
-    .status-active { background: #c8e6c9; color: #2e7d32; }
-    .status-inactive { background: #ffcdd2; color: #c62828; }
-    .status-available { background: #e1f5fe; color: #0277bd; }
-    .status-running { background: #c8e6c9; color: #2e7d32; }
-    .status-stopped { background: #ffcdd2; color: #c62828; }
   `;
 
-  render() {
-    // Early return with loading state if HA isn't ready yet
-    if (!this._hass || !this.isInitialized) {
-      return html`
-        <div style="padding: 16px; text-align: center;">
-          <p>Loading Home Assistant connection...</p>
-        </div>
-      `;
-    }
-
-    // Show error display if there's an error
-    if (this.errorMessage) {
-      return this.renderError();
-    }
-
-    try {
-      // Defensive check - ensure entities object exists
-      if (!this._hass.entities) {
-        return html`
-          <div style="padding: 16px; text-align: center;">
-            <p>Waiting for Home Assistant entities...</p>
-          </div>
-        `;
-      }
-
-      const devices = this.getPerimeterControlDevices();
-
-      return html`
-        <div class="header">
-          <h1>Perimeter Control</h1>
-          <p>Manage your edge devices and services</p>
-        </div>
-
-        <div class="debug-info" style="background: #f5f5f5; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px;">
-          <strong>Debug:</strong> Found ${devices.length} devices, ${this._hass ? Object.keys(this._hass.entities).length : 0} total entities
-          <br><strong>Sample entities:</strong> ${this._hass ? Object.keys(this._hass.entities).slice(0, 5).join(', ') : 'None'}
-          <br><strong>Perimeter entities:</strong> ${this._hass ? Object.keys(this._hass.entities).filter(id => id.includes('perimeter')).join(', ') : 'None'}
-        </div>
-
-        ${devices.length === 0 ? this.renderNoDevices() : this.renderDevices(devices)}
-
-        <div class="actions">
-          <h2>Global Actions</h2>
-          <div class="action-buttons">
-            <button class="action-btn" @click=${() => this.safeAction(this.deployAll)}>
-              Deploy All Devices
-            </button>
-            <button class="action-btn secondary" @click=${() => this.safeAction(this.reloadConfig)}>
-              Reload Configurations
-            </button>
-            <button class="action-btn secondary" @click=${() => this.safeAction(this.refreshDevices)}>
-              Refresh Device Info
-            </button>
-          </div>
-        </div>
-      `;
-
-    } catch (error: any) {
-      let err = error;
-      if (!(err instanceof Error)) {
-        err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
-      }
-      console.error('[Panel] Error in render:', err);
-      this.handleError(err as Error);
-      return this.renderError();
-    }
-  }
-
-  private renderError() {
+  protected render() {
     return html`
-      <div class="error-display">
-        <div class="error-title">
-          <span>⚠️</span>
-          <span>Perimeter Control Panel Error</span>
-        </div>
-        <div class="error-message">
-          ${this.errorMessage}
-        </div>
-        ${this.errorStack ? html`
-          <details>
-            <summary style="cursor: pointer; margin-bottom: 8px;">Show stack trace</summary>
-            <div class="error-stack">${this.errorStack}</div>
-          </details>
-        ` : ''}
-        <div class="error-actions">
-          <button class="error-btn" @click=${this.clearError}>
-            Clear Error
-          </button>
-          <button class="error-btn secondary" @click=${this.reloadPanel}>
-            Reload Panel
-          </button>
-        </div>
+      <h1>Perimeter Control</h1>
+      <p class="sub">Manage installed devices and update enabled service options.</p>
+      <div class="toolbar">
+        <button @click=${() => this.runAsync(() => this.refreshDevices())}>Refresh Devices</button>
+      </div>
+
+      ${this.message ? html`<div class="msg ok">${this.message}</div>` : nothing}
+      ${this.error ? html`<div class="msg err">${this.error}</div>` : nothing}
+      ${this.loading ? html`<p class="loading">Loading devices...</p>` : nothing}
+
+      ${!this.loading && this.devices.length === 0
+        ? html`<p>No devices found. Add a Perimeter Control integration entry first.</p>`
+        : nothing}
+
+      <div class="grid">
+        ${this.devices.map((device) => this.renderDeviceCard(device))}
       </div>
     `;
   }
 
-  private clearError(): void {
-    this.errorMessage = null;
-    this.errorStack = null;
+  private renderDeviceCard(device: DeviceSummary) {
+    const available = Array.isArray(device.available_services) ? device.available_services : [];
+    const selected = new Set(this.serviceDrafts[device.entry_id] || device.services || []);
+    const saving = !!this.savingByEntry[device.entry_id];
+
+    return html`
+      <div class="card">
+        <p class="title">${device.title || 'Perimeter Device'}</p>
+        <p class="meta">Host: ${device.host || 'unknown'}</p>
+        <p class="meta">
+          Dashboard: ${device.dashboard_active ? 'online' : 'offline'} |
+          Supervisor: ${device.supervisor_active ? 'online' : 'offline'}
+        </p>
+
+        <div class="services">
+          <strong>Enabled services</strong>
+          ${available.length
+        ? available.map(
+          (serviceId) => html`
+                  <label class="svc">
+                    <input
+                      type="checkbox"
+                      .checked=${selected.has(serviceId)}
+                      @change=${(ev: Event) =>
+              this.toggleService(device.entry_id, serviceId, (ev.currentTarget as HTMLInputElement).checked)}
+                    />
+                    ${serviceId}
+                  </label>
+                `,
+        )
+        : html`<p class="meta">No service options available.</p>`}
+        </div>
+
+        <div class="card-actions">
+          <button
+            class="primary"
+            ?disabled=${saving}
+            @click=${() => this.runAsync(() => this.saveServices(device.entry_id))}
+          >
+            ${saving ? 'Saving...' : 'Save Services'}
+          </button>
+          <button
+            ?disabled=${!!device.deploy_in_progress}
+            @click=${() => this.runAsync(() => this.deployDevice(device.entry_id))}
+          >
+            ${device.deploy_in_progress ? 'Deploying...' : 'Deploy Device'}
+          </button>
+        </div>
+
+        ${this.renderDashboardLinks(device)}
+      </div>
+    `;
   }
 
-  private reloadPanel(): void {
-    this.clearError();
-    // Force a re-render by requesting an update
-    this.requestUpdate();
-  }
-
-  private async safeAction(action: () => Promise<void>): Promise<void> {
-    try {
-      await action();
-    } catch (error) {
-      let err = error;
-      if (!(err instanceof Error)) {
-        err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
-      }
-      this.handleError(err as Error);
+  private renderDashboardLinks(device: DeviceSummary) {
+    const urls = device.dashboard_urls ?? {};
+    const entries = Object.entries(urls).filter(([, url]) => !!url);
+    if (!entries.length) {
+      return nothing;
     }
+    return html`
+      <div class="dashboards">
+        <strong>Dashboards</strong><br />
+        ${entries.map(
+      ([serviceId, url]) =>
+        html`<a class="dash-link" href=${url} target="_blank" rel="noopener noreferrer"
+              >${serviceId}</a
+            >`,
+    )}
+      </div>
+    `;
   }
 
-  private getPerimeterControlDevices() {
-    // Defensive check - ensure HA and entities exist
-    if (!this._hass || !this._hass.entities) {
-      return [];
+  private async api(method: string, path: string, body?: unknown): Promise<unknown> {
+    if (!this._hass) {
+      throw new Error('Home Assistant is not available');
     }
-
-    // Get all entities - be generic about detection
-    const entities = Object.values(this._hass.entities || {});
-
-    // Filter for entities from our integration - look for our integration attributes
-    return entities.filter(entity => {
-      try {
-        const hasCapabilityId = entity.attributes?.capability_id || entity.attributes?.capability;
-        const hasIntegrationDomain = entity.entity_id.includes('perimeter_control');
-        const hasSupervisorAttributes = entity.attributes?.device || entity.attributes?.friendly_name;
-
-        // Accept entities that have integration markers or supervisor-style attributes  
-        return hasCapabilityId || hasIntegrationDomain ||
-          (hasSupervisorAttributes && (entity.entity_id.includes('camera') ||
-            entity.entity_id.includes('sensor') ||
-            entity.entity_id.includes('button') ||
-            entity.entity_id.includes('binary_sensor')));
-      } catch (e) {
-        let err = e;
-        if (!(err instanceof Error)) err = new Error(typeof err === 'string' ? err : JSON.stringify(err));
-        console.warn('Error filtering entity:', entity.entity_id, err);
-        return false;
-      }
-
-    });
+    return this._hass.callApi(method, path, body);
   }
 
-  private groupEntitiesByDevice(entities: HassEntity[]) {
-    const groups: Record<string, HassEntity[]> = {};
-    entities.forEach(entity => {
-      let deviceKey = 'default';
-      const deviceInfo = entity.attributes?.device_info;
-      if (deviceInfo?.name) {
-        deviceKey = deviceInfo.name;
-      } else if (deviceInfo?.identifiers) {
-        deviceKey = deviceInfo.identifiers[0]?.[1] || deviceKey;
-      } else if (entity.attributes?.capability_id) {
-        deviceKey = entity.attributes.capability_id;
-      } else if (entity.attributes?.host) {
-        deviceKey = entity.attributes.host;
-      } else {
-        const parts = entity.entity_id.split('.');
-        if (parts.length > 1) {
-          const idParts = parts[1].split('_');
-          if (idParts.length > 2) {
-            deviceKey = idParts.slice(0, -1).join('_');
-          }
+  private isAbortLikeError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') {
+      return false;
+    }
+    const withFields = err as { name?: unknown; message?: unknown };
+    const name = String(withFields.name ?? '');
+    const message = String(withFields.message ?? '');
+    return name === 'AbortError' || message.includes('Transition was skipped');
+  }
+
+  private runAsync(fn: () => Promise<void>): void {
+    Promise.resolve()
+      .then(fn)
+      .catch((err) => {
+        if (this.isAbortLikeError(err)) {
+          return;
         }
-      }
-      if (!groups[deviceKey]) groups[deviceKey] = [];
-      groups[deviceKey].push(entity);
-    });
-    return groups;
+        this.error = `Unexpected error: ${this.toErrorMessage(err)}`;
+        this.message = '';
+      });
   }
 
-  private getDeviceNameFromEntities(entities: HassEntity[]): string {
-    // Try device_info first
-    for (const entity of entities) {
-      const deviceName = entity.attributes?.device_info?.name;
-      if (deviceName) return deviceName;
+  private toErrorMessage(err: unknown): string {
+    if (err instanceof Error) {
+      return err.message;
     }
-
-    // Try capability name
-    for (const entity of entities) {
-      const capability = entity.attributes?.capability_id || entity.attributes?.capability;
-      if (capability) return capability.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-    }
-
-    // Fallback to first entity's friendly name or ID
-    const firstEntity = entities[0];
-    return firstEntity?.attributes?.friendly_name ||
-      firstEntity?.entity_id.split('.')[1].replace(/_/g, ' ') ||
-      'Unknown Device';
+    return String(err);
   }
 
-  private getDeviceHostFromEntities(entities: HassEntity[]): string | null {
-    // Look for host in attributes
-    for (const entity of entities) {
-      const host = entity.attributes?.host;
-      if (host) return host;
-    }
+  private async refreshDevices(): Promise<void> {
+    this.loading = true;
+    this.error = '';
+    this.message = '';
 
-    // Look for device info with host
-    for (const entity of entities) {
-      const deviceInfo = entity.attributes?.device_info;
-      if (deviceInfo?.configuration_url) {
-        try {
-          const url = new URL(deviceInfo.configuration_url);
-          return url.hostname;
-        } catch { }
-      }
-    }
-
-    // Default fallback
-    return '192.168.50.47';
-  }
-
-  private getDeviceCapabilities(entities: HassEntity[]): string[] {
-    const capabilities = new Set<string>();
-    entities.forEach(entity => {
-      const cap = entity.attributes?.capability_id || entity.attributes?.capability;
-      if (cap) capabilities.add(cap);
-    });
-    return Array.from(capabilities);
-  }
-
-  private getDeviceStatus(entities: HassEntity[]) {
-    // Check if any entities are active/available
-    const activeCount = entities.filter(e => {
-      const entityType = e.entity_id.split('.')[0];
-      switch (entityType) {
-        case 'binary_sensor':
-          return e.state === 'on';
-        case 'camera':
-          return e.state !== 'unavailable';
-        case 'sensor':
-          return e.state !== 'unknown' && e.state !== 'unavailable';
-        default:
-          return e.state !== 'unavailable';
-      }
-    }).length;
-
-    return activeCount > 0 ? 'connected' : 'disconnected';
-  }
-
-  private renderNoDevices() {
-    const entityList = this._hass ? Object.keys(this._hass.entities) : [];
-    return html`
-      <div class="no-devices">
-        <h2>No Perimeter Control devices found</h2>
-        <p>Add a Pi device by going to Settings → Devices & Services → Add Integration</p>
-        
-        <details style="margin-top: 16px; text-align: left;">
-          <summary>Debug: All entities (${entityList.length})</summary>
-          <div style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; margin: 8px 0;">
-            ${(entityList ?? []).map(id => html`<div>${id}</div>`)}
-          </div>
-        </details>
-      </div>
-    `;
-  }
-
-  private renderDevices(devices: any[]) {
-    return html`
-      <div class="devices-grid">
-        ${(devices ?? []).map(device => html`
-          <div class="device-card">
-            <div class="device-header">
-              <div class="device-icon">π</div>
-              <div class="device-info">
-                <h3>${device.name}</h3>
-                <p>Host: ${device.host}</p>
-                <p>Status: ${device.status}</p>
-                ${device.capabilities?.length > 0 ? html`
-                  <p>Capabilities: ${device.capabilities.join(', ')}</p>
-                ` : ''}
-              </div>
-            </div>
-            
-            <div class="entities-grid">
-              ${(device.entities ?? []).map((entity: HassEntity) => this.renderGenericEntity(entity))}
-              ${device.host ? this.renderDashboardLinks(device.host, device.capabilities) : ''}
-            </div>
-          </div>
-        `)}
-      </div>
-    `;
-  }
-
-  private renderGenericEntity(entity: HassEntity) {
-    const entityType = entity.entity_id.split('.')[0];
-    const friendlyName = entity.attributes?.friendly_name ||
-      entity.entity_id.split('.')[1].replace(/_/g, ' ');
-    const capability = entity.attributes?.capability_id || entity.attributes?.capability;
-
-    return html`
-      <div class="entity-card">
-        <div class="entity-header">
-          <div class="entity-name">${friendlyName}</div>
-          <div class="entity-status status-${this.getEntityStatusClass(entity)}">
-            ${this.getEntityDisplayValue(entity)}
-          </div>
-        </div>
-        
-        ${capability ? html`<div class="entity-capability">${capability}</div>` : ''}
-        ${this.renderEntityActions(entity, entityType)}
-      </div>
-    `;
-  }
-
-  private getEntityStatusClass(entity: HassEntity): string {
-    const entityType = entity.entity_id.split('.')[0];
-
-    switch (entityType) {
-      case 'binary_sensor':
-        return entity.state === 'on' ? 'active' : 'inactive';
-      case 'camera':
-        return entity.state !== 'unavailable' ? 'active' : 'inactive';
-      case 'sensor':
-        return entity.state !== 'unknown' && entity.state !== 'unavailable' ? 'active' : 'inactive';
-      case 'button':
-        return 'available';
-      default:
-        return entity.state === 'unavailable' ? 'inactive' : 'active';
-    }
-  }
-
-  private getEntityDisplayValue(entity: HassEntity): string {
-    const entityType = entity.entity_id.split('.')[0];
-
-    switch (entityType) {
-      case 'binary_sensor':
-        return entity.state === 'on' ? 'Active' : 'Inactive';
-      case 'camera':
-        return entity.state !== 'unavailable' ? 'Streaming' : 'Offline';
-      case 'sensor':
-        const unit = entity.attributes?.unit_of_measurement;
-        return unit ? `${entity.state} ${unit}` : entity.state;
-      case 'button':
-        return 'Ready';
-      default:
-        return entity.state;
-    }
-  }
-
-  private renderEntityActions(entity: HassEntity, entityType: string) {
-    switch (entityType) {
-      case 'button':
-        return html`
-          <div class="entity-actions">
-            <button class="action-btn" @click=${() => this.callEntityService(entity.entity_id, 'press')}>
-              Press
-            </button>
-          </div>
-        `;
-      case 'camera':
-        return html`
-          <div class="entity-actions">
-            <button class="action-btn" @click=${() => this.showCameraEntity(entity.entity_id)}>
-              📷 View
-            </button>
-          </div>
-        `;
-      case 'binary_sensor':
-      case 'sensor':
-        return html`
-          <div class="entity-actions">
-            <button class="action-btn secondary" @click=${() => this.showEntityInfo(entity.entity_id)}>
-              ℹ️ Details
-            </button>
-          </div>
-        `;
-      default:
-        return html`
-          <div class="entity-actions">
-            <button class="action-btn secondary" @click=${() => this.showEntityInfo(entity.entity_id)}>
-              View
-            </button>
-          </div>
-        `;
-    }
-  }
-
-  private renderDashboardLinks(host: string, capabilities: string[] = []) {
-    return html`
-      <div class="entity-card dashboard-links">
-        <div class="entity-header">
-          <div class="entity-name">Web Dashboards</div>
-          <div class="entity-status status-available">available</div>
-        </div>
-        
-        <div class="entity-actions" style="display: flex; gap: 4px; flex-wrap: wrap;">
-          <button class="action-btn" @click=${() => this.openDashboard(host, 8080)} style="font-size: 11px; padding: 4px 8px;">
-            🌐 API
-          </button>
-          
-          ${(capabilities ?? []).map(cap => html`
-            <button class="action-btn secondary" @click=${() => this.openCapabilityDashboard(host, cap)} style="font-size: 11px; padding: 4px 8px;">
-              📊 ${cap}
-            </button>
-          `)}
-        </div>
-      </div>
-    `;
-  }
-
-  private openDashboard(host: string, port: number) {
-    const url = `http://${host}:${port}`;
-    window.open(url, '_blank');
-  }
-
-  private async callEntityService(entityId: string, action: string) {
     try {
-      const domain = entityId.split('.')[0];
-      await this._hass?.callService(domain, action, { entity_id: entityId });
-    } catch (error) {
-      console.error(`Failed to call ${action} on ${entityId}:`, error);
+      const result = await this.api('GET', 'perimeter_control/devices');
+      const devices = Array.isArray(result) ? (result as DeviceSummary[]) : [];
+      this.devices = devices;
+
+      const nextDrafts: Record<string, string[]> = {};
+      for (const device of devices) {
+        nextDrafts[device.entry_id] = [...(device.services || [])];
+      }
+      this.serviceDrafts = nextDrafts;
+    } catch (err) {
+      if (this.isAbortLikeError(err)) {
+        return;
+      }
+      this.error = `Failed to load devices: ${this.toErrorMessage(err)}`;
+    } finally {
+      this.loading = false;
     }
   }
 
-  private showCameraEntity(entityId: string) {
-    const event = new CustomEvent('hass-more-info', {
-      detail: { entityId },
-      bubbles: true,
-      composed: true
-    });
-    this.dispatchEvent(event);
-  }
+  private toggleService(entryId: string, serviceId: string, checked: boolean): void {
+    const selected = new Set(this.serviceDrafts[entryId] || []);
+    if (checked) {
+      selected.add(serviceId);
+    } else {
+      selected.delete(serviceId);
+    }
 
-  private showEntityInfo(entityId: string) {
-    const event = new CustomEvent('hass-more-info', {
-      detail: { entityId },
-      bubbles: true,
-      composed: true
-    });
-    this.dispatchEvent(event);
-  }
-
-  private openCapabilityDashboard(host: string, capability: string) {
-    const capabilityPorts: Record<string, number> = {
-      'photo_booth': 8093,
-      'wildlife_monitor': 8094,
-      'ble_gatt_repeater': 8091,
-      'network_isolator': 5006
+    this.serviceDrafts = {
+      ...this.serviceDrafts,
+      [entryId]: Array.from(selected),
     };
-
-    const port = capabilityPorts[capability] || 3000;
-    const url = `http://${host}:${port}`;
-    window.open(url, '_blank');
   }
 
-  private async deployAll() {
-    await this._hass?.callService('perimeter_control', 'deploy', { force: true });
+  private async saveServices(entryId: string): Promise<void> {
+    const selected = [...(this.serviceDrafts[entryId] || [])];
+    if (!selected.length) {
+      this.error = 'Select at least one service before saving.';
+      this.message = '';
+      return;
+    }
+
+    this.savingByEntry = { ...this.savingByEntry, [entryId]: true };
+    this.error = '';
+    this.message = '';
+
+    try {
+      await this.api('POST', `perimeter_control/${entryId}/services`, { services: selected });
+      this.message = 'Service options updated successfully.';
+      await this.refreshDevices();
+    } catch (err) {
+      if (this.isAbortLikeError(err)) {
+        return;
+      }
+      this.error = `Failed to save service options: ${this.toErrorMessage(err)}`;
+    } finally {
+      this.savingByEntry = { ...this.savingByEntry, [entryId]: false };
+    }
   }
 
-  private async reloadConfig() {
-    await this._hass?.callService('perimeter_control', 'reload_config', {});
-  }
+  private async deployDevice(entryId: string): Promise<void> {
+    this.error = '';
+    this.message = '';
 
-  private async refreshDevices() {
-    await this._hass?.callService('perimeter_control', 'get_device_info', {});
+    try {
+      await this.api('POST', `perimeter_control/${entryId}/deploy`, {});
+      this.message = 'Deploy queued.';
+      await this.refreshDevices();
+    } catch (err) {
+      if (this.isAbortLikeError(err)) {
+        return;
+      }
+      this.error = `Failed to queue deploy: ${this.toErrorMessage(err)}`;
+    }
   }
 }
 

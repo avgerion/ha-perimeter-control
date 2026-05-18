@@ -224,6 +224,17 @@ npm run lint
 Build output goes to `dist/`:
 - `ha-integration.js` — Bundled HA card + editor component
 
+### Generated Frontend Asset
+
+`../frontend/ha-integration.js` is a generated runtime asset.
+
+- Do not edit `frontend/ha-integration.js` directly.
+- Edit TypeScript sources in `ha-integration/src/*.ts`.
+- Rebuild with `npm run build`.
+- Copy the generated bundle from `ha-integration/dist/ha-integration.js` to `frontend/ha-integration.js` (or use the dashboard deploy script/task that performs this step).
+
+Direct edits to `frontend/ha-integration.js` will be overwritten on the next build/deploy.
+
 ## Development
 
 ### Project Structure
