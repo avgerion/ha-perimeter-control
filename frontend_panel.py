@@ -52,9 +52,12 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         StaticPathConfig(
             url_path=URL_BASE,
             path=str(frontend_path),
-            cache_headers=True  # Enable caching for production use
+            cache_headers=False
         )
     ])
+
+    # Cache-bust the panel bundle so Home Assistant clients load fresh JS after updates.
+    js_version = str(int(js_file.stat().st_mtime))
     
     # Register the custom panel
     await panel_custom.async_register_panel(
@@ -63,7 +66,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         webcomponent_name="perimeter-control-panel",
         sidebar_title="Perimeter Control",
         sidebar_icon="mdi:shield-outline",
-        js_url=f"{URL_BASE}/ha-integration.js",
+        js_url=f"{URL_BASE}/ha-integration.js?v={js_version}",
         embed_iframe=False,
         require_admin=False,
     )
