@@ -354,6 +354,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             node_info = result.get("node_info", {})
             capabilities = node_info.get("capabilities", [])
 
+            entity_ids = [e.get("id") for e in entities if e.get("id")]
+            _LOGGER.info("[DEBUG] Entities from /ha/integration: %s", entity_ids)
+
             services: list[dict[str, Any]] = []
             services_config: dict[str, Any] = {}
             if isinstance(services_raw, list):
@@ -384,6 +387,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             all_entities = entities + dashboard_entities  # Include dashboard entities in state processing
             entity_ids = [e.get("id") for e in all_entities if e.get("id")]
             live_entity_states = await self._fetch_entity_states(entity_ids)
+            _LOGGER.info("[DEBUG] State keys from /entities/states/query: %s", list(live_entity_states.keys()))
             for entity in all_entities:
                 entity_id = entity.get("id")
                 if entity_id:

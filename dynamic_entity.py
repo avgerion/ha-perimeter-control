@@ -116,12 +116,17 @@ class SupervisorEntity(Entity):
         entity_states = self.coordinator.data.get("entity_states", {})
         entity_data = entity_states.get(self._entity_id)
 
-        # Expanded templated entities may use a synthetic ID (e.g. base_id_dim_value)
-        # while the backend state table is keyed by the base schema ID.
         if entity_data is None:
             base_id = self.entity_schema.get("id")
             if isinstance(base_id, str) and base_id:
                 entity_data = entity_states.get(base_id)
+            _LOGGER.debug(
+                "[DEBUG] Entity %s (expanded ID: %s) missing state, tried base ID: %s. State found: %s",
+                getattr(self, '_attr_name', self._entity_id),
+                self._entity_id,
+                base_id,
+                bool(entity_data)
+            )
 
         if entity_data is None:
             entity_data = {}
