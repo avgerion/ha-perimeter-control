@@ -25,17 +25,22 @@ class PerimeterControlServiceEntity(Entity):
     @property
     def extra_state_attributes(self):
         # Provide a dashboard URL for this service
-        host = self.coordinator._entry.data.get("host")
-        
-        # Get service-specific port from service descriptor if available
-        service_descriptor = self.coordinator._service_descriptors.get(self.service_id)
-        if service_descriptor and hasattr(service_descriptor, 'access_profile'):
-            port = service_descriptor.access_profile.get("port", DEFAULT_API_PORT)
-        else:
-            # Fallback to supervisor API port for unknown services
-            port = self.coordinator._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
-            
-        url = f"http://{host}:{port}/{self.service_id}"
+        url = self.coordinator.get_dashboard_url(self.service_id)
+
+        # Fallback if dashboard URL is not present in coordinator cache.
+        if not url:
+            host = self.coordinator._entry.data.get("host")
+
+            # Get service-specific port from service descriptor if available
+            service_descriptor = self.coordinator._service_descriptors.get(self.service_id)
+            if service_descriptor and hasattr(service_descriptor, "access_profile"):
+                port = service_descriptor.access_profile.get("port", DEFAULT_API_PORT)
+            else:
+                # Fallback to supervisor API port for unknown services
+                port = self.coordinator._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
+
+            url = f"http://{host}:{port}/"
+
         return {"dashboard_url": url}
 
     @property

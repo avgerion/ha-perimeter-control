@@ -114,7 +114,17 @@ class SupervisorEntity(Entity):
     def _get_current_state(self) -> Dict[str, Any]:
         """Get current state from coordinator data."""
         entity_states = self.coordinator.data.get("entity_states", {})
-        entity_data = entity_states.get(self._entity_id, {})
+        entity_data = entity_states.get(self._entity_id)
+
+        # Expanded templated entities may use a synthetic ID (e.g. base_id_dim_value)
+        # while the backend state table is keyed by the base schema ID.
+        if entity_data is None:
+            base_id = self.entity_schema.get("id")
+            if isinstance(base_id, str) and base_id:
+                entity_data = entity_states.get(base_id)
+
+        if entity_data is None:
+            entity_data = {}
 
         current: Any = entity_data
         # Defensively unwrap nested payloads like {"state": {"state": "...", ...}}.

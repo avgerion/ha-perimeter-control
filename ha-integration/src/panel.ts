@@ -3,7 +3,6 @@
  */
 
 import { LitElement, html, css, nothing } from 'lit';
-import { property, state } from 'lit/decorators.js';
 
 interface Hass {
   callApi: (method: string, path: string, parameters?: unknown) => Promise<unknown>;
@@ -24,7 +23,16 @@ interface DeviceSummary {
 export class PerimeterControlPanel extends LitElement {
   private _hass?: Hass;
 
-  @property({ attribute: false })
+  static properties = {
+    hass: { attribute: false },
+    devices: { state: true },
+    loading: { state: true },
+    message: { state: true },
+    error: { state: true },
+    serviceDrafts: { state: true },
+    savingByEntry: { state: true },
+  };
+
   get hass(): Hass | undefined {
     return this._hass;
   }
@@ -37,12 +45,12 @@ export class PerimeterControlPanel extends LitElement {
     this.requestUpdate();
   }
 
-  @state() private devices: DeviceSummary[] = [];
-  @state() private loading = false;
-  @state() private message = '';
-  @state() private error = '';
-  @state() private serviceDrafts: Record<string, string[]> = {};
-  @state() private savingByEntry: Record<string, boolean> = {};
+  private devices: DeviceSummary[] = [];
+  private loading = false;
+  private message = '';
+  private error = '';
+  private serviceDrafts: Record<string, string[]> = {};
+  private savingByEntry: Record<string, boolean> = {};
 
   static styles = css`
     :host {

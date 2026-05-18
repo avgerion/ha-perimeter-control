@@ -568,9 +568,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 parsed = urlparse(candidate)
                 if parsed.scheme in ("http", "https") and parsed.netloc:
-                    # Replace localhost loopback URLs with configured node host.
+                    # Always prefer configured node host for dashboard links so we avoid
+                    # unreachable internal/container addresses from supervisor responses.
                     parsed_host = (parsed.hostname or "").strip().lower()
-                    if host and parsed_host in ("localhost", "127.0.0.1", "::1"):
+                    if host and parsed_host != str(host).strip().lower():
                         port = parsed.port
                         netloc = f"{host}:{port}" if port else str(host)
                         parsed = parsed._replace(netloc=netloc)
