@@ -30,6 +30,7 @@ AVAILABLE_SERVICES = [
     os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'),
     os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater'),
     os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'),
+    os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'),
 ]
 
 # System dependency groups (maps apt group tag → actual packages)

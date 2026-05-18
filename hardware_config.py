@@ -17,7 +17,7 @@ HARDWARE_MAPPINGS = {
     "network": (NETWORK_SERVICE_NAME, []),
     "i2c_sensor": ("wildlife_monitor", []),
     "bluetooth_advertising": ("esl_ap", []),
-    "gpio": ("wildlife_monitor", []),
+    "gpio": ("gpio_control", ["wildlife_monitor"]),
     "spi": ("wildlife_monitor", []),
 }
 
@@ -29,6 +29,7 @@ SERVICE_HARDWARE_REQUIREMENTS = {
     NETWORK_SERVICE_NAME: ["network"],
     "wildlife_monitor": ["i2c_sensor", "camera"],  # Can work with either
     "esl_ap": ["bluetooth_advertising"],
+    "gpio_control": ["gpio"],
 }
 
 # Hardware conflicts

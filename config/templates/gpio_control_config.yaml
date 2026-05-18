@@ -1,0 +1,18 @@
+# GPIO Control capability configuration
+# Copy to /mnt/PerimeterControl/conf/gpio-control.yaml on the Pi.
+
+pins:
+  - id: relay1
+    gpio_pin: 17
+    type: switch
+    friendly_name: Relay 1
+    active_high: true
+    initial_state: off
+
+  - id: led1
+    gpio_pin: 18
+    type: light
+    friendly_name: Status LED
+    active_high: true
+    initial_state: on
+    initial_brightness: 255

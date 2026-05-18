@@ -75,6 +75,12 @@ def _register_capabilities(supervisor: Supervisor) -> None:
     except ImportError as exc:
         logging.warning("Could not load wildlife_monitor module: %s", exc)
 
+    try:
+        from .capabilities.gpio_control import GpioControlCapability
+        supervisor.register_capability("gpio_control", GpioControlCapability)
+    except ImportError as exc:
+        logging.warning("Could not load gpio_control module: %s", exc)
+
 
 async def _run(args) -> None:
     global app_supervisor
