@@ -3,7 +3,7 @@
  */
 
 import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
+import { property, state } from 'lit/decorators.js';
 
 interface Hass {
   callApi: (method: string, path: string, parameters?: unknown) => Promise<unknown>;
@@ -21,7 +21,6 @@ interface DeviceSummary {
   dashboard_urls?: Record<string, string>;
 }
 
-@customElement('perimeter-control-panel')
 export class PerimeterControlPanel extends LitElement {
   private _hass?: Hass;
 
@@ -394,4 +393,8 @@ declare global {
   interface HTMLElementTagNameMap {
     'perimeter-control-panel': PerimeterControlPanel;
   }
+}
+
+if (!customElements.get('perimeter-control-panel')) {
+  customElements.define('perimeter-control-panel', PerimeterControlPanel);
 }
