@@ -407,9 +407,22 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     }
             
             _LOGGER.info("Transformed %d entities (including %d dashboard URLs) into entity_states dict", len(entity_states), len(dashboard_entities))
+
+            # /ha/integration (Tornado) does not include a top-level health object.
+            # Reaching this point means supervisor is responding, so mark it active.
+            supervisor_active = True
+
+            # Consider dashboard active when at least one service reports active status
+            # with a dashboard URL, or any normalized dashboard URL is available.
+            dashboard_active = any(
+                (s.get("status") == "active") and bool(s.get("dashboard_url"))
+                for s in services
+                if isinstance(s, dict)
+            ) or bool(dashboard_urls)
             
             return {
-                "supervisor_active": result.get("health", {}).get("status") == "healthy",
+                "supervisor_active": supervisor_active,
+                "dashboard_active": dashboard_active,
                 "supervisor_entities": entities + dashboard_entities,
                 "entity_states": entity_states,
                 "services_config": services_config,
@@ -420,6 +433,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Fallback to empty data if Supervisor unavailable
             return {
                 "supervisor_active": False,
+                "dashboard_active": False,
                 "supervisor_entities": [],
                 "entity_states": {},
                 "services_config": {},
