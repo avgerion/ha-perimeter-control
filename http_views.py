@@ -15,10 +15,10 @@ from __future__ import annotations
 import logging
 
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.http import HomeAssistantView
 
-from .const import DOMAIN
+from .const import AVAILABLE_SERVICES, CONF_SERVICES, DOMAIN
 from .coordinator import (
     KEY_DASHBOARD_ACTIVE,
     KEY_DEPLOY_IN_PROGRESS,
@@ -34,6 +34,7 @@ def async_register_views(hass: HomeAssistant) -> None:
     hass.http.register_view(DeviceListView)
     hass.http.register_view(DeviceStatusView)
     hass.http.register_view(DeviceDeployView)
+    hass.http.register_view(DeviceServicesView)
 
 
 class DeviceListView(HomeAssistantView):
@@ -56,6 +57,7 @@ class DeviceListView(HomeAssistantView):
                     "title": entry.title,
                     "host": entry.data.get("host"),
                     "services": entry.data.get("services", []),
+                    "available_services": AVAILABLE_SERVICES,
                     "dashboard_active": data.get(KEY_DASHBOARD_ACTIVE, False),
                     "supervisor_active": data.get(KEY_SUPERVISOR_ACTIVE, False),
                     "deploy_in_progress": data.get(KEY_DEPLOY_IN_PROGRESS, False),
@@ -106,6 +108,68 @@ class DeviceDeployView(HomeAssistantView):
             return self.json_message("Deploy already in progress", status_code=409)
         hass.async_create_task(coord.async_deploy())
         return self.json({"queued": True})
+
+
+class DeviceServicesView(HomeAssistantView):
+    url = "/api/perimeter_control/{entry_id}/services"
+    name = "api:perimeter_control:services"
+    requires_auth = True
+
+    async def post(self, request: web.Request, entry_id: str) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            return self.json_message("Device not found", status_code=404)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            return self.json_message("Invalid JSON payload", status_code=400)
+
+        raw_services = payload.get("services", []) if isinstance(payload, dict) else []
+        if not isinstance(raw_services, list):
+            return self.json_message("'services' must be a list", status_code=400)
+
+        normalized: list[str] = []
+        invalid: list[str] = []
+        for item in raw_services:
+            if not isinstance(item, str):
+                invalid.append(str(item))
+                continue
+            service_id = item.strip()
+            if service_id not in AVAILABLE_SERVICES:
+                invalid.append(service_id)
+                continue
+            if service_id not in normalized:
+                normalized.append(service_id)
+
+        if invalid:
+            return self.json(
+                {
+                    "error": "invalid_services",
+                    "invalid": invalid,
+                    "available_services": AVAILABLE_SERVICES,
+                },
+                status_code=400,
+            )
+
+        if not normalized:
+            return self.json_message("At least one service must be selected", status_code=400)
+
+        updated_data = dict(entry.data)
+        updated_data[CONF_SERVICES] = normalized
+        hass.config_entries.async_update_entry(entry, data=updated_data)
+
+        await hass.config_entries.async_reload(entry_id)
+
+        return self.json(
+            {
+                "updated": True,
+                "entry_id": entry_id,
+                "services": normalized,
+                "available_services": AVAILABLE_SERVICES,
+            }
+        )
 
 
 def _get_coordinator(
