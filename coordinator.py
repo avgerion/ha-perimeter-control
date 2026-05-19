@@ -1090,6 +1090,18 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.debug("Calling deployer.async_deploy()...")
             success = await deployer.async_deploy()
             _LOGGER.info("Deployer finished with success=%s", success)
+
+            if success:
+                # Manual deploy path must also activate selected capabilities,
+                # otherwise entities remain inactive until a separate auto-deploy path runs.
+                try:
+                    await self._activate_supervisor_services()
+                except Exception as activate_exc:
+                    _LOGGER.warning("Deployment succeeded but capability activation failed: %s", activate_exc)
+
+                # Refresh once more so newly active entities/states are reflected in HA.
+                await self.async_request_refresh()
+
             return success
         except Exception as exc:
             _LOGGER.error("Deployment failed with exception: %s", exc, exc_info=True)
