@@ -213,6 +213,24 @@ class EslService(BaseService):
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
 
+class GpioControlService(BaseService):
+    """GPIO control service using component composition."""
+
+    def __init__(self):
+        super().__init__("gpio_control")
+
+        # GPIO control needs the GPIO userspace tools expected by the capability.
+        self.add_component(SystemDependencies([
+            "gpiod",
+        ]), 0)
+
+        # Ensure the runtime config exists at the exact filename the descriptor expects.
+        config_templates = {
+            "gpio-control.yaml": "config/templates/gpio_control_config.yaml",
+        }
+        self.add_component(ConfigurationManager(config_templates, use_templates=True), 1)
+
+
 # Register all service types with the component registry
 def register_service_components():
     """Register all component types for reuse."""
@@ -254,6 +272,7 @@ SERVICE_REGISTRY = {
     os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator'): NetworkService,
     os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'): WildlifeService,
     os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'): EslService,
+    os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'): GpioControlService,
 }
 
 

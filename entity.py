@@ -1,7 +1,10 @@
 """Entities for Perimeter Control services and dashboards."""
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.device_registry import DeviceInfo
+import logging
 from .const import DOMAIN, AVAILABLE_SERVICES, DEFAULT_API_PORT, CONF_SUPERVISOR_PORT
+
+_LOGGER = logging.getLogger(__name__)
 
 class PerimeterControlServiceEntity(Entity):
     def __init__(self, coordinator, service_id: str):
@@ -40,6 +43,7 @@ class PerimeterControlServiceEntity(Entity):
                 port = self.coordinator._entry.data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
 
             url = f"http://{host}:{port}/"
+            _LOGGER.warning("Falling back to legacy dashboard URL for %s: %s", self.service_id, url)
 
         return {"dashboard_url": url}
 

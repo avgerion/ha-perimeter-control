@@ -137,8 +137,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Use the PerimeterControl dashboard port for health check
                 import os
                 dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
+                dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/"
+                _LOGGER.warning("Dashboard health check URL: %s", dashboard_url)
                 if not instance._http_session.closed:
-                    async with instance._http_session.get(f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/") as resp:
+                    async with instance._http_session.get(dashboard_url) as resp:
                         if resp.status == 200:
                             _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
                             # Start WebSocket connection after successful health checks  
@@ -537,6 +539,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # API returns DashboardUrls model: {"services": {id: DashboardUrl}, "timestamp": ...}
             services_data = result.get("services", {})
             if not isinstance(services_data, dict):
+                _LOGGER.warning("Unexpected dashboard URL payload from supervisor: %r", services_data)
                 return {}
             # Each value is a serialized DashboardUrl object; extract the "url" string field.
             raw_urls: dict[str, str] = {}
@@ -551,9 +554,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 if url:
                     raw_urls[sid] = url
+                    _LOGGER.warning("Dashboard URL discovered for %s: %s", sid, url)
+            if not raw_urls:
+                _LOGGER.warning("No dashboard URLs returned by /ha/dashboard-urls")
             return self._normalize_dashboard_urls(raw_urls)
         except UpdateFailed:
             # Fall back to manual construction
+            _LOGGER.warning("Dashboard URL API unavailable; using legacy URL construction")
             return self._build_legacy_dashboard_urls()
 
     def _normalize_dashboard_urls(self, dashboard_urls: dict[str, str]) -> dict[str, str]:
@@ -580,9 +587,21 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         netloc = f"{host}:{port}" if port else str(host)
                         parsed = parsed._replace(netloc=netloc)
                         candidate = urlunparse(parsed)
+                        _LOGGER.warning(
+                            "Normalized dashboard URL for %s from %s to %s",
+                            service_id,
+                            url,
+                            candidate,
+                        )
                 elif host and candidate.startswith(":"):
                     # Handle malformed ":5006" style values defensively.
                     candidate = f"http://{host}{candidate}"
+                    _LOGGER.warning(
+                        "Normalized malformed dashboard URL for %s from %s to %s",
+                        service_id,
+                        url,
+                        candidate,
+                    )
             except Exception:
                 # Keep original URL when parsing fails.
                 pass
@@ -596,10 +615,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Try to get from cached dashboard URLs first
         dashboard_urls = self.data.get("dashboard_urls", {})
         if service_id in dashboard_urls:
+            _LOGGER.warning("Using cached dashboard URL for %s: %s", service_id, dashboard_urls[service_id])
             return dashboard_urls[service_id]
             
         # Fall back to manual construction
-        return self._build_legacy_dashboard_url(service_id)
+        fallback_url = self._build_legacy_dashboard_url(service_id)
+        _LOGGER.warning("Using legacy dashboard URL for %s: %s", service_id, fallback_url)
+        return fallback_url
     
     def _build_legacy_dashboard_url(self, service_id: str) -> str | None:
         """Legacy method to build dashboard URL from access profile."""
@@ -676,6 +698,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # This ensures at least one clickable URL entity when API-provided links are not available yet.
         if not normalized_urls:
             normalized_urls["main"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
+            _LOGGER.warning(
+                "No service dashboard URLs were available; publishing fallback main dashboard URL: %s",
+                normalized_urls["main"],
+            )
 
         for service_id, dashboard_url in normalized_urls.items():
             service = service_by_id.get(service_id, {})
