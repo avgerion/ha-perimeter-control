@@ -218,6 +218,12 @@ Real-time events for:
 
 ## 🐛 Troubleshooting
 
+### Deployment Boundary (Important)
+
+- Home Assistant entity/platform bugs must be fixed through the Home Assistant custom integration deployment/reload flow.
+- Do not use `scripts/deploy-dashboard-web.ps1` for HA entity or platform issues.
+- `scripts/deploy-dashboard-web.ps1` is for Pi-side dashboard/supervisor/service deployment.
+
 ### Common Issues
 
 #### Integration Not Discovering Entities

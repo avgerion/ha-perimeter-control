@@ -277,9 +277,32 @@ class Deployer(BaseDeployer):
         # Use base deployer capabilities for unknown services
         config_files = ["perimeterControl.conf.yaml"]
         await self.phase_config(config_files)
+        
+        # gpio_control expects /mnt/PerimeterControl/conf/gpio-control.yaml.
+        # Ensure a baseline config is present even when using legacy deployment.
+        if service_id == os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'):
+            await self._deploy_template_config(
+                template_rel_path="config/templates/gpio_control_config.yaml",
+                target_name="gpio-control.yaml",
+            )
+
         await self.deploy_service_descriptors([service_id])
         
         self._emit("service_deploy", f"Legacy deployment for {service_id} completed", base_progress + 5)
+
+    async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
+        """Upload a template config file to the remote runtime config directory."""
+        template_path = _COMPONENT_DIR / template_rel_path
+        if not template_path.exists():
+            _LOGGER.warning("Template config not found, skipping: %s", template_path)
+            return
+
+        await self._client.async_put_file(template_path, f"{REMOTE_TEMP_ROOT}/{target_name}")
+        await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
+        await self._client.async_run(
+            f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{target_name} {REMOTE_CONF_DIR}/{target_name}"
+        )
+        _LOGGER.info("Installed template config: %s -> %s/%s", template_path.name, REMOTE_CONF_DIR, target_name)
 
     async def _phase_supervisor(self) -> None:
         """Install supervisor using base deployer functionality."""

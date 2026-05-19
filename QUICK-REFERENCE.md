@@ -1,5 +1,19 @@
 # PerimeterControl - Quick Reference Card
 
+## Home Assistant Integration Guardrail
+
+Use this rule for all HA entity/platform fixes:
+
+- If the issue is in Home Assistant entities, states, platforms, or frontend panel behavior, deploy via the Home Assistant custom integration workflow.
+- Do not use `scripts/deploy-dashboard-web.ps1` to fix HA integration entity issues. That script targets Pi dashboard/supervisor deployment.
+- Use the integration reload/restart path in Home Assistant after updating integration files.
+
+Examples of HA-side issues:
+
+- Missing `switch`/`light`/`sensor` entities in the HA integration entity list
+- Entity availability/state mapping issues
+- Custom panel rendering issues inside Home Assistant
+
 ## 🚀 Quick Deploy (Windows → Pi)
 
 ```powershell
