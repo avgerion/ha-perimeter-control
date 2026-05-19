@@ -51,10 +51,10 @@ PERIMETERCONTROL_LOG_PATH = os.environ.get('PERIMETERCONTROL_LOG_PATH', '/var/lo
 
 # ── Repo layout (relative to repo root) ─────────────────────────────────────
 WEB_FILES = [
-    ("server/web/dashboard.py",   f"{PERIMETERCONTROL_TMP_PATH}/dashboard.py",   "web", "0644"),
-    ("server/web/layouts.py",     f"{PERIMETERCONTROL_TMP_PATH}/layouts.py",     "web", "0644"),
-    ("server/web/callbacks.py",   f"{PERIMETERCONTROL_TMP_PATH}/callbacks.py",   "web", "0644"),
-    ("server/web/data_sources.py",f"{PERIMETERCONTROL_TMP_PATH}/data_sources.py","web", "0644"),
+    ("remote_services/dashboard_web/dashboard.py",   f"{PERIMETERCONTROL_TMP_PATH}/dashboard.py",   "web", "0644"),
+    ("remote_services/dashboard_web/layouts.py",     f"{PERIMETERCONTROL_TMP_PATH}/layouts.py",     "web", "0644"),
+    ("remote_services/dashboard_web/callbacks.py",   f"{PERIMETERCONTROL_TMP_PATH}/callbacks.py",   "web", "0644"),
+    ("remote_services/dashboard_web/data_sources.py",f"{PERIMETERCONTROL_TMP_PATH}/data_sources.py","web", "0644"),
 ]
 
 SCRIPT_FILES = [
@@ -198,6 +198,25 @@ def _resolve_apt_packages(tags: set[str]) -> list[str]:
     return sorted(pkgs)
 
 
+def _service_http_probe_cmd(host: str, port: int) -> str:
+    """Build a shell command that probes both loopback and host URL for a service."""
+    return (
+        "set -e; "
+        f"if curl -fsS --max-time 3 http://127.0.0.1:{port}/ >/dev/null; then echo LOOPBACK_OK; else echo LOOPBACK_FAIL; fi; "
+        f"if curl -fsS --max-time 3 http://{host}:{port}/ >/dev/null; then echo HOST_OK; else echo HOST_FAIL; fi"
+    )
+
+
+def _log_service_probe(name: str, port: int, access_mode: str, probe_output: str) -> None:
+    """Emit a warning-style log line for a service probe result."""
+    normalized = " ".join(probe_output.split())
+    print(json.dumps({
+        "step": "service probe",
+        "ok": "FAIL" not in normalized,
+        "detail": f"{name} port={port} mode={access_mode} {normalized}",
+    }), flush=True)
+
+
 # ── Supervisor pack ────────────────────────────────────────────────────────────
 def _pack_supervisor(supervisor_dir: Path) -> str:
     tmp = tempfile.NamedTemporaryFile(
@@ -232,7 +251,7 @@ def deploy(
         if not (repo_root / rel).exists()
     ]
     if missing:
-        _abort("local file check", f"Missing: {', '.join(missing)}")
+        _abort("local file check", f"Missing dashboard files: {', '.join(missing)}")
     _log("local file check", True)
 
     # ── 2. Read service descriptors → determine apt deps ─────────────────
@@ -327,6 +346,7 @@ def deploy(
     for rel, tmp_path, _dest, _mode in all_files:
         local_f = repo_root / rel
         if not local_f.exists():
+            _log("upload files", False, f"Skipping missing file: {local_f}")
             continue
         rc, _, err = _scp(host, user, ssh_key, str(local_f), tmp_path)
         if rc != 0:
@@ -406,6 +426,21 @@ def deploy(
             _log("rollback dashboard", True)
             sys.exit(1)
         _log("restart dashboard", True)
+
+        # Probe services after restart so logs show whether the listener is actually reachable.
+        selected_by_id = {d.get("metadata", {}).get("id") or "": d for d in descriptors if isinstance(d, dict)}
+        for service_id, descriptor in selected_by_id.items():
+            access = descriptor.get("spec", {}).get("access_profile", {}) if isinstance(descriptor, dict) else {}
+            if not isinstance(access, dict):
+                access = {}
+            port = int(access.get("port", 0) or 0)
+            mode = str(access.get("mode", "unknown"))
+            if port <= 0:
+                continue
+
+            rc, out, err = _ssh(host, user, ssh_key, _service_http_probe_cmd(host, port))
+            probe_out = out.strip() or err.strip() or f"exit {rc}"
+            _log_service_probe(service_id or "<unknown>", port, mode, probe_out)
     else:
         _log("restart dashboard", True, "skipped (--no-restart)")
 

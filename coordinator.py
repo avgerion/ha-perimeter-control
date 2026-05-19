@@ -734,6 +734,19 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for service_id, dashboard_url in normalized_urls.items():
             service = service_by_id.get(service_id, {})
             service_name = service.get("name", service_id)
+            access_mode = service.get("access_mode", "localhost")
+            if access_mode == "localhost":
+                _LOGGER.warning(
+                    "Dashboard entity %s is local-only; a direct host URL may refuse unless a tunnel or proxy is active: %s",
+                    service_id,
+                    dashboard_url,
+                )
+            elif access_mode == "isolated":
+                _LOGGER.warning(
+                    "Dashboard entity %s is isolated; suppressing any expectation that the host URL will be reachable: %s",
+                    service_id,
+                    dashboard_url,
+                )
             
             # Create a sensor entity for the dashboard URL
             entity = {
@@ -747,7 +760,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "service_id": service_id,
                     "service_name": service_name,
                     "port": service.get("port", DEFAULT_DASHBOARD_PORT),
-                    "access_mode": service.get("access_mode", "localhost"),
+                    "access_mode": access_mode,
                     "status": service.get("status", "unknown"),
                     "url": dashboard_url,
                     "entity_type": "dashboard_url"
