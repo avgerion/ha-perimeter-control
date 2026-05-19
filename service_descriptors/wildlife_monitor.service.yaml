@@ -16,18 +16,18 @@ spec:
     schema_ref: schema://services/wildlife_monitor/v1
 
   access_profile:
-    mode: localhost
+    mode: upstream
     bind_address: ""
     port: 8094
     tls_mode: off
     auth_mode: token
     allowed_origins: []
-    exposure_scope: tunnel_only
+    exposure_scope: lan_only
 
   placement:
     can_run_with: []
     cannot_run_with: []
-    prefers_node_labels: [ feature=camera, role=edge ]
+    prefers_node_labels: [feature=camera, role=edge]
 
   resources:
     cpu_cores: 0.25
@@ -37,7 +37,7 @@ spec:
   low_power_profile:
     enabled: true
     duty_cycle_percent: 10
-    wake_sources: [ gpio_pir, rtc_timer ]
+    wake_sources: [gpio_pir, rtc_timer]
     max_avg_current_ma: 180
     min_battery_percent: 25
 

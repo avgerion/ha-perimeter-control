@@ -144,6 +144,8 @@ class Deployer(BaseDeployer):
     ) -> None:
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
+        self._dashboard_service_id = os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator")
+        self._manage_dashboard_service = self._dashboard_service_id in set(selected_services)
         self._service_descriptors = service_descriptors or {}
         self._hass = hass
         
@@ -333,7 +335,8 @@ class Deployer(BaseDeployer):
         self._emit(PHASE_SUPERVISOR, "Installing supervisor...", 76)
 
         # Guardrail: do not upload dashboard files if local Python sources are invalid.
-        _validate_dashboard_sources()
+        if self._manage_dashboard_service:
+            _validate_dashboard_sources()
         
         # For now, keep the existing supervisor installation logic
         # but use base deployer where possible
@@ -342,35 +345,35 @@ class Deployer(BaseDeployer):
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
             return
 
-        # Upload and install dashboard web files so WorkingDirectory always exists
-        # (phase_install from service deployers may not have run if no component services selected)
-        self._emit(PHASE_SUPERVISOR, "Deploying dashboard web files...", 77)
-        _web_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
-        for _fname in _web_files:
-            _src = _SERVER_FILES_DIR / _fname
-            if _src.exists():
-                await self._client.async_put_file(_src, f"{REMOTE_TEMP_ROOT}/{_fname}")
-            else:
-                _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
+        # Upload and install dashboard web files only when the network dashboard is selected.
+        if self._manage_dashboard_service:
+            self._emit(PHASE_SUPERVISOR, "Deploying dashboard web files...", 77)
+            _web_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
+            for _fname in _web_files:
+                _src = _SERVER_FILES_DIR / _fname
+                if _src.exists():
+                    await self._client.async_put_file(_src, f"{REMOTE_TEMP_ROOT}/{_fname}")
+                else:
+                    _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
         await self.phase_install()
 
-        # Install Python packages required by the dashboard (always needed, regardless of
-        # which component services were selected)
-        await self.install_python_packages(
-            ["bokeh", "tornado", "pyyaml", "pandas"],
-            "dashboard",
-        )
+        # Install Python packages required by the network dashboard only when selected.
+        if self._manage_dashboard_service:
+            await self.install_python_packages(
+                ["bokeh", "tornado", "pyyaml", "pandas"],
+                "dashboard",
+            )
 
         # Install supervisor package
         self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 78)
         tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
         await self._client.async_put_bytes(tar_bytes, f"{REMOTE_TEMP_ROOT}/supervisor.tar.gz")
 
-        # Install systemd services
-        await self.install_systemd_services([
-            "PerimeterControl-supervisor.service.template",
-            "PerimeterControl-dashboard.service.template"
-        ])
+        # Install systemd services; dashboard service is optional per selected capabilities.
+        template_files = ["PerimeterControl-supervisor.service.template"]
+        if self._manage_dashboard_service:
+            template_files.append("PerimeterControl-dashboard.service.template")
+        await self.install_systemd_services(template_files)
         
         # Install supervisor
         sup_install_script = _build_supervisor_install_script()
@@ -417,40 +420,48 @@ class Deployer(BaseDeployer):
             )
             raise RuntimeError("Supervisor failed post-restart health gate")
         
-        # Start dashboard service
-        try:
-            # Clear rate-limit counter so systemd allows a fresh start after crash loop
-            await self._client.async_run(
-                f"sudo systemctl reset-failed {SYSTEMD_DASHBOARD} 2>/dev/null || true"
-            )
-            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
-            await asyncio.sleep(2)
-            _LOGGER.info("Dashboard service restarted successfully")
-        except Exception as exc:
+        if self._manage_dashboard_service:
+            # Start dashboard service only when network dashboard capability is selected.
             try:
-                journal = await self._client.async_run(
-                    f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
+                # Clear rate-limit counter so systemd allows a fresh start after crash loop
+                await self._client.async_run(
+                    f"sudo systemctl reset-failed {SYSTEMD_DASHBOARD} 2>/dev/null || true"
                 )
-                status_out = await self._client.async_run(
-                    f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
-                )
-                _LOGGER.warning(
-                    "Dashboard service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
-                    exc, status_out.strip(), journal.strip(),
-                )
-            except Exception:
-                _LOGGER.warning("Dashboard service failed to restart: %s", exc)
+                await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+                await asyncio.sleep(2)
+                _LOGGER.info("Dashboard service restarted successfully")
+            except Exception as exc:
+                try:
+                    journal = await self._client.async_run(
+                        f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
+                    )
+                    status_out = await self._client.async_run(
+                        f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
+                    )
+                    _LOGGER.warning(
+                        "Dashboard service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
+                        exc, status_out.strip(), journal.strip(),
+                    )
+                except Exception:
+                    _LOGGER.warning("Dashboard service failed to restart: %s", exc)
 
-        dashboard_ok, dashboard_last = await self._wait_for_service_active(SYSTEMD_DASHBOARD)
-        if not dashboard_ok:
-            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
-            _LOGGER.error(
-                "Dashboard failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
-                dashboard_last.strip() or "<empty>",
-                status_out.strip(),
-                journal.strip(),
+            dashboard_ok, dashboard_last = await self._wait_for_service_active(SYSTEMD_DASHBOARD)
+            if not dashboard_ok:
+                status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
+                _LOGGER.error(
+                    "Dashboard failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                    dashboard_last.strip() or "<empty>",
+                    status_out.strip(),
+                    journal.strip(),
+                )
+                raise RuntimeError("Dashboard failed post-restart health gate")
+        else:
+            # Ensure dashboard service does not linger from previous deployments.
+            await self._client.async_run(
+                f"sudo systemctl stop {SYSTEMD_DASHBOARD} 2>/dev/null || true; "
+                f"sudo systemctl disable {SYSTEMD_DASHBOARD} 2>/dev/null || true"
             )
-            raise RuntimeError("Dashboard failed post-restart health gate")
+            _LOGGER.info("Dashboard service %s is not selected; ensured it is stopped/disabled", SYSTEMD_DASHBOARD)
         
         self._emit(PHASE_RESTART, "Services restarted", 95)
 
@@ -464,11 +475,15 @@ class Deployer(BaseDeployer):
         )
         supervisor_active = "active" in supervisor_status and "INACTIVE" not in supervisor_status
         
-        # Check dashboard service
-        dashboard_status = await self._client.async_run(
-            f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
-        )
-        dashboard_active = "active" in dashboard_status and "INACTIVE" not in dashboard_status
+        # Check dashboard service only when selected.
+        if self._manage_dashboard_service:
+            dashboard_status = await self._client.async_run(
+                f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
+            )
+            dashboard_active = "active" in dashboard_status and "INACTIVE" not in dashboard_status
+        else:
+            dashboard_status = "skipped (not selected)"
+            dashboard_active = True
         
         _LOGGER.info("Service status - Supervisor: %s, Dashboard: %s", 
                     supervisor_status.strip(), dashboard_status.strip())

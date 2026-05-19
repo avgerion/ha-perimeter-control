@@ -16,13 +16,13 @@ spec:
     schema_ref: schema://services/gpio_control/v1
 
   access_profile:
-    mode: localhost
+    mode: upstream
     bind_address: ""
     port: 8095
     tls_mode: off
     auth_mode: token
     allowed_origins: []
-    exposure_scope: tunnel_only
+    exposure_scope: lan_only
 
   placement:
     can_run_with: [perimeter_control, photo_booth, wildlife_monitor]

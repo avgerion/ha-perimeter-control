@@ -19,7 +19,7 @@ spec:
     mode: upstream
     bind_address: ""
     port: 8093
-    tls_mode: self_signed
+    tls_mode: off
     cert_file: /etc/PerimeterControl/tls/fullchain.pem
     key_file: /etc/PerimeterControl/tls/privkey.pem
     auth_mode: token
@@ -28,7 +28,7 @@ spec:
 
   placement:
     cannot_run_with: []
-    prefers_node_labels: [ feature=camera ]
+    prefers_node_labels: [feature=camera]
 
   resources:
     cpu_cores: 1.0

@@ -84,6 +84,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return cast(asyncio.Task[Any], create_bg(coro, name))
         return cast(asyncio.Task[Any], self.hass.async_create_task(coro, name=name))
 
+    def _is_network_dashboard_selected(self) -> bool:
+        """Return whether the network dashboard service is selected for this entry."""
+        dashboard_service_id = "network_isolator"
+        return dashboard_service_id in set(self._selected_services)
+
     @classmethod
     async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
         # Load SSH key from file at runtime if not present in config entry, using executor
@@ -133,79 +138,89 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             await instance._supervisor_get("/health")
             _LOGGER.info("Supervisor API is available at %s", instance._supervisor_base_url)
-            
-            # Also check if dashboard is healthy by testing a simple HTTP request
-            try:
-                # Use the PerimeterControl dashboard port for health check
-                import os
-                dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
-                dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/"
-                _LOGGER.warning("Dashboard health check URL: %s", dashboard_url)
-                if not instance._http_session.closed:
-                    async with instance._http_session.get(dashboard_url) as resp:
-                        if resp.status == 200:
-                            _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
-                            # Start WebSocket connection after successful health checks  
-                            instance._spawn_background_task(
-                                instance._delayed_websocket_start(),
-                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                            )
-                        else:
-                            raise Exception(f"Dashboard returned HTTP {resp.status}")
-                else:
-                    raise Exception("HTTP session is closed")
-            except Exception as dashboard_exc:
-                _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
-                # Trigger deployment even though supervisor is working - but don't block startup
-                _LOGGER.info("Scheduling deployment to fix dashboard issues...")
-                if not instance._client_initialized or not instance._client:
-                    _LOGGER.error("SSH client not initialized, cannot schedule deployment")
-                else:
-                    async def _ssh_test_and_deploy() -> None:
-                        """Background task to test SSH and start deployment if successful."""
-                        try:
-                            if not instance._client_initialized or not instance._client:
-                                _LOGGER.error("SSH client not initialized, cannot test connection")
-                                return
 
-                            await instance._client.async_run("echo 'SSH test'")
-                            _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
+            if not instance._is_network_dashboard_selected():
+                _LOGGER.info(
+                    "Network dashboard service is not selected; skipping port %s health checks.",
+                    DEFAULT_DASHBOARD_PORT,
+                )
+                instance._spawn_background_task(
+                    instance._delayed_websocket_start(),
+                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                )
+            else:
+                # Also check if dashboard is healthy by testing a simple HTTP request
+                try:
+                    # Use the PerimeterControl dashboard port for health check
+                    import os
+                    dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
+                    dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/"
+                    _LOGGER.warning("Dashboard health check URL: %s", dashboard_url)
+                    if not instance._http_session.closed:
+                        async with instance._http_session.get(dashboard_url) as resp:
+                            if resp.status == 200:
+                                _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
+                                # Start WebSocket connection after successful health checks
+                                instance._spawn_background_task(
+                                    instance._delayed_websocket_start(),
+                                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                )
+                            else:
+                                raise Exception(f"Dashboard returned HTTP {resp.status}")
+                    else:
+                        raise Exception("HTTP session is closed")
+                except Exception as dashboard_exc:
+                    _LOGGER.warning("Supervisor healthy but dashboard unhealthy (%s). Will attempt deployment to fix dashboard.", dashboard_exc)
+                    # Trigger deployment even though supervisor is working - but don't block startup
+                    _LOGGER.info("Scheduling deployment to fix dashboard issues...")
+                    if not instance._client_initialized or not instance._client:
+                        _LOGGER.error("SSH client not initialized, cannot schedule deployment")
+                    else:
+                        async def _ssh_test_and_deploy() -> None:
+                            """Background task to test SSH and start deployment if successful."""
+                            try:
+                                if not instance._client_initialized or not instance._client:
+                                    _LOGGER.error("SSH client not initialized, cannot test connection")
+                                    return
 
-                            deploy_task = instance._spawn_background_task(
-                                instance._auto_deploy_supervisor(),
-                                name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
-                            )
+                                await instance._client.async_run("echo 'SSH test'")
+                                _LOGGER.info("SSH connection successful. Starting deployment to fix dashboard...")
 
-                            def deployment_completed(task: asyncio.Task[Any]) -> None:
-                                try:
-                                    if task.exception():
-                                        _LOGGER.error("Auto-deployment task failed with exception: %s",
-                                                    task.exception(), exc_info=task.exception())
-                                    else:
-                                        _LOGGER.debug("Auto-deployment task completed successfully")
-                                        # Start websocket connection after successful deployment
-                                        instance._spawn_background_task(
-                                            instance._delayed_websocket_start(),
-                                            name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                                        )
-                                except Exception as cb_exc:
-                                    _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
+                                deploy_task = instance._spawn_background_task(
+                                    instance._auto_deploy_supervisor(),
+                                    name=f"perimeter_control_auto_deploy_{instance._entry.entry_id}"
+                                )
 
-                            deploy_task.add_done_callback(deployment_completed)
+                                def deployment_completed(task: asyncio.Task[Any]) -> None:
+                                    try:
+                                        if task.exception():
+                                            _LOGGER.error("Auto-deployment task failed with exception: %s",
+                                                        task.exception(), exc_info=task.exception())
+                                        else:
+                                            _LOGGER.debug("Auto-deployment task completed successfully")
+                                            # Start websocket connection after successful deployment
+                                            instance._spawn_background_task(
+                                                instance._delayed_websocket_start(),
+                                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                            )
+                                    except Exception as cb_exc:
+                                        _LOGGER.error("Error in deployment completion callback: %s", cb_exc)
 
-                        except Exception as ssh_exc:
-                            _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
-                            # Still try to start WebSocket in case services are actually working
-                            instance._spawn_background_task(
-                                instance._delayed_websocket_start(),
-                                name=f"perimeter_control_websocket_{instance._entry.entry_id}"
-                            )
-                
-                    # Schedule SSH test and deployment as background task
-                    instance._spawn_background_task(
-                        _ssh_test_and_deploy(),
-                        name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
-                    )
+                                deploy_task.add_done_callback(deployment_completed)
+
+                            except Exception as ssh_exc:
+                                _LOGGER.warning("SSH connection failed during background test: %s", ssh_exc)
+                                # Still try to start WebSocket in case services are actually working
+                                instance._spawn_background_task(
+                                    instance._delayed_websocket_start(),
+                                    name=f"perimeter_control_websocket_{instance._entry.entry_id}"
+                                )
+
+                        # Schedule SSH test and deployment as background task
+                        instance._spawn_background_task(
+                            _ssh_test_and_deploy(),
+                            name=f"perimeter_control_ssh_test_{instance._entry.entry_id}"
+                        )
                 
         except Exception as exc:
             _LOGGER.info("Supervisor API not available at %s (this is expected during initial setup): %s. Will attempt auto-deployment.", 
@@ -545,8 +560,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return {}
             # Each value is a serialized DashboardUrl object; extract the "url" string field.
             raw_urls: dict[str, str] = {}
+            selected_ids = set(self._selected_services)
             for sid, svc in services_data.items():
                 if not isinstance(sid, str):
+                    continue
+                if selected_ids and sid not in selected_ids:
                     continue
                 if isinstance(svc, dict):
                     url = svc.get("url", "")
@@ -567,6 +585,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             sid,
                             url or "<empty>",
                         )
+                    if mode in ("localhost", "isolated"):
+                        _LOGGER.info(
+                            "Skipping direct dashboard URL for %s because mode=%s is not remotely reachable from HA host",
+                            sid,
+                            mode,
+                        )
+                        continue
                 elif isinstance(svc, str):
                     url = svc
                 else:
@@ -586,6 +611,19 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Normalize dashboard URLs to the integration host when API returns localhost URLs."""
         normalized: dict[str, str] = {}
         host = self._entry.data.get(CONF_HOST)
+
+        def _tls_enabled(service_id: str) -> bool:
+            # Prefer descriptor metadata, fallback to cached services_config access profile.
+            descriptor = self._service_descriptors.get(service_id)
+            if descriptor:
+                access = descriptor.raw.get("spec", {}).get("access_profile", {})
+                tls_mode = str(access.get("tls_mode", "off")).strip().lower()
+                return tls_mode not in ("off", "none", "disabled", "false", "0", "")
+
+            service_cfg = self.data.get("services_config", {}).get(service_id, {})
+            access = service_cfg.get("access_profile", {}) if isinstance(service_cfg, dict) else {}
+            tls_mode = str(access.get("tls_mode", "off")).strip().lower() if isinstance(access, dict) else "off"
+            return tls_mode not in ("off", "none", "disabled", "false", "0", "")
 
         for service_id, url in dashboard_urls.items():
             if not isinstance(service_id, str) or not isinstance(url, str) or not url:
@@ -611,6 +649,23 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             service_id,
                             url,
                             candidate,
+                        )
+
+                    # Respect service TLS profile when API omits/uses wrong scheme.
+                    expected_https = _tls_enabled(service_id)
+                    if expected_https and parsed.scheme == "http":
+                        parsed = parsed._replace(scheme="https")
+                        candidate = urlunparse(parsed)
+                        _LOGGER.info(
+                            "Adjusted dashboard URL scheme for %s to https based on tls_mode",
+                            service_id,
+                        )
+                    elif not expected_https and parsed.scheme == "https":
+                        parsed = parsed._replace(scheme="http")
+                        candidate = urlunparse(parsed)
+                        _LOGGER.info(
+                            "Adjusted dashboard URL scheme for %s to http based on tls_mode",
+                            service_id,
                         )
                 elif host and candidate.startswith(":"):
                     # Handle malformed ":5006" style values defensively.
@@ -712,7 +767,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             service_status = service.get("status", "unknown")
             service_mode = service.get("access_mode", "unknown")
             service_port = service.get("port", "unknown")
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Evaluating dashboard entity for %s: status=%s mode=%s port=%s url=%s",
                 service_id or "<missing>",
                 service_status,
@@ -721,6 +776,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 dashboard_url or "<empty>",
             )
             if not _is_selected(service_id):
+                continue
+
+            if str(service_mode) in ("localhost", "isolated"):
                 continue
 
             if service_id and isinstance(dashboard_url, str) and dashboard_url and service_id not in normalized_urls:
