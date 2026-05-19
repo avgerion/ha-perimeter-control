@@ -548,6 +548,23 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 if isinstance(svc, dict):
                     url = svc.get("url", "")
+                    status = svc.get("status", "unknown")
+                    mode = svc.get("mode", svc.get("access_mode", "unknown"))
+                    port = svc.get("port", "unknown")
+                    _LOGGER.warning(
+                        "Dashboard service status for %s: status=%s mode=%s port=%s url=%s",
+                        sid,
+                        status,
+                        mode,
+                        port,
+                        url or "<empty>",
+                    )
+                    if status != "active":
+                        _LOGGER.warning(
+                            "Dashboard service %s is not active, so the URL may refuse connections: %s",
+                            sid,
+                            url or "<empty>",
+                        )
                 elif isinstance(svc, str):
                     url = svc
                 else:
@@ -678,6 +695,17 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for service in services:
             service_id = service.get("id")
             dashboard_url = service.get("dashboard_url")
+            service_status = service.get("status", "unknown")
+            service_mode = service.get("access_mode", "unknown")
+            service_port = service.get("port", "unknown")
+            _LOGGER.warning(
+                "Evaluating dashboard entity for %s: status=%s mode=%s port=%s url=%s",
+                service_id or "<missing>",
+                service_status,
+                service_mode,
+                service_port,
+                dashboard_url or "<empty>",
+            )
             if service_id and isinstance(dashboard_url, str) and dashboard_url and service_id not in normalized_urls:
                 normalized_urls[service_id] = dashboard_url
 
@@ -729,6 +757,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "unit_of_measurement": None,
                 "last_updated": datetime.utcnow().isoformat() + "Z"
             }
+
+            if service.get("status") not in (None, "active"):
+                _LOGGER.warning(
+                    "Dashboard entity %s is published while service status is %s; URL=%s",
+                    service_id,
+                    service.get("status", "unknown"),
+                    dashboard_url,
+                )
             
             dashboard_entities.append(entity)
             
