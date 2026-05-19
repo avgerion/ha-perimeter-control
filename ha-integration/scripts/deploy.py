@@ -22,6 +22,7 @@ Dependencies (standard library only — no pip packages required):
 """
 
 import argparse
+import ast
 import base64
 import json
 import os
@@ -117,6 +118,24 @@ def _abort(step: str, detail: str = "") -> None:
     sys.exit(1)
 
 
+def _decode_output(value: str | bytes | None) -> str:
+    """Decode subprocess output robustly across platforms."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _validate_python_syntax(path: Path) -> None:
+    """Validate python file syntax before upload."""
+    source = path.read_text(encoding="utf-8")
+    try:
+        ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        raise ValueError(f"{path.name}:{exc.lineno}:{exc.offset} {exc.msg}") from exc
+
+
 # ── SSH / SCP helpers ─────────────────────────────────────────────────────────
 def _ssh(host: str, user: str, key: str, cmd: str, timeout: int = 300) -> tuple[int, str, str]:
     """
@@ -133,10 +152,10 @@ def _ssh(host: str, user: str, key: str, cmd: str, timeout: int = 300) -> tuple[
             cmd,
         ],
         capture_output=True,
-        text=True,
+        text=False,
         timeout=timeout,
     )
-    return result.returncode, result.stdout, result.stderr
+    return result.returncode, _decode_output(result.stdout), _decode_output(result.stderr)
 
 
 def _scp(host: str, user: str, key: str, local: str, remote: str, timeout: int = 300) -> tuple[int, str, str]:
@@ -154,10 +173,10 @@ def _scp(host: str, user: str, key: str, local: str, remote: str, timeout: int =
             f"{user}@{host}:{remote}",
         ],
         capture_output=True,
-        text=True,
+        text=False,
         timeout=timeout,
     )
-    return result.returncode, result.stdout, result.stderr
+    return result.returncode, _decode_output(result.stdout), _decode_output(result.stderr)
 
 
 # ── Service descriptor parsing ────────────────────────────────────────────────
@@ -252,6 +271,19 @@ def deploy(
     ]
     if missing:
         _abort("local file check", f"Missing dashboard files: {', '.join(missing)}")
+
+    syntax_errors = []
+    for rel, *_ in WEB_FILES:
+        local_path = repo_root / rel
+        if local_path.suffix != ".py":
+            continue
+        try:
+            _validate_python_syntax(local_path)
+        except Exception as exc:
+            syntax_errors.append(str(exc))
+    if syntax_errors:
+        _abort("local file check", "Invalid Python source: " + "; ".join(syntax_errors))
+
     _log("local file check", True)
 
     # ── 2. Read service descriptors → determine apt deps ─────────────────

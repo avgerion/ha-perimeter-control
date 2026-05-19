@@ -1039,11 +1039,14 @@ def setup_callbacks(doc, data_manager):
                 data_manager.update_device_rule(device_id, 'logging', logging_level)
 
                 # Update capture config
+                capture_output_path = os.environ.get(
+                    'PERIMETERCONTROL_CAPTURE_OUTPUT_PATH',
+                    '/mnt/perimetercontrol/captures',
+                )
                 capture_config = {
                     'enabled': capture_enabled,
                     'filter': '',
-                    CAPTURE_OUTPUT_PATH = os.environ.get('PERIMETERCONTROL_CAPTURE_OUTPUT_PATH', '/mnt/perimetercontrol/captures')
-                    'output': f'{CAPTURE_OUTPUT_PATH}/{device_id}',
+                    'output': f'{capture_output_path}/{device_id}',
                     'rotate_mb': 100,
                     'live': True
                 }

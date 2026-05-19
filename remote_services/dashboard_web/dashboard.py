@@ -400,6 +400,9 @@ def main():
         address=server_net['bind_address'],
         allow_websocket_origin=server_net['allow_websocket_origin'],
         session_token_expiration=86400000,  # 24 hours (in milliseconds)
+        num_procs=1  # Single process on Pi 3
+    )
+
     logger.warning(
         "Dashboard startup details: mode=%s bind=%s port=%s upstream_ip=%s isolated_ip=%s",
         server_net['mode'],
@@ -408,7 +411,11 @@ def main():
         server_net['upstream_ip'],
         server_net['isolated_ip'],
     )
-        num_procs=1  # Single process on Pi 3
+    logger.warning(
+        "Dashboard server will attempt to listen on %s:%s and allow origins: %s",
+        server_net['bind_address'],
+        server_net['port'],
+        server_net['allow_websocket_origin'],
     )
     
     logger.info("Server configured, starting...")
@@ -434,12 +441,6 @@ def main():
     finally:
         server.stop()
         logger.info("Dashboard stopped")
-    logger.warning(
-        "Dashboard server will attempt to listen on %s:%s and allow origins: %s",
-        server_net['bind_address'],
-        server_net['port'],
-        server_net['allow_websocket_origin'],
-    )
     
     return 0
 

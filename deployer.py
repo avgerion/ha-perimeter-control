@@ -18,6 +18,7 @@ Phases:
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
 import os
@@ -62,6 +63,29 @@ _SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
 _SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
 _SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
 _CONFIG_DIR = _COMPONENT_DIR / "config"
+
+
+def _validate_python_file_syntax(path: Path) -> None:
+    """Raise ValueError if the Python file has invalid syntax."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise ValueError(f"Failed to read {path}: {exc}") from exc
+
+    try:
+        ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        detail = f"{path.name}:{exc.lineno}:{exc.offset} {exc.msg}"
+        raise ValueError(f"Dashboard source syntax check failed: {detail}") from exc
+
+
+def _validate_dashboard_sources() -> None:
+    """Validate all deployable dashboard python sources before remote upload."""
+    for name in ("dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"):
+        src = _SERVER_FILES_DIR / name
+        if not src.exists():
+            continue
+        _validate_python_file_syntax(src)
 
 
 async def _render_service_template(template_path: Path) -> str:
@@ -307,6 +331,9 @@ class Deployer(BaseDeployer):
     async def _phase_supervisor(self) -> None:
         """Install supervisor using base deployer functionality."""
         self._emit(PHASE_SUPERVISOR, "Installing supervisor...", 76)
+
+        # Guardrail: do not upload dashboard files if local Python sources are invalid.
+        _validate_dashboard_sources()
         
         # For now, keep the existing supervisor installation logic
         # but use base deployer where possible
@@ -378,6 +405,17 @@ class Deployer(BaseDeployer):
                 )
             except Exception:
                 _LOGGER.warning("Supervisor service failed to restart: %s", exc)
+
+        supervisor_ok, supervisor_last = await self._wait_for_service_active(SYSTEMD_SUPERVISOR)
+        if not supervisor_ok:
+            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_SUPERVISOR)
+            _LOGGER.error(
+                "Supervisor failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                supervisor_last.strip() or "<empty>",
+                status_out.strip(),
+                journal.strip(),
+            )
+            raise RuntimeError("Supervisor failed post-restart health gate")
         
         # Start dashboard service
         try:
@@ -402,6 +440,17 @@ class Deployer(BaseDeployer):
                 )
             except Exception:
                 _LOGGER.warning("Dashboard service failed to restart: %s", exc)
+
+        dashboard_ok, dashboard_last = await self._wait_for_service_active(SYSTEMD_DASHBOARD)
+        if not dashboard_ok:
+            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
+            _LOGGER.error(
+                "Dashboard failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                dashboard_last.strip() or "<empty>",
+                status_out.strip(),
+                journal.strip(),
+            )
+            raise RuntimeError("Dashboard failed post-restart health gate")
         
         self._emit(PHASE_RESTART, "Services restarted", 95)
 
@@ -428,24 +477,16 @@ class Deployer(BaseDeployer):
             self._emit(PHASE_VERIFY, "Deploy complete — all services running", 100)
             _LOGGER.info("Deployment completed successfully - all services active")
         elif supervisor_active:
-            self._emit(PHASE_VERIFY, "Deploy complete — supervisor running", 100)
-            _LOGGER.warning("Deployment completed with warnings - supervisor active but dashboard failed")
-            try:
-                journal = await self._client.async_run(
-                    f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
-                )
-                status_out = await self._client.async_run(
-                    f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
-                )
-                _LOGGER.warning(
-                    "Dashboard diagnostics:\nStatus:\n%s\nJournal:\n%s",
-                    status_out.strip(), journal.strip(),
-                )
-            except Exception as diag_exc:
-                _LOGGER.debug("Could not capture dashboard diagnostics: %s", diag_exc)
+            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
+            _LOGGER.error(
+                "Deployment failed verification: supervisor active but dashboard inactive.\nStatus:\n%s\nRecent Journal:\n%s",
+                status_out.strip(),
+                journal.strip(),
+            )
+            raise RuntimeError("Deployment verification failed: dashboard inactive")
         else:
-            self._emit(PHASE_VERIFY, "Deploy complete — services need attention", 100)
-            _LOGGER.error("Deployment completed with errors - services need attention")
+            self._emit(PHASE_VERIFY, "Deploy failed — services need attention", 100)
+            _LOGGER.error("Deployment verification failed - services need attention")
             for svc_name, svc_const in (
                 ("Supervisor", SYSTEMD_SUPERVISOR),
                 ("Dashboard", SYSTEMD_DASHBOARD),
@@ -463,6 +504,35 @@ class Deployer(BaseDeployer):
                     )
                 except Exception as diag_exc:
                     _LOGGER.debug("Could not capture %s diagnostics: %s", svc_name, diag_exc)
+            raise RuntimeError("Deployment verification failed: core services inactive")
+
+    async def _wait_for_service_active(
+        self,
+        service_name: str,
+        *,
+        attempts: int = 8,
+        delay_seconds: float = 2.0,
+    ) -> tuple[bool, str]:
+        """Wait for a systemd service to reach active state."""
+        last_status = ""
+        for _ in range(attempts):
+            last_status = await self._client.async_run(
+                f"systemctl is-active {service_name} 2>/dev/null || echo INACTIVE"
+            )
+            if "active" in last_status and "INACTIVE" not in last_status:
+                return True, last_status
+            await asyncio.sleep(delay_seconds)
+        return False, last_status
+
+    async def _get_condensed_service_diagnostics(self, service_name: str) -> tuple[str, str]:
+        """Return condensed status and journal output for a service."""
+        status_out = await self._client.async_run(
+            f"sudo systemctl status {service_name} --no-pager --lines=20 2>&1 || true"
+        )
+        journal = await self._client.async_run(
+            f"sudo journalctl -u {service_name} -n 30 --no-pager 2>&1 || true"
+        )
+        return status_out, journal
 
 
 # ------------------------------------------------------------------
