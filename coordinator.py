@@ -139,6 +139,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await instance._supervisor_get("/health")
             _LOGGER.info("Supervisor API is available at %s", instance._supervisor_base_url)
 
+            # Immediately push local access_profile config to supervisor (no SSH needed).
+            # This fixes stale mode=localhost on the Pi without requiring a full deploy.
+            try:
+                await instance._push_access_profiles_to_supervisor()
+            except Exception as _ap_exc:
+                _LOGGER.debug("Access profile push skipped at startup: %s", _ap_exc)
+
             if not instance._is_network_dashboard_selected():
                 _LOGGER.info(
                     "Network dashboard service is not selected; skipping port %s health checks.",
@@ -155,7 +162,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     import os
                     dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
                     dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/"
-                    _LOGGER.warning("Dashboard health check URL: %s", dashboard_url)
+                    _LOGGER.debug("Dashboard health check URL: %s", dashboard_url)
                     if not instance._http_session.closed:
                         async with instance._http_session.get(dashboard_url) as resp:
                             if resp.status == 200:
@@ -368,13 +375,31 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             dashboard_urls = await self.get_dashboard_urls()
             
             # Log what we're extracting
-            entities = result.get("entities", [])
+            all_entities = result.get("entities", [])
             services_raw = result.get("services", [])
             node_info = result.get("node_info", {})
             capabilities = node_info.get("capabilities", [])
 
+            # Filter entities to only those belonging to selected services.
+            # Entities always carry a "capability_id" field matching the service ID.
+            # Entities without a capability_id (supervisor-level) pass through unfiltered.
+            selected_ids = set(self._selected_services) if self._selected_services else set()
+            if selected_ids:
+                entities = [
+                    e for e in all_entities
+                    if not e.get("capability_id") or e.get("capability_id") in selected_ids
+                ]
+                dropped = len(all_entities) - len(entities)
+                if dropped:
+                    _LOGGER.debug(
+                        "Filtered %d entity/entities from unselected capabilities (kept %d)",
+                        dropped, len(entities),
+                    )
+            else:
+                entities = all_entities
+
             entity_ids = [e.get("id") for e in entities if e.get("id")]
-            _LOGGER.info("[DEBUG] Entities from /ha/integration: %s", entity_ids)
+            _LOGGER.debug("Entities from /ha/integration (post-filter): %s", entity_ids)
 
             services: list[dict[str, Any]] = []
             services_config: dict[str, Any] = {}
@@ -387,6 +412,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif isinstance(services_raw, dict):
                 services_config = services_raw
                 services = [s for s in services_raw.values() if isinstance(s, dict)]
+
+            # Filter services to selected only
+            if selected_ids:
+                services = [s for s in services if (s.get("id") or "") in selected_ids or not s.get("id")]
+                services_config = {k: v for k, v in services_config.items() if k in selected_ids}
 
             _LOGGER.info(
                 "Extracted from API - entities: %d, services: %d, capabilities: %d",
@@ -406,7 +436,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             all_entities = entities + dashboard_entities  # Include dashboard entities in state processing
             entity_ids = [e.get("id") for e in all_entities if e.get("id")]
             live_entity_states = await self._fetch_entity_states(entity_ids)
-            _LOGGER.info("[DEBUG] State keys from /entities/states/query: %s", list(live_entity_states.keys()))
+            _LOGGER.debug("State keys from /entities/states/query: %s", list(live_entity_states.keys()))
             for entity in all_entities:
                 entity_id = entity.get("id")
                 if entity_id:
@@ -571,40 +601,38 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     status = svc.get("status", "unknown")
                     mode = svc.get("mode", svc.get("access_mode", "unknown"))
                     port = svc.get("port", "unknown")
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "Dashboard service status for %s: status=%s mode=%s port=%s url=%s",
-                        sid,
-                        status,
-                        mode,
-                        port,
-                        url or "<empty>",
+                        sid, status, mode, port, url or "<empty>",
                     )
-                    if status != "active":
-                        _LOGGER.warning(
-                            "Dashboard service %s is not active, so the URL may refuse connections: %s",
-                            sid,
-                            url or "<empty>",
-                        )
                     if mode in ("localhost", "isolated"):
-                        _LOGGER.info(
-                            "Skipping direct dashboard URL for %s because mode=%s is not remotely reachable from HA host",
-                            sid,
-                            mode,
+                        _LOGGER.debug(
+                            "Skipping dashboard URL for %s: mode=%s (not reachable from HA host — run deploy to push updated access_profile)",
+                            sid, mode,
                         )
                         continue
+                    if status != "active":
+                        _LOGGER.info(
+                            "Dashboard service %s is not yet active (status=%s), URL may not respond yet: %s",
+                            sid, status, url or "<empty>",
+                        )
                 elif isinstance(svc, str):
                     url = svc
                 else:
                     continue
                 if url:
                     raw_urls[sid] = url
-                    _LOGGER.warning("Dashboard URL discovered for %s: %s", sid, url)
+                    _LOGGER.info("Dashboard URL discovered for %s: %s", sid, url)
             if not raw_urls:
-                _LOGGER.warning("No dashboard URLs returned by /ha/dashboard-urls")
+                _LOGGER.info(
+                    "No reachable dashboard URLs from /ha/dashboard-urls for selected services %s "
+                    "(services may have mode=localhost on Pi — trigger Deploy from HA to push updated access_profile)",
+                    self._selected_services,
+                )
             return self._normalize_dashboard_urls(raw_urls)
         except UpdateFailed:
             # Fall back to manual construction
-            _LOGGER.warning("Dashboard URL API unavailable; using legacy URL construction")
+            _LOGGER.debug("Dashboard URL API unavailable; using legacy URL construction")
             return self._build_legacy_dashboard_urls()
 
     def _normalize_dashboard_urls(self, dashboard_urls: dict[str, str]) -> dict[str, str]:
@@ -1281,13 +1309,52 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Shutdown
     # ------------------------------------------------------------------
 
+    async def _push_access_profiles_to_supervisor(self) -> None:
+        """Push local descriptor access_profiles to the Supervisor via API.
+
+        This runs without SSH and immediately fixes mode/port/tls on the running
+        supervisor even before a full deploy is triggered.
+        """
+        if not self._service_descriptors:
+            return
+        if not self._http_session or self._http_session.closed:
+            return
+        for service_id, desc in self._service_descriptors.items():
+            if self._selected_services and service_id not in self._selected_services:
+                continue
+            access_profile = desc.raw.get("spec", {}).get("access_profile", {})
+            if not isinstance(access_profile, dict) or not access_profile:
+                continue
+            access_url = f"{self._supervisor_base_url}/services/{service_id}/access"
+            try:
+                async with self._http_session.put(
+                    access_url,
+                    json={"access_profile": access_profile},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status in (200, 201):
+                        _LOGGER.info(
+                            "Synced access_profile for %s → mode=%s port=%s",
+                            service_id,
+                            access_profile.get("mode"),
+                            access_profile.get("port"),
+                        )
+                    else:
+                        body = await resp.text()
+                        _LOGGER.debug(
+                            "Could not sync access_profile for %s (status=%s): %s",
+                            service_id, resp.status, body,
+                        )
+            except Exception as exc:
+                _LOGGER.debug("access_profile sync skipped for %s: %s", service_id, exc)
+
     async def _activate_supervisor_services(self) -> None:
         """Activate selected services in the Supervisor via API deployment."""
         if not self._selected_services:
             _LOGGER.warning("No services selected for activation")
             return
-            
-        _LOGGER.warning("Activating selected services in Supervisor: %s", self._selected_services)
+
+        _LOGGER.info("Activating selected services in Supervisor: %s", self._selected_services)
         
         # Build deployment payload for selected services
         deployment_payload = {}
