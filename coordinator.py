@@ -68,6 +68,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._websocket_task: Optional[asyncio.Task] = None
         self._websocket_starting = False
         self._client_initialized = False  # Track SSH client state
+        self._noted_local_only_services: set[str] = set()
+        self._noted_isolated_services: set[str] = set()
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -642,6 +644,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     
     def _build_legacy_dashboard_url(self, service_id: str) -> str | None:
         """Legacy method to build dashboard URL from access profile."""
+        if self._selected_services and service_id not in self._selected_services:
+            return None
+
         services_config = self.data.get("services_config", {})
         service_config = services_config.get(service_id, {})
         access_profile = service_config.get("access_profile", {})
@@ -651,18 +656,23 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         # Check if service is exposed
         mode = access_profile.get("mode", "localhost")
-        if mode == "isolated":
-            return None  # Service not accessible
+        if mode in ("isolated", "localhost"):
+            return None  # Service not directly accessible from HA host URL
+
+        tls_mode = str(access_profile.get("tls_mode", "off"))
+        scheme = "https" if tls_mode not in ("off", "none", "disabled", "false", "0", "") else "http"
             
         host = self._entry.data[CONF_HOST]
-        return f"http://{host}:{port}/"
+        return f"{scheme}://{host}:{port}/"
     
     def _build_legacy_dashboard_urls(self) -> dict[str, str]:
         """Legacy method to build all dashboard URLs manually."""
         services_config = self.data.get("services_config", {})
         dashboard_urls = {}
-        
-        for service_id in services_config:
+
+        # Prefer selected services to avoid publishing links for undeployed capabilities.
+        service_ids = self._selected_services or list(services_config.keys())
+        for service_id in service_ids:
             url = self._build_legacy_dashboard_url(service_id)
             if url:
                 dashboard_urls[service_id] = url
@@ -678,17 +688,21 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from datetime import datetime
         
         dashboard_entities = []
+        selected_ids = set(self._selected_services)
+
+        def _is_selected(service_id: str | None) -> bool:
+            return bool(service_id) and (not selected_ids or service_id in selected_ids)
 
         service_by_id = {
             s.get("id"): s
             for s in services
-            if isinstance(s, dict) and s.get("id")
+            if isinstance(s, dict) and _is_selected(s.get("id"))
         }
 
         normalized_urls: dict[str, str] = {}
         if isinstance(dashboard_urls, dict):
             for sid, url in dashboard_urls.items():
-                if isinstance(sid, str) and isinstance(url, str) and url:
+                if _is_selected(sid) and isinstance(url, str) and url:
                     normalized_urls[sid] = url
 
         # Accept URLs provided directly on service objects as a fallback.
@@ -706,6 +720,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 service_port,
                 dashboard_url or "<empty>",
             )
+            if not _is_selected(service_id):
+                continue
+
             if service_id and isinstance(dashboard_url, str) and dashboard_url and service_id not in normalized_urls:
                 normalized_urls[service_id] = dashboard_url
 
@@ -716,33 +733,44 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not service_id or service_id in normalized_urls:
                 continue
 
+            if not _is_selected(service_id):
+                continue
+
+            access_mode = str(service.get("access_mode", "localhost"))
+            if access_mode in ("localhost", "isolated"):
+                continue
+
             port = service.get("port")
+            tls_mode = str(service.get("tls_mode", "off"))
+            scheme = "https" if tls_mode not in ("off", "none", "disabled", "false", "0", "") else "http"
             if isinstance(port, int):
-                normalized_urls[service_id] = f"http://{host}:{port}/"
+                normalized_urls[service_id] = f"{scheme}://{host}:{port}/"
             elif isinstance(port, str) and port.isdigit():
-                normalized_urls[service_id] = f"http://{host}:{port}/"
+                normalized_urls[service_id] = f"{scheme}://{host}:{port}/"
 
         # Last-resort fallback: publish a main dashboard URL on default dashboard port.
         # This ensures at least one clickable URL entity when API-provided links are not available yet.
-        if not normalized_urls:
-            normalized_urls["main"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
+        if not normalized_urls and (not selected_ids or "network_isolator" in selected_ids):
+            normalized_urls["network_isolator"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
             _LOGGER.warning(
                 "No service dashboard URLs were available; publishing fallback main dashboard URL: %s",
-                normalized_urls["main"],
+                normalized_urls["network_isolator"],
             )
 
         for service_id, dashboard_url in normalized_urls.items():
             service = service_by_id.get(service_id, {})
             service_name = service.get("name", service_id)
             access_mode = service.get("access_mode", "localhost")
-            if access_mode == "localhost":
-                _LOGGER.warning(
+            if access_mode == "localhost" and service_id not in self._noted_local_only_services:
+                self._noted_local_only_services.add(service_id)
+                _LOGGER.info(
                     "Dashboard entity %s is local-only; a direct host URL may refuse unless a tunnel or proxy is active: %s",
                     service_id,
                     dashboard_url,
                 )
-            elif access_mode == "isolated":
-                _LOGGER.warning(
+            elif access_mode == "isolated" and service_id not in self._noted_isolated_services:
+                self._noted_isolated_services.add(service_id)
+                _LOGGER.info(
                     "Dashboard entity %s is isolated; suppressing any expectation that the host URL will be reachable: %s",
                     service_id,
                     dashboard_url,
@@ -1231,14 +1259,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "capabilities": deployment_payload,
                     "dry_run": False
                 }
-                _LOGGER.warning("Posting to URL: %s with payload: %s", url, payload)
+                _LOGGER.debug("Posting deployment payload to URL %s", url)
                 
                 timeout = aiohttp.ClientTimeout(total=30)  # Shorter timeout for deployment
                 async with self._http_session.post(url, json=payload, timeout=timeout) as response:
-                    _LOGGER.warning("Deployment response status: %s", response.status)
+                    _LOGGER.info("Supervisor deployment response status: %s", response.status)
                     if response.status in (200, 201):
                         result = await response.json()
-                        _LOGGER.warning("Supervisor deployment result: %s", result)
+                        _LOGGER.info("Supervisor deployment result: %s", result)
                     else:
                         error_text = await response.text()
                         _LOGGER.error("Deployment failed with status %s: %s", response.status, error_text)
