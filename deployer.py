@@ -374,6 +374,10 @@ class Deployer(BaseDeployer):
         if self._manage_dashboard_service:
             template_files.append("PerimeterControl-dashboard.service.template")
         await self.install_systemd_services(template_files)
+
+        # Always sync selected service descriptors so Supervisor reads current access_profile
+        # (mode/port/tls) instead of stale files from previous deployments.
+        await self.deploy_service_descriptors(self._selected_services)
         
         # Install supervisor
         sup_install_script = _build_supervisor_install_script()

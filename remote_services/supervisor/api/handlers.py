@@ -766,7 +766,7 @@ class HAIntegrationHandler(_Base):
     def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
         """Compute dashboard URL from access profile."""
         mode = access_profile.get("mode", "localhost")
-        if mode == "isolated":
+        if mode in ("isolated", "localhost"):
             return None  # Service not accessible
             
         port = access_profile.get("port", 8080)
@@ -842,7 +842,7 @@ class HADashboardUrlsHandler(_Base):
     def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
         """Compute dashboard URL from access profile."""
         mode = access_profile.get("mode", "localhost")
-        if mode == "isolated":
+        if mode in ("isolated", "localhost"):
             return None
             
         port = access_profile.get("port", 8080)

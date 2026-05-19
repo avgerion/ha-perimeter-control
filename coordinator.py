@@ -1311,6 +1311,30 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Use a shorter timeout for deployment to avoid connection drops
                 if not self._http_session or self._http_session.closed:
                     raise UpdateFailed("HTTP session not initialized or closed")
+
+                # Sync access profiles before deployment so dashboard mode/port/tls
+                # come from current descriptors, not stale remote defaults.
+                for service_id in list(deployment_payload.keys()):
+                    desc = self._service_descriptors.get(service_id)
+                    if not desc:
+                        continue
+                    access_profile = desc.raw.get("spec", {}).get("access_profile", {})
+                    if not isinstance(access_profile, dict) or not access_profile:
+                        continue
+
+                    access_url = f"{self._supervisor_base_url}/services/{service_id}/access"
+                    access_body = {"access_profile": access_profile}
+                    async with self._http_session.put(access_url, json=access_body, timeout=aiohttp.ClientTimeout(total=15)) as access_resp:
+                        if access_resp.status not in (200, 201):
+                            access_error = await access_resp.text()
+                            _LOGGER.warning(
+                                "Failed to sync access profile for %s (status=%s): %s",
+                                service_id,
+                                access_resp.status,
+                                access_error,
+                            )
+                        else:
+                            _LOGGER.info("Synced access profile for %s", service_id)
                 
                 url = f"{self._supervisor_base_url}/deployments"
                 payload = {
