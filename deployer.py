@@ -259,6 +259,17 @@ class Deployer(BaseDeployer):
     async def _phase_service_deployment(self) -> None:
         """Deploy each service using component composition."""
         self._emit("service_deploy", "Deploying component-based services...", 15)
+
+        runtime_template_overrides = {
+            os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'): (
+                "config/templates/gpio_control_config.yaml",
+                "gpio-control.yaml",
+            ),
+            os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'): (
+                "config/templates/photo_booth_config.yaml",
+                "photo-booth.yaml",
+            ),
+        }
         
         total_services = len(self._selected_services)
         deployment_path = Path("/tmp/perimeter_deployment")
@@ -279,6 +290,21 @@ class Deployer(BaseDeployer):
                 success = await service.deploy(self._client, deployment_path, hass=self._hass)
                 if not success:
                     raise Exception(f"Service {service_id} component deployment failed")
+
+                # Ensure capability runtime config is installed at the exact path
+                # the service descriptor expects under /mnt/PerimeterControl/conf.
+                if service_id in runtime_template_overrides:
+                    template_rel_path, target_name = runtime_template_overrides[service_id]
+                    await self._deploy_template_config(
+                        template_rel_path=template_rel_path,
+                        target_name=target_name,
+                    )
+                    _LOGGER.info(
+                        "Installed runtime config override for %s -> %s/%s",
+                        service_id,
+                        REMOTE_CONF_DIR,
+                        target_name,
+                    )
                 
                 # Get auto-generated entities from hardware interfaces
                 try:
