@@ -66,12 +66,12 @@ class SupervisorEntity(Entity):
             entity.get("id") == self.entity_schema.get("id")
             for entity in supervisor_entities
         )
-        
-        # Also check if we have current state data
-        current_state = self._get_current_state()
-        has_state = bool(current_state and current_state.get("state") != "unavailable")
-        
-        return entity_exists and has_state
+
+        # Treat schema presence + healthy supervisor as available.
+        # State payloads can arrive after entity discovery and should not force
+        # entities into a permanent unavailable/disconnected state.
+        supervisor_active = bool(self.coordinator.data.get("supervisor_active", False))
+        return entity_exists and supervisor_active
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:

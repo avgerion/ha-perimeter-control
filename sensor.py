@@ -1,8 +1,10 @@
 """Dynamic sensor entities for Perimeter Control."""
+from collections import defaultdict
 import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -22,25 +24,72 @@ async def async_setup_entry(
     # Wait for initial coordinator data
     await coordinator.async_config_entry_first_refresh()
     
-    # Create entities from current Supervisor schema
-    entities = []
-    supervisor_entities = coordinator.data.get("supervisor_entities", [])
-    
-    for entity_schema in supervisor_entities:
-        try:
-            entity_type = entity_schema.get("type")
-            if entity_type == "sensor":
-                # Expand templated entities (handles both single and multi-dimensional)
+    known_unique_ids: set[str] = set()
+
+    def _add_new_sensor_entities() -> None:
+        entities = []
+        desired_unique_ids: set[str] = set()
+        added_by_service: dict[str, int] = defaultdict(int)
+        pruned_by_service: dict[str, int] = defaultdict(int)
+        supervisor_entities = coordinator.data.get("supervisor_entities", [])
+
+        for entity_schema in supervisor_entities:
+            try:
+                if entity_schema.get("type") != "sensor":
+                    continue
+
+                service_id = str(
+                    entity_schema.get("capability_id")
+                    or entity_schema.get("capability")
+                    or "unknown"
+                )
                 new_entities = expand_templated_entities(coordinator, entity_schema)
-                entities.extend(new_entities)
-        except Exception as e:
-            entity_id = entity_schema.get("id", "unknown_sensor")
-            _LOGGER.error(
-                "Failed to process sensor entity '%s': %s. Continuing with other sensors.",
-                entity_id, e, exc_info=True
-            )
-    
-    if entities:
-        async_add_entities(entities)
-    
-    # TODO: Add listener for schema changes to add/remove entities dynamically
+                for new_entity in new_entities:
+                    unique_id = getattr(new_entity, "unique_id", None)
+                    if unique_id:
+                        desired_unique_ids.add(unique_id)
+                    if unique_id and unique_id in known_unique_ids:
+                        continue
+                    if unique_id:
+                        known_unique_ids.add(unique_id)
+                    entities.append(new_entity)
+                    added_by_service[service_id] += 1
+            except Exception as e:
+                entity_id = entity_schema.get("id", "unknown_sensor")
+                _LOGGER.error(
+                    "Failed to process sensor entity '%s': %s. Continuing with other sensors.",
+                    entity_id, e, exc_info=True
+                )
+
+        if entities:
+            _LOGGER.info("Adding %d new sensor entities from updated schema", len(entities))
+            async_add_entities(entities)
+
+        registry = er.async_get(hass)
+        for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if registry_entry.platform != DOMAIN or registry_entry.domain != "sensor":
+                continue
+            unique_id = registry_entry.unique_id
+            if not unique_id:
+                continue
+            if unique_id in desired_unique_ids:
+                continue
+            _LOGGER.info("Pruning stale sensor entity %s", registry_entry.entity_id)
+            registry.async_remove(registry_entry.entity_id)
+            service_id = "unknown"
+            prefix = f"{entry.entry_id}_"
+            if unique_id.startswith(prefix):
+                base_id = unique_id[len(prefix):]
+                service_id = base_id.split(":", 1)[0]
+            pruned_by_service[service_id] += 1
+
+        if added_by_service:
+            _LOGGER.info("Sensor entity sync added per service: %s", dict(added_by_service))
+        if pruned_by_service:
+            _LOGGER.info("Sensor entity sync pruned per service: %s", dict(pruned_by_service))
+
+        known_unique_ids.clear()
+        known_unique_ids.update(desired_unique_ids)
+
+    _add_new_sensor_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_sensor_entities))
