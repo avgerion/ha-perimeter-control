@@ -191,6 +191,20 @@ def apply_deployment(deployment: Dict, staged: Dict):
         raise
 ```
 
+    ### Descriptor and Runtime Config Rules
+
+    Deployment is not complete unless the supervisor-hosted descriptor and its runtime config agree on the same on-disk path. We verified this with `gpio_control` on the Pi:
+
+    - the descriptor must point to `/mnt/PerimeterControl/conf/gpio-control.yaml`
+    - the config file must actually exist at that path
+    - if the file is missing or the descriptor keeps a literal environment expression, the capability can start "active" but publish zero entities
+
+    The deployer now rewrites the gpio service descriptor to a concrete path during installation so the Pi-side state is reproducible.
+
+    ## Standalone Dashboards
+
+    Dashboard access is now deployment-managed for each service that exposes a dashboard. The deployer installs the matching systemd unit and web script, then verifies the local HTTP port before marking deploy complete. That keeps the HA dashboard URLs reproducible instead of relying on a manual Pi-side script.
+
 ## Phase 5: Health Verification
 
 After services are up, run comprehensive health checks:

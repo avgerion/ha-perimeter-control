@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .const import (
     PHASE_INSTALL,
     PHASE_PREFLIGHT,
@@ -68,10 +70,10 @@ async def _render_service_template(template_path: Path) -> str:
 def _get_install_commands() -> list[str]:
     """Generate installation commands using configurable paths."""
     dirs = get_install_directories()
+    path_config = get_remote_path_config()
     commands = [f"sudo mkdir -p {d}" for d in dirs]
     
     # Add ownership commands for directories that need root ownership
-    path_config = get_remote_path_config()
     commands.extend([
         f"sudo chown root:root {path_config['LOG_ROOT']}",
         f"sudo chown root:root {path_config['STATE_ROOT']}",
@@ -377,7 +379,21 @@ fi
             fname = f"{service_id}.service.yaml"
             src = _SERVICE_DESCRIPTORS_DIR / fname
             if src.exists():
-                await self._client.async_put_file(src, f"{REMOTE_TEMP_ROOT}/{fname}")
+                descriptor_text = await asyncio.to_thread(src.read_text, encoding="utf-8")
+                descriptor_data = await asyncio.to_thread(yaml.safe_load, descriptor_text) or {}
+
+                if service_id == os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"):
+                    spec = descriptor_data.setdefault("spec", {})
+                    config_file = spec.setdefault("config_file", {})
+                    config_file["path"] = "/mnt/PerimeterControl/conf/gpio-control.yaml"
+
+                rendered_text = await asyncio.to_thread(
+                    yaml.safe_dump,
+                    descriptor_data,
+                    sort_keys=False,
+                    allow_unicode=False,
+                )
+                await self._client.async_put_bytes(rendered_text.encode("utf-8"), f"{REMOTE_TEMP_ROOT}/{fname}")
                 await self._client.async_run(
                     f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{fname} {REMOTE_SERVICES_DIR}/{fname}"
                 )

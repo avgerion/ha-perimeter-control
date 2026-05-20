@@ -84,6 +84,16 @@ The supervisor looks for configuration files in this order:
 2. `${PERIMETER_INSTALL_ROOT}/config/perimeterControl.conf.yaml`
 3. `${PERIMETER_INSTALL_ROOT}/conf/perimeterControl.conf.yaml`
 
+## Descriptor Path Normalization
+
+Some capability descriptors ship with environment-style fallback syntax in source control, but the deployer must write concrete paths on the Pi. In particular, `gpio_control` must end up with:
+
+- `/mnt/PerimeterControl/conf/gpio-control.yaml`
+
+The deployer now normalizes that path during service descriptor installation so the supervisor does not persist a literal `${...}` string and start the capability with zero GPIO entities.
+
+This matters because the Home Assistant integration reads capability availability from the supervisor API, and a descriptor that points at a non-existent config file will still appear "active" while publishing no entities.
+
 ## Deployment Integration
 
 When using the deployer (`deployer.py`), all these environment variables are respected automatically. Set them in your deployment environment before running:
