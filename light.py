@@ -84,9 +84,9 @@ async def async_setup_entry(
             pruned_by_service[service_id] += 1
 
         if added_by_service:
-            _LOGGER.info("Light entity sync added per service: %s", dict(added_by_service))
+            _LOGGER.warning("Light entity sync added per service: %s", dict(added_by_service))
         if pruned_by_service:
-            _LOGGER.info("Light entity sync pruned per service: %s", dict(pruned_by_service))
+            _LOGGER.warning("Light entity sync pruned per service: %s", dict(pruned_by_service))
 
         known_unique_ids.clear()
         known_unique_ids.update(desired_unique_ids)

@@ -70,6 +70,8 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._client_initialized = False  # Track SSH client state
         self._noted_local_only_services: set[str] = set()
         self._noted_isolated_services: set[str] = set()
+        self._warned_empty_entities = False
+        self._warned_fetch_fallback = False
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -369,6 +371,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch all integration data using the efficient HA endpoint."""
         try:
             result = await self._supervisor_get("/ha/integration")
+            self._warned_fetch_fallback = False
             _LOGGER.debug("Supervisor API /ha/integration response: %s", result)
             
             # Also fetch dashboard URLs for convenience
@@ -376,6 +379,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Log what we're extracting
             all_entities = result.get("entities", [])
+            total_entities_before_filter = len(all_entities) if isinstance(all_entities, list) else 0
             services_raw = result.get("services", [])
             node_info = result.get("node_info", {})
             capabilities = node_info.get("capabilities", [])
@@ -424,6 +428,16 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 len(services),
                 len(capabilities) if isinstance(capabilities, list) else 0,
             )
+            if selected_ids and total_entities_before_filter > 0 and not entities and not self._warned_empty_entities:
+                self._warned_empty_entities = True
+                _LOGGER.warning(
+                    "No entities remain after selected-service filtering. selected=%s total_before_filter=%d. "
+                    "This usually means capability_id values from supervisor do not match selected service IDs.",
+                    sorted(selected_ids),
+                    total_entities_before_filter,
+                )
+            elif entities:
+                self._warned_empty_entities = False
             if not services and isinstance(capabilities, list) and capabilities:
                 _LOGGER.debug("API reported capabilities but no services; waiting for service registration")
             
@@ -483,6 +497,11 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "dashboard_urls": dashboard_urls,
             }
         except UpdateFailed:
+            if not self._warned_fetch_fallback:
+                self._warned_fetch_fallback = True
+                _LOGGER.warning(
+                    "Failed to fetch /ha/integration from supervisor; falling back to status-only mode with no entities."
+                )
             # Fallback to empty data if Supervisor unavailable
             return {
                 "supervisor_active": False,
@@ -1097,9 +1116,14 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             integration_data = await self._fetch_ha_integration_data()
             _LOGGER.debug("Successfully fetched %d entities from supervisor", 
                         len(integration_data.get("supervisor_entities", [])))
+            if integration_data.get("supervisor_active") and not integration_data.get("supervisor_entities"):
+                _LOGGER.warning(
+                    "Supervisor is reachable but returned zero entities to Home Assistant. "
+                    "Dashboard may be online while entity schema is empty or filtered out."
+                )
             return integration_data
         except Exception as exc:
-            _LOGGER.debug("Failed to fetch integration data: %s. Using fallback.", exc)
+            _LOGGER.warning("Failed to fetch integration data: %s. Using fallback status-only mode.", exc)
             
         # Fallback to basic status if HA endpoint fails
         supervisor_data = {}
