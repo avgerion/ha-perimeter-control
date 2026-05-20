@@ -112,8 +112,9 @@ _DASHBOARD_SERVICE_DEFS: dict[str, dict[str, Any]] = {
 
 def _validate_python_file_syntax(path: Path) -> None:
     """Raise ValueError if the Python file has invalid syntax."""
+    import asyncio
     try:
-        source = path.read_text(encoding="utf-8")
+        source = asyncio.run(asyncio.to_thread(path.read_text, encoding="utf-8"))
     except Exception as exc:
         raise ValueError(f"Failed to read {path}: {exc}") from exc
 
