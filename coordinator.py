@@ -72,6 +72,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._noted_isolated_services: set[str] = set()
         self._warned_empty_entities = False
         self._warned_fetch_fallback = False
+        self._warned_zero_entity_services: set[str] = set()
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -443,6 +444,64 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Transform to match expected format
             dashboard_entities = self._create_dashboard_url_entities(services, dashboard_urls)
+
+            # Surface services that are active but publish zero capability entities.
+            entities_by_capability: dict[str, int] = {}
+            for entity in entities:
+                if not isinstance(entity, dict):
+                    continue
+                capability_id = entity.get("capability_id") or entity.get("capability")
+                if isinstance(capability_id, str) and capability_id:
+                    entities_by_capability[capability_id] = entities_by_capability.get(capability_id, 0) + 1
+
+            for service in services:
+                if not isinstance(service, dict):
+                    continue
+                service_id = service.get("id")
+                if not isinstance(service_id, str) or not service_id:
+                    continue
+                if selected_ids and service_id not in selected_ids:
+                    continue
+                status = service.get("status")
+                if status != "active":
+                    # Clear one-shot warning latch when service is no longer active.
+                    self._warned_zero_entity_services.discard(service_id)
+                    continue
+
+                count = entities_by_capability.get(service_id, 0)
+                if count > 0:
+                    # Service recovered and is publishing entities now.
+                    self._warned_zero_entity_services.discard(service_id)
+                    continue
+
+                if service_id in self._warned_zero_entity_services:
+                    continue
+
+                self._warned_zero_entity_services.add(service_id)
+
+                config_hint = ""
+                try:
+                    config_result = await self._supervisor_get(f"/services/{service_id}/config")
+                    service_config = config_result.get("config") if isinstance(config_result, dict) else None
+                    if not isinstance(service_config, dict):
+                        service_config = config_result if isinstance(config_result, dict) else {}
+
+                    if service_id == "gpio_control":
+                        pins = service_config.get("pins", []) if isinstance(service_config, dict) else []
+                        pin_count = len(pins) if isinstance(pins, list) else 0
+                        config_hint = f" pins={pin_count}"
+                    elif service_id == "photo_booth":
+                        motion_detection = service_config.get("motion_detection") if isinstance(service_config, dict) else None
+                        config_hint = f" motion_detection={motion_detection}"
+                except Exception as cfg_exc:
+                    config_hint = f" config_check_failed={cfg_exc}"
+
+                _LOGGER.warning(
+                    "Active service %s published zero capability entities to /ha/integration.%s "
+                    "This usually means capability startup/config issues on the supervisor host.",
+                    service_id,
+                    config_hint,
+                )
             
             # Transform entities array into entity_states dict for compatibility.
             # Prefer live state values from /entities/states/query when available.
