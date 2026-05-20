@@ -1,0 +1,26 @@
+[Unit]
+Description=PerimeterControl ESL Dashboard
+After=network.target {SUPERVISOR_SERVICE}.service
+Wants={SUPERVISOR_SERVICE}.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={WEB_DIR}
+Environment="PYTHONUNBUFFERED=1"
+Environment="PERIMETERCONTROL_SUPERVISOR_API=http://127.0.0.1:8080/api/v1"
+Environment="PERIMETERCONTROL_ESL_DASHBOARD_PORT=8092"
+Environment="LOG_ROOT={LOG_ROOT}"
+ExecStart={VENV}/bin/python3 {WEB_DIR}/esl_ap_dashboard.py
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={STATE_ROOT} {LOG_ROOT}
+
+[Install]
+WantedBy=multi-user.target

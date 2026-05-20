@@ -116,11 +116,6 @@ class _Base(tornado.web.RequestHandler):
         except Exception:
             return None
 
-    def _base_http_url(self) -> str:
-        """Return base URL for this supervisor instance from request context."""
-        proto = self.request.protocol or "http"
-        host = self.request.host or "localhost"
-        return f"{proto}://{host}"
 
 
 # ------------------------------------------------------------------
@@ -754,7 +749,7 @@ class HAIntegrationHandler(_Base):
                     
                     # Compute dashboard URL from access profile
                     service_id = metadata.get("id") or path.stem.replace(".service", "")
-                    dashboard_url = self._compute_dashboard_url(service_id, access_profile)
+                    dashboard_url = self._compute_dashboard_url(access_profile)
                     
                     services.append({
                         "id": service_id,
@@ -770,22 +765,11 @@ class HAIntegrationHandler(_Base):
                     
         return services
     
-    def _compute_dashboard_url(self, service_id: str, access_profile: Dict[str, Any]) -> Optional[str]:
+    def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
         """Compute dashboard URL from access profile."""
         mode = access_profile.get("mode", "localhost")
         if mode in ("isolated", "localhost"):
             return None  # Service not accessible
-
-        # Most capabilities expose entities/actions through supervisor API rather
-        # than running independent web servers on access_profile.port.
-        if service_id in {"photo_booth", "gpio_control"}:
-            return f"{self._base_http_url()}/api/v1/ha/dashboards/{service_id}"
-
-        # network_isolator currently serves a real standalone dashboard.
-        if service_id == "network_isolator":
-            port = access_profile.get("port", 5006)
-            server_ip = _get_server_ip()
-            return f"http://{server_ip}:{port}/"
             
         port = access_profile.get("port", 8080)
         server_ip = _get_server_ip()
@@ -842,7 +826,7 @@ class HADashboardUrlsHandler(_Base):
                     access_profile = spec.get("access_profile", {})
                     
                     service_id = metadata.get("id") or path.stem.replace(".service", "")
-                    dashboard_url = self._compute_dashboard_url(service_id, access_profile)
+                    dashboard_url = self._compute_dashboard_url(access_profile)
                     
                     if dashboard_url:  # Only include accessible services
                         services[service_id] = {
@@ -857,19 +841,11 @@ class HADashboardUrlsHandler(_Base):
                     
         return services
     
-    def _compute_dashboard_url(self, service_id: str, access_profile: Dict[str, Any]) -> Optional[str]:
+    def _compute_dashboard_url(self, access_profile: Dict[str, Any]) -> Optional[str]:
         """Compute dashboard URL from access profile."""
         mode = access_profile.get("mode", "localhost")
         if mode in ("isolated", "localhost"):
             return None
-
-        if service_id in {"photo_booth", "gpio_control"}:
-            return f"{self._base_http_url()}/api/v1/ha/dashboards/{service_id}"
-
-        if service_id == "network_isolator":
-            port = access_profile.get("port", 5006)
-            server_ip = _get_server_ip()
-            return f"http://{server_ip}:{port}/"
             
         port = access_profile.get("port", 8080)
         server_ip = _get_server_ip()
@@ -941,87 +917,6 @@ class HAConfigStatusHandler(_Base):
             "services": services_config,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
-
-
-class HADashboardPageHandler(_Base):
-        """Simple service dashboard pages hosted by supervisor for HA links."""
-
-        def get(self, service_id: str):
-                sid = (service_id or "").strip()
-                if sid not in {"photo_booth", "gpio_control"}:
-                        self.set_status(404)
-                        self.set_header("Content-Type", "text/plain; charset=utf-8")
-                        self.finish(f"Unsupported dashboard service: {sid}")
-                        return
-
-                self.set_header("Content-Type", "text/html; charset=utf-8")
-                if sid == "photo_booth":
-                        self.finish(self._photo_booth_page())
-                        return
-                self.finish(self._gpio_control_page())
-
-        def _photo_booth_page(self) -> str:
-                base = self._base_http_url()
-                image_url = f"{base}/api/v1/cameras/photo_booth/latest.jpg"
-                capture_url = f"{base}/api/v1/capabilities/photo_booth/actions/capture_photo"
-                return f"""<!doctype html>
-<html><head><meta charset=\"utf-8\"><title>Photo Booth Dashboard</title>
-<style>body{{font-family:sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}}img{{max-width:100%;border:1px solid #ccc;border-radius:8px}}button{{padding:.6rem 1rem;margin:.5rem 0}}</style>
-</head><body>
-<h1>Photo Booth Dashboard</h1>
-<p>Live snapshot from supervisor camera endpoint.</p>
-<img id=\"shot\" src=\"{image_url}\" alt=\"latest photo\"> 
-<div><button onclick=\"capture()\">Capture Photo</button> <button onclick=\"refreshShot()\">Refresh</button></div>
-<pre id=\"out\"></pre>
-<script>
-function refreshShot(){{document.getElementById('shot').src='{image_url}?t='+Date.now();}}
-async function capture(){{
-    const r=await fetch('{capture_url}',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:'{{}}'}});
-    const t=await r.text();
-    document.getElementById('out').textContent=t;
-    refreshShot();
-}}
-setInterval(refreshShot,4000);
-</script>
-</body></html>"""
-
-        def _gpio_control_page(self) -> str:
-                base = self._base_http_url()
-                integration_url = f"{base}/api/v1/ha/integration"
-                return f"""<!doctype html>
-<html><head><meta charset=\"utf-8\"><title>GPIO Control Dashboard</title>
-<style>body{{font-family:sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem}}.row{{display:flex;gap:.5rem;align-items:center;margin:.5rem 0}}button{{padding:.35rem .8rem}}</style>
-</head><body>
-<h1>GPIO Control Dashboard</h1>
-<div id=\"rows\">Loading...</div>
-<script>
-async function load(){{
-    const r=await fetch('{integration_url}');
-    const d=await r.json();
-    const entities=(d.entities||[]).filter(e=>e.capability==='gpio_control' || e.capability_id==='gpio_control');
-    const rows=document.getElementById('rows');
-    rows.innerHTML='';
-    for(const e of entities){{
-        const div=document.createElement('div');div.className='row';
-        const name=(e.friendly_name||e.id)+' ('+(e.state||'unknown')+')';
-        div.innerHTML='<strong>'+name+'</strong>';
-        const on=document.createElement('button');on.textContent='ON';
-        on.onclick=()=>act(e.id,'turn_on');
-        const off=document.createElement('button');off.textContent='OFF';
-        off.onclick=()=>act(e.id,'turn_off');
-        div.appendChild(on);div.appendChild(off);rows.appendChild(div);
-    }}
-    if(!entities.length)rows.textContent='No GPIO entities published by supervisor.';
-}}
-async function act(entityId,action){{
-    await fetch('{base}/api/v1/capabilities/gpio_control/actions/'+action,{{
-        method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{entity_id:entityId}})
-    }});
-    setTimeout(load,300);
-}}
-load();setInterval(load,5000);
-</script>
-</body></html>"""
 
 
 # ------------------------------------------------------------------
@@ -1099,7 +994,6 @@ def make_app(supervisor) -> tornado.web.Application:
             (r"/api/v1/ha/integration",                     HAIntegrationHandler),
             (r"/api/v1/ha/dashboard-urls",                  HADashboardUrlsHandler),
             (r"/api/v1/ha/config-status",                   HAConfigStatusHandler),
-            (r"/api/v1/ha/dashboards/([^/]+)",              HADashboardPageHandler),
         ],
         supervisor=supervisor,
     )

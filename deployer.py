@@ -64,6 +64,51 @@ _SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
 _SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
 _CONFIG_DIR = _COMPONENT_DIR / "config"
 
+_DASHBOARD_SERVICE_DEFS: dict[str, dict[str, Any]] = {
+    os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
+        "unit": SYSTEMD_DASHBOARD,
+        "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", "5006")),
+        "template": "PerimeterControl-dashboard.service.template",
+        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
+        "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
+    },
+    os.environ.get("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
+        "unit": "PerimeterControl-photo-booth-dashboard",
+        "port": 8093,
+        "template": "PerimeterControl-photo-booth-dashboard.service.template",
+        "web_files": ["photo_booth_dashboard.py"],
+        "pip_packages": ["tornado"],
+    },
+    os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
+        "unit": "PerimeterControl-gpio-dashboard",
+        "port": 8095,
+        "template": "PerimeterControl-gpio-dashboard.service.template",
+        "web_files": ["gpio_control_dashboard.py"],
+        "pip_packages": ["tornado"],
+    },
+    os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
+        "unit": "PerimeterControl-ble-dashboard",
+        "port": 8091,
+        "template": "PerimeterControl-ble-dashboard.service.template",
+        "web_files": ["ble_gatt_dashboard.py"],
+        "pip_packages": ["tornado"],
+    },
+    os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
+        "unit": "PerimeterControl-esl-dashboard",
+        "port": 8092,
+        "template": "PerimeterControl-esl-dashboard.service.template",
+        "web_files": ["esl_ap_dashboard.py"],
+        "pip_packages": ["tornado"],
+    },
+    os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
+        "unit": "PerimeterControl-wildlife-dashboard",
+        "port": 8094,
+        "template": "PerimeterControl-wildlife-dashboard.service.template",
+        "web_files": ["wildlife_monitor_dashboard.py"],
+        "pip_packages": ["tornado"],
+    },
+}
+
 
 def _validate_python_file_syntax(path: Path) -> None:
     """Raise ValueError if the Python file has invalid syntax."""
@@ -145,7 +190,14 @@ class Deployer(BaseDeployer):
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
         self._dashboard_service_id = os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator")
-        self._manage_dashboard_service = self._dashboard_service_id in set(selected_services)
+        self._selected_dashboard_services = [
+            service_id for service_id in selected_services if service_id in _DASHBOARD_SERVICE_DEFS
+        ]
+        self._selected_dashboard_units = {
+            _DASHBOARD_SERVICE_DEFS[service_id]["unit"]
+            for service_id in self._selected_dashboard_services
+        }
+        self._manage_dashboard_service = bool(self._selected_dashboard_services)
         self._service_descriptors = service_descriptors or {}
         self._hass = hass
         
@@ -361,8 +413,19 @@ class Deployer(BaseDeployer):
         self._emit(PHASE_SUPERVISOR, "Installing supervisor...", 76)
 
         # Guardrail: do not upload dashboard files if local Python sources are invalid.
-        if self._manage_dashboard_service:
-            _validate_dashboard_sources()
+        selected_dashboard_files: list[str] = []
+        selected_dashboard_packages: set[str] = set()
+        selected_dashboard_templates: list[str] = []
+        for service_id in self._selected_dashboard_services:
+            definition = _DASHBOARD_SERVICE_DEFS[service_id]
+            selected_dashboard_files.extend(definition["web_files"])
+            selected_dashboard_packages.update(definition["pip_packages"])
+            selected_dashboard_templates.append(definition["template"])
+
+        for name in sorted(set(selected_dashboard_files)):
+            src = _SERVER_FILES_DIR / name
+            if src.exists() and src.suffix == ".py":
+                _validate_python_file_syntax(src)
         
         # For now, keep the existing supervisor installation logic
         # but use base deployer where possible
@@ -371,11 +434,10 @@ class Deployer(BaseDeployer):
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
             return
 
-        # Upload and install dashboard web files only when the network dashboard is selected.
-        if self._manage_dashboard_service:
+        # Upload selected dashboard web files.
+        if selected_dashboard_files:
             self._emit(PHASE_SUPERVISOR, "Deploying dashboard web files...", 77)
-            _web_files = ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"]
-            for _fname in _web_files:
+            for _fname in sorted(set(selected_dashboard_files)):
                 _src = _SERVER_FILES_DIR / _fname
                 if _src.exists():
                     await self._client.async_put_file(_src, f"{REMOTE_TEMP_ROOT}/{_fname}")
@@ -383,10 +445,10 @@ class Deployer(BaseDeployer):
                     _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
         await self.phase_install()
 
-        # Install Python packages required by the network dashboard only when selected.
-        if self._manage_dashboard_service:
+        # Install Python packages required by selected dashboard services.
+        if selected_dashboard_packages:
             await self.install_python_packages(
-                ["bokeh", "tornado", "pyyaml", "pandas"],
+                sorted(selected_dashboard_packages),
                 "dashboard",
             )
 
@@ -396,9 +458,7 @@ class Deployer(BaseDeployer):
         await self._client.async_put_bytes(tar_bytes, f"{REMOTE_TEMP_ROOT}/supervisor.tar.gz")
 
         # Install systemd services; dashboard service is optional per selected capabilities.
-        template_files = ["PerimeterControl-supervisor.service.template"]
-        if self._manage_dashboard_service:
-            template_files.append("PerimeterControl-dashboard.service.template")
+        template_files = ["PerimeterControl-supervisor.service.template"] + selected_dashboard_templates
         await self.install_systemd_services(template_files)
 
         # Always sync selected service descriptors so Supervisor reads current access_profile
@@ -450,48 +510,66 @@ class Deployer(BaseDeployer):
             )
             raise RuntimeError("Supervisor failed post-restart health gate")
         
-        if self._manage_dashboard_service:
-            # Start dashboard service only when network dashboard capability is selected.
+        for service_id in self._selected_dashboard_services:
+            definition = _DASHBOARD_SERVICE_DEFS[service_id]
+            unit = definition["unit"]
+            port = definition["port"]
             try:
-                # Clear rate-limit counter so systemd allows a fresh start after crash loop
                 await self._client.async_run(
-                    f"sudo systemctl reset-failed {SYSTEMD_DASHBOARD} 2>/dev/null || true"
+                    f"sudo systemctl reset-failed {unit} 2>/dev/null || true"
                 )
-                await self._client.async_run(f"sudo systemctl restart {SYSTEMD_DASHBOARD}")
+                await self._client.async_run(f"sudo systemctl restart {unit}")
                 await asyncio.sleep(2)
-                _LOGGER.info("Dashboard service restarted successfully")
+                _LOGGER.info("Dashboard service %s restarted successfully", unit)
             except Exception as exc:
                 try:
                     journal = await self._client.async_run(
-                        f"sudo journalctl -u {SYSTEMD_DASHBOARD} -n 50 --no-pager 2>&1 || true"
+                        f"sudo journalctl -u {unit} -n 50 --no-pager 2>&1 || true"
                     )
                     status_out = await self._client.async_run(
-                        f"sudo systemctl status {SYSTEMD_DASHBOARD} --no-pager 2>&1 || true"
+                        f"sudo systemctl status {unit} --no-pager 2>&1 || true"
                     )
                     _LOGGER.warning(
-                        "Dashboard service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
-                        exc, status_out.strip(), journal.strip(),
+                        "Dashboard service %s failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
+                        unit, exc, status_out.strip(), journal.strip(),
                     )
                 except Exception:
-                    _LOGGER.warning("Dashboard service failed to restart: %s", exc)
+                    _LOGGER.warning("Dashboard service %s failed to restart: %s", unit, exc)
 
-            dashboard_ok, dashboard_last = await self._wait_for_service_active(SYSTEMD_DASHBOARD)
+            dashboard_ok, dashboard_last = await self._wait_for_service_active(unit)
             if not dashboard_ok:
-                status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
+                status_out, journal = await self._get_condensed_service_diagnostics(unit)
                 _LOGGER.error(
-                    "Dashboard failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                    "Dashboard service %s failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                    unit,
                     dashboard_last.strip() or "<empty>",
                     status_out.strip(),
                     journal.strip(),
                 )
-                raise RuntimeError("Dashboard failed post-restart health gate")
-        else:
-            # Ensure dashboard service does not linger from previous deployments.
+                raise RuntimeError(f"Dashboard failed post-restart health gate: {unit}")
+
+            http_ok, http_probe = await self._wait_for_http_ready(port)
+            if not http_ok:
+                status_out, journal = await self._get_condensed_service_diagnostics(unit)
+                _LOGGER.error(
+                    "Dashboard service %s is active but HTTP probe failed on port %s (%s).\nStatus:\n%s\nRecent Journal:\n%s",
+                    unit,
+                    port,
+                    http_probe.strip() or "<empty>",
+                    status_out.strip(),
+                    journal.strip(),
+                )
+                raise RuntimeError(f"Dashboard HTTP probe failed: {unit}")
+
+        non_selected_dashboard_units = {
+            definition["unit"] for definition in _DASHBOARD_SERVICE_DEFS.values()
+        } - self._selected_dashboard_units
+        for unit in sorted(non_selected_dashboard_units):
             await self._client.async_run(
-                f"sudo systemctl stop {SYSTEMD_DASHBOARD} 2>/dev/null || true; "
-                f"sudo systemctl disable {SYSTEMD_DASHBOARD} 2>/dev/null || true"
+                f"sudo systemctl stop {unit} 2>/dev/null || true; "
+                f"sudo systemctl disable {unit} 2>/dev/null || true"
             )
-            _LOGGER.info("Dashboard service %s is not selected; ensured it is stopped/disabled", SYSTEMD_DASHBOARD)
+            _LOGGER.info("Dashboard service %s is not selected; ensured it is stopped/disabled", unit)
         
         self._emit(PHASE_RESTART, "Services restarted", 95)
 
@@ -505,36 +583,47 @@ class Deployer(BaseDeployer):
         )
         supervisor_active = "active" in supervisor_status and "INACTIVE" not in supervisor_status
         
-        # Check dashboard service only when selected.
-        if self._manage_dashboard_service:
-            dashboard_status = await self._client.async_run(
-                f"systemctl is-active {SYSTEMD_DASHBOARD} || echo INACTIVE"
+        dashboard_results: list[tuple[str, str, bool]] = []
+        for service_id in self._selected_dashboard_services:
+            definition = _DASHBOARD_SERVICE_DEFS[service_id]
+            unit = definition["unit"]
+            status = await self._client.async_run(
+                f"systemctl is-active {unit} || echo INACTIVE"
             )
-            dashboard_active = "active" in dashboard_status and "INACTIVE" not in dashboard_status
+            active = "active" in status and "INACTIVE" not in status
+            dashboard_results.append((service_id, unit, active))
+
+        if not dashboard_results:
+            _LOGGER.info("Service status - Supervisor: %s, Dashboards: skipped (none selected)", supervisor_status.strip())
         else:
-            dashboard_status = "skipped (not selected)"
-            dashboard_active = True
-        
-        _LOGGER.info("Service status - Supervisor: %s, Dashboard: %s", 
-                    supervisor_status.strip(), dashboard_status.strip())
-        
-        if supervisor_active and dashboard_active:
+            summary = ", ".join(
+                f"{service_id}:{'active' if active else 'inactive'}({unit})"
+                for service_id, unit, active in dashboard_results
+            )
+            _LOGGER.info("Service status - Supervisor: %s, Dashboards: %s", supervisor_status.strip(), summary)
+
+        dashboards_active = all(active for _, _, active in dashboard_results)
+
+        if supervisor_active and dashboards_active:
             self._emit(PHASE_VERIFY, "Deploy complete — all services running", 100)
             _LOGGER.info("Deployment completed successfully - all services active")
         elif supervisor_active:
-            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_DASHBOARD)
-            _LOGGER.error(
-                "Deployment failed verification: supervisor active but dashboard inactive.\nStatus:\n%s\nRecent Journal:\n%s",
-                status_out.strip(),
-                journal.strip(),
-            )
-            raise RuntimeError("Deployment verification failed: dashboard inactive")
+            failing_units = [unit for _, unit, active in dashboard_results if not active]
+            for unit in failing_units:
+                status_out, journal = await self._get_condensed_service_diagnostics(unit)
+                _LOGGER.error(
+                    "Deployment failed verification: supervisor active but dashboard %s inactive.\nStatus:\n%s\nRecent Journal:\n%s",
+                    unit,
+                    status_out.strip(),
+                    journal.strip(),
+                )
+            raise RuntimeError("Deployment verification failed: selected dashboards inactive")
         else:
             self._emit(PHASE_VERIFY, "Deploy failed — services need attention", 100)
             _LOGGER.error("Deployment verification failed - services need attention")
             for svc_name, svc_const in (
                 ("Supervisor", SYSTEMD_SUPERVISOR),
-                ("Dashboard", SYSTEMD_DASHBOARD),
+                *[(f"Dashboard({service_id})", _DASHBOARD_SERVICE_DEFS[service_id]["unit"]) for service_id in self._selected_dashboard_services],
             ):
                 try:
                     journal = await self._client.async_run(
@@ -579,6 +668,24 @@ class Deployer(BaseDeployer):
         )
         return status_out, journal
 
+    async def _wait_for_http_ready(
+        self,
+        port: int,
+        *,
+        attempts: int = 6,
+        delay_seconds: float = 1.5,
+    ) -> tuple[bool, str]:
+        """Wait for local HTTP endpoint to return success on the remote host."""
+        last_probe = ""
+        for _ in range(attempts):
+            last_probe = await self._client.async_run(
+                f"curl -fsS --max-time 3 http://127.0.0.1:{port}/ >/dev/null 2>&1 && echo HTTP_OK || echo HTTP_FAIL"
+            )
+            if "HTTP_OK" in last_probe:
+                return True, last_probe
+            await asyncio.sleep(delay_seconds)
+        return False, last_probe
+
 
 # ------------------------------------------------------------------
 # Script builders
@@ -591,6 +698,11 @@ def _build_install_script() -> str:
         ("layouts.py", REMOTE_WEB_DIR, "0644"),
         ("callbacks.py", REMOTE_WEB_DIR, "0644"),
         ("data_sources.py", REMOTE_WEB_DIR, "0644"),
+        ("photo_booth_dashboard.py", REMOTE_WEB_DIR, "0644"),
+        ("gpio_control_dashboard.py", REMOTE_WEB_DIR, "0644"),
+        ("ble_gatt_dashboard.py", REMOTE_WEB_DIR, "0644"),
+        ("esl_ap_dashboard.py", REMOTE_WEB_DIR, "0644"),
+        ("wildlife_monitor_dashboard.py", REMOTE_WEB_DIR, "0644"),
     ]
     script_files = [
         ("ble-scanner-v2.py", REMOTE_SCRIPTS_DIR, "0755"),
