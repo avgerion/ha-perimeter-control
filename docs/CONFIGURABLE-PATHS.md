@@ -1,10 +1,16 @@
 # PerimeterControl Configuration
 
-## Environment Variables for Path Configuration
+## Legacy Environment Variables for Path Configuration
 
-PerimeterControl supports configurable installation paths via environment variables. This allows deployment flexibility across different systems and environments.
+PerimeterControl currently supports configurable installation paths via environment variables for backward compatibility. That compatibility layer still exists, but it should be treated as a boundary input, not as a pattern to extend across Python code.
 
-### Base Path Variables
+Project direction:
+
+- Do not add new scattered `os.environ` or `os.getenv` reads in deployers, entities, or service orchestration code.
+- Resolve environment overrides once in a dedicated configuration helper, then pass concrete values through constants, config objects, or descriptor metadata.
+- When touching existing Python code that binds runtime behavior directly from environment variables, replace those instances instead of copying the pattern into new logic.
+
+### Legacy Base Path Variables
 
 | Variable | Default | Description | Usage |
 |----------|---------|-------------|--------|
@@ -14,7 +20,7 @@ PerimeterControl supports configurable installation paths via environment variab
 | `PERIMETER_TEMP_ROOT` | `/tmp` | Temporary files directory | Used during deployment and updates |
 | `PERIMETER_SYSTEMD_ROOT` | `/etc/systemd/system` | SystemD service files location | Service unit files |
 
-### Service Name Configuration
+### Legacy Service Name Configuration
 
 | Variable | Default | Description | Usage |
 |----------|---------|-------------|--------|
@@ -76,6 +82,8 @@ The supervisor service file is generated from a template and uses these environm
 
 During deployment, the template is rendered with the current environment variable values and installed as a proper systemd service unit.
 
+For new code, keep this translation at the template/configuration boundary. Do not reach back into environment variables from unrelated Python call sites just to recover the same values later.
+
 ## Configuration File Location Priority
 
 The supervisor looks for configuration files in this order:
@@ -94,22 +102,38 @@ The deployer now normalizes that path during service descriptor installation so 
 
 This matters because the Home Assistant integration reads capability availability from the supervisor API, and a descriptor that points at a non-existent config file will still appear "active" while publishing no entities.
 
+## Replacement Rule For Python Code
+
+When you encounter Python code like this:
+
+```python
+service_id = os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control")
+```
+
+replace the instance rather than extending it. Preferred replacements are:
+
+- a constant in `const.py` or another single configuration module
+- a value loaded from `get_remote_path_config()` or an equivalent helper
+- metadata stored in `_DASHBOARD_SERVICE_DEFS`, `SERVICE_REGISTRY`, or a service descriptor
+
+The goal is that Python behavior comes from one resolved configuration source, not from repeated environment lookups spread across the codebase.
+
 ## Deployment Integration
 
-When using the deployer (`deployer.py`), all these environment variables are respected automatically. Set them in your deployment environment before running:
+When using the deployer (`deployer.py`), the current compatibility layer still respects these environment variables through the centralized path configuration helpers. Do not add new direct environment lookups elsewhere in Python just because deployment already supports them.
 
 ```python
 from your_module.deployer import Deployer
 from your_module.ssh_client import SshClient
 
-# Environment variables are automatically picked up
+# Existing compatibility helpers still pick up environment overrides
 deployer = Deployer(ssh_client, services)
 await deployer.deploy()
 ```
 
 ## Backwards Compatibility
 
-If no environment variables are set, the system uses the default paths listed above, maintaining backwards compatibility with existing deployments.
+If no environment variables are set, the system uses the default paths listed above, maintaining backwards compatibility with existing deployments. New code should preserve that compatibility through centralized helpers instead of adding new call sites to `os.environ`.
 
 ## Security Considerations
 

@@ -1,5 +1,7 @@
 """Service-aware deployer orchestrating specialized service deployers.
 
+import logging
+
 
 Uses service-specific deployers to handle deployment of individual capabilities:
 - BLE GATT Repeater (ble_deployer.py)  
@@ -34,80 +36,22 @@ from .base_deployer import DeployProgress, ProgressCallback
 from .component_services import create_service, register_service_components, SERVICE_REGISTRY
 from .service_framework import ComponentRegistry, hardware_registry
 from .const import (
-    APT_DEPENDENCY_GROUPS,
-    PHASE_PREFLIGHT,
-    PHASE_RESTART,
-    PHASE_SUPERVISOR,
-    PHASE_VERIFY,
-    REMOTE_CONF_DIR,
-    REMOTE_SCRIPTS_DIR, 
-    REMOTE_SUPERVISOR_DIR,
-    REMOTE_SYSTEMD_ROOT,
-    REMOTE_TEMP_ROOT,
-    REMOTE_VENV,
-    REMOTE_WEB_DIR,
-    SYSTEMD_DASHBOARD,
-    SYSTEMD_SUPERVISOR,
-    get_remote_path_config,
+    remote_temp_root,
+    remote_web_dir,
+    remote_scripts_dir,
+    remote_conf_dir,
+    remote_services_dir,
+    remote_systemd_root,
+    remote_supervisor_dir,
+    remote_log_root,
+    remote_state_root,
+    get_remote_install_directories,
+    SERVICE_REGISTRY,
 )
-from .service_descriptor import ServiceDescriptor, load_service_descriptors
-from .ssh_client import SshClient, SshCommandError
+
+from pathlib import Path
 
 _LOGGER = logging.getLogger(__name__)
-
-# Resolved at runtime relative to this file (inside the HA custom component)
-_COMPONENT_DIR = Path(__file__).parent
-_SERVER_FILES_DIR = _COMPONENT_DIR / "remote_services" / "dashboard_web"
-_SUPERVISOR_DIR = _COMPONENT_DIR / "remote_services" / "supervisor"
-_SERVICE_DESCRIPTORS_DIR = _COMPONENT_DIR / "service_descriptors"
-_SYSTEM_SERVICES_DIR = _COMPONENT_DIR / "system_services"
-_SCRIPTS_DIR = _COMPONENT_DIR / "scripts"
-_CONFIG_DIR = _COMPONENT_DIR / "config"
-
-_DASHBOARD_SERVICE_DEFS: dict[str, dict[str, Any]] = {
-    os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
-        "unit": SYSTEMD_DASHBOARD,
-        "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", "5006")),
-        "template": "PerimeterControl-dashboard.service.template",
-        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
-        "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
-    },
-    os.environ.get("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
-        "unit": "PerimeterControl-photo-booth-dashboard",
-        "port": 8093,
-        "template": "PerimeterControl-photo-booth-dashboard.service.template",
-        "web_files": ["photo_booth_dashboard.py"],
-        "pip_packages": ["tornado"],
-    },
-    os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
-        "unit": "PerimeterControl-gpio-dashboard",
-        "port": 8095,
-        "template": "PerimeterControl-gpio-dashboard.service.template",
-        "web_files": ["gpio_control_dashboard.py"],
-        "pip_packages": ["tornado"],
-    },
-    os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
-        "unit": "PerimeterControl-ble-dashboard",
-        "port": 8091,
-        "template": "PerimeterControl-ble-dashboard.service.template",
-        "web_files": ["ble_gatt_dashboard.py"],
-        "pip_packages": ["tornado"],
-    },
-    os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
-        "unit": "PerimeterControl-esl-dashboard",
-        "port": 8092,
-        "template": "PerimeterControl-esl-dashboard.service.template",
-        "web_files": ["esl_ap_dashboard.py"],
-        "pip_packages": ["tornado"],
-    },
-    os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
-        "unit": "PerimeterControl-wildlife-dashboard",
-        "port": 8094,
-        "template": "PerimeterControl-wildlife-dashboard.service.template",
-        "web_files": ["wildlife_monitor_dashboard.py"],
-        "pip_packages": ["tornado"],
-    },
-}
 
 
 def _validate_python_file_syntax(path: Path) -> None:
@@ -134,11 +78,12 @@ def _validate_python_file_syntax(path: Path) -> None:
 
 def _validate_dashboard_sources() -> None:
     """Validate all deployable dashboard python sources before remote upload."""
-    for name in ("dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"):
-        src = _SERVER_FILES_DIR / name
-        if not src.exists():
-            continue
-        _validate_python_file_syntax(src)
+    for service_info in SERVICE_REGISTRY.values():
+        for name in service_info.get("web_files", []):
+            src = Path(remote_web_dir) / name
+            if not src.exists():
+                continue
+            _validate_python_file_syntax(src)
 
 
 async def _render_service_template(template_path: Path) -> str:
@@ -148,39 +93,31 @@ async def _render_service_template(template_path: Path) -> str:
     
     # Use asyncio.to_thread to read file without blocking event loop
     template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
-    path_config = get_remote_path_config()
-    
+    path_config = {
+        "CONF_DIR": remote_conf_dir,
+        "SCRIPTS_DIR": remote_scripts_dir,
+        "SUPERVISOR_DIR": remote_supervisor_dir,
+        "LOG_ROOT": remote_log_root,
+        "STATE_ROOT": remote_state_root,
+    }
     try:
         return template_content.format(**path_config)
     except KeyError as e:
         raise ValueError(f"Missing template variable {e} in {template_path}")
 
 
-def get_install_directories() -> list[str]:
-    """Get list of directories to create during installation."""
-    path_config = get_remote_path_config()
-    return [
-        path_config['CONF_DIR'],
-        path_config['SCRIPTS_DIR'],
-        path_config['SUPERVISOR_DIR'],
-        path_config['LOG_ROOT'],
-        path_config['STATE_ROOT'],
-    ]
 
 
 def _get_install_commands() -> list[str]:
     """Generate installation commands using configurable paths."""
-    dirs = get_install_directories()
+    dirs = get_remote_install_directories()
     commands = [f"sudo mkdir -p {d}" for d in dirs]
-    
     # Add ownership commands for directories that need root ownership
-    path_config = get_remote_path_config()
     commands.extend([
-        f"sudo chown root:root {path_config['LOG_ROOT']}",
-        f"sudo chown root:root {path_config['STATE_ROOT']}",
-        f"sudo chmod 755 {path_config['LOG_ROOT']}",
+        f"sudo chown root:root {remote_log_root}",
+        f"sudo chown root:root {remote_state_root}",
+        f"sudo chmod 755 {remote_log_root}",
     ])
-    
     return commands
 
 
@@ -189,30 +126,19 @@ class Deployer(BaseDeployer):
 
     def __init__(
         self,
-        client: SshClient,
+        client,
         selected_services: list[str],
-        service_descriptors: dict[str, ServiceDescriptor] | None = None,
+        service_descriptors: dict | None = None,
         progress_cb: Optional[ProgressCallback] = None,
         hass=None,
     ) -> None:
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
-        self._dashboard_service_id = os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator")
-        self._selected_dashboard_services = [
-            service_id for service_id in selected_services if service_id in _DASHBOARD_SERVICE_DEFS
-        ]
-        self._selected_dashboard_units = {
-            _DASHBOARD_SERVICE_DEFS[service_id]["unit"]
-            for service_id in self._selected_dashboard_services
-        }
-        self._manage_dashboard_service = bool(self._selected_dashboard_services)
         self._service_descriptors = service_descriptors or {}
         self._hass = hass
-        
         # Register component types
         register_service_components()
-        
-        # Create component-based services
+        # Create component-based services using SERVICE_REGISTRY from const.py
         self._services = {}
         for service_id in selected_services:
             if service_id in SERVICE_REGISTRY:
@@ -258,7 +184,7 @@ class Deployer(BaseDeployer):
 
     async def _phase_service_selection(self) -> None:
         """Validate service selection and check for conflicts using component architecture."""
-        self._emit(PHASE_PREFLIGHT, "Validating service selection...", 5)
+        self._emit("preflight", "Validating service selection...", 5)
         
         if not self._selected_services:
             raise ValueError("No services selected for deployment")
@@ -314,22 +240,13 @@ class Deployer(BaseDeployer):
         
         _LOGGER.info("Service selection validated: %s component services, %s legacy services", 
                     len(component_services), len(unknown_services))
-        self._emit(PHASE_PREFLIGHT, "Service selection validated", 10)
+        self._emit("preflight", "Service selection validated", 10)
 
     async def _phase_service_deployment(self) -> None:
         """Deploy each service using component composition."""
         self._emit("service_deploy", "Deploying component-based services...", 15)
 
-        runtime_template_overrides = {
-            os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'): (
-                "config/templates/gpio_control_config.yaml",
-                "gpio-control.yaml",
-            ),
-            os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'): (
-                "config/templates/photo_booth_config.yaml",
-                "photo-booth.yaml",
-            ),
-        }
+        # All template/config info is now in SERVICE_REGISTRY in const.py
         
         total_services = len(self._selected_services)
         deployment_path = Path("/tmp/perimeter_deployment")
@@ -353,18 +270,30 @@ class Deployer(BaseDeployer):
 
                 # Ensure capability runtime config is installed at the exact path
                 # the service descriptor expects under /mnt/PerimeterControl/conf.
-                if service_id in runtime_template_overrides:
-                    template_rel_path, target_name = runtime_template_overrides[service_id]
+                # Use config_template and config_target from SERVICE_REGISTRY if present
+                service_info = SERVICE_REGISTRY.get(service_id, {})
+                template_rel_path = service_info.get("config_template")
+                target_name = service_info.get("config_target")
+                if template_rel_path and target_name:
                     await self._deploy_template_config(
                         template_rel_path=template_rel_path,
                         target_name=target_name,
                     )
                     _LOGGER.info(
-                        "Installed runtime config override for %s -> %s/%s",
+                        "Installed runtime config for %s -> %s/%s",
                         service_id,
-                        REMOTE_CONF_DIR,
+                        remote_conf_dir,
                         target_name,
                     )
+                # If deploy_api is present, trigger backend deployment
+                deploy_api = service_info.get("deploy_api")
+                if deploy_api:
+                    try:
+                        deploy_cmd = f"curl -fsS -X POST {deploy_api} -H 'Content-Type: application/json' -d '{{}}'"
+                        await self._client.async_run(deploy_cmd)
+                        _LOGGER.info(f"Triggered backend deployment via API for {service_id}")
+                    except Exception as exc:
+                        _LOGGER.warning(f"Failed to trigger backend deployment for {service_id}: {exc}")
                 
                 # Get auto-generated entities from hardware interfaces
                 try:
@@ -392,10 +321,14 @@ class Deployer(BaseDeployer):
         
         # gpio_control expects /mnt/PerimeterControl/conf/gpio-control.yaml.
         # Ensure a baseline config is present even when using legacy deployment.
-        if service_id == os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'):
+        # Use config_template and config_target from SERVICE_REGISTRY if present
+        service_info = SERVICE_REGISTRY.get(service_id, {})
+        template_rel_path = service_info.get("config_template")
+        target_name = service_info.get("config_target")
+        if template_rel_path and target_name:
             await self._deploy_template_config(
-                template_rel_path="config/templates/gpio_control_config.yaml",
-                target_name="gpio-control.yaml",
+                template_rel_path=template_rel_path,
+                target_name=target_name,
             )
 
         await self.deploy_service_descriptors([service_id])
@@ -404,51 +337,52 @@ class Deployer(BaseDeployer):
 
     async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
         """Upload a template config file to the remote runtime config directory."""
-        template_path = _COMPONENT_DIR / template_rel_path
+        template_path = Path(remote_conf_dir).parent.parent / template_rel_path
         if not template_path.exists():
             _LOGGER.warning("Template config not found, skipping: %s", template_path)
             return
 
-        await self._client.async_put_file(template_path, f"{REMOTE_TEMP_ROOT}/{target_name}")
-        await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
+        await self._client.async_put_file(template_path, f"{remote_temp_root}/{target_name}")
+        await self._client.async_run(f"sudo mkdir -p {remote_conf_dir}")
         await self._client.async_run(
-            f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{target_name} {REMOTE_CONF_DIR}/{target_name}"
+            f"sudo install -o root -g root -m 0644 {remote_temp_root}/{target_name} {remote_conf_dir}/{target_name}"
         )
-        _LOGGER.info("Installed template config: %s -> %s/%s", template_path.name, REMOTE_CONF_DIR, target_name)
+        _LOGGER.info("Installed template config: %s -> %s/%s", template_path.name, remote_conf_dir, target_name)
 
     async def _phase_supervisor(self) -> None:
         """Install supervisor using base deployer functionality."""
-        self._emit(PHASE_SUPERVISOR, "Installing supervisor...", 76)
+        self._emit("supervisor", "Installing supervisor...", 76)
 
         # Guardrail: do not upload dashboard files if local Python sources are invalid.
         selected_dashboard_files: list[str] = []
         selected_dashboard_packages: set[str] = set()
         selected_dashboard_templates: list[str] = []
-        for service_id in self._selected_dashboard_services:
-            definition = _DASHBOARD_SERVICE_DEFS[service_id]
-            selected_dashboard_files.extend(definition["web_files"])
-            selected_dashboard_packages.update(definition["pip_packages"])
-            selected_dashboard_templates.append(definition["template"])
+        for service_id in self._selected_services:
+            service_info = SERVICE_REGISTRY.get(service_id, {})
+            selected_dashboard_files.extend(service_info.get("web_files", []))
+            selected_dashboard_packages.update(service_info.get("pip_packages", []))
+            if service_info.get("template"):
+                selected_dashboard_templates.append(service_info["template"])
 
         for name in sorted(set(selected_dashboard_files)):
-            src = _SERVER_FILES_DIR / name
+            src = Path(remote_web_dir) / name
             if src.exists() and src.suffix == ".py":
                 _validate_python_file_syntax(src)
         
         # For now, keep the existing supervisor installation logic
         # but use base deployer where possible
-        supervisor_src = _SUPERVISOR_DIR
+        supervisor_src = Path(remote_supervisor_dir)
         if not supervisor_src.exists():
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
             return
 
         # Upload selected dashboard web files.
         if selected_dashboard_files:
-            self._emit(PHASE_SUPERVISOR, "Deploying dashboard web files...", 77)
+            self._emit("supervisor", "Deploying dashboard web files...", 77)
             for _fname in sorted(set(selected_dashboard_files)):
-                _src = _SERVER_FILES_DIR / _fname
+                _src = Path(remote_web_dir) / _fname
                 if _src.exists():
-                    await self._client.async_put_file(_src, f"{REMOTE_TEMP_ROOT}/{_fname}")
+                    await self._client.async_put_file(_src, f"{remote_temp_root}/{_fname}")
                 else:
                     _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
         await self.phase_install()
@@ -461,9 +395,9 @@ class Deployer(BaseDeployer):
             )
 
         # Install supervisor package
-        self._emit(PHASE_SUPERVISOR, "Uploading supervisor package...", 78)
+        self._emit("supervisor", "Uploading supervisor package...", 78)
         tar_bytes = await _pack_directory(supervisor_src, arcname="supervisor")
-        await self._client.async_put_bytes(tar_bytes, f"{REMOTE_TEMP_ROOT}/supervisor.tar.gz")
+        await self._client.async_put_bytes(tar_bytes, f"{remote_temp_root}/supervisor.tar.gz")
 
         # Install systemd services; dashboard service is optional per selected capabilities.
         template_files = ["PerimeterControl-supervisor.service.template"] + selected_dashboard_templates
@@ -477,28 +411,28 @@ class Deployer(BaseDeployer):
         sup_install_script = _build_supervisor_install_script()
         await self._client.async_run_b64(sup_install_script)
         
-        self._emit(PHASE_SUPERVISOR, "Supervisor installed", 85)
+        self._emit("supervisor", "Supervisor installed", 85)
 
     async def _phase_restart(self) -> None:
         """Restart systemd services."""
-        self._emit(PHASE_RESTART, "Restarting services...", 87)
+        self._emit("restart", "Restarting services...", 87)
         
         # Start supervisor service
         try:
             # Clear rate-limit counter so systemd allows a fresh start after crash loop
             await self._client.async_run(
-                f"sudo systemctl reset-failed {SYSTEMD_SUPERVISOR} 2>/dev/null || true"
+                f"sudo systemctl reset-failed perimetercontrol-supervisor 2>/dev/null || true"
             )
-            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
+            await self._client.async_run(f"sudo systemctl restart perimetercontrol-supervisor")
             await asyncio.sleep(2)
             _LOGGER.info("Supervisor service restarted successfully")
         except Exception as exc:
             try:
                 journal = await self._client.async_run(
-                    f"sudo journalctl -u {SYSTEMD_SUPERVISOR} -n 50 --no-pager 2>&1 || true"
+                    f"sudo journalctl -u perimetercontrol-supervisor -n 50 --no-pager 2>&1 || true"
                 )
                 status_out = await self._client.async_run(
-                    f"sudo systemctl status {SYSTEMD_SUPERVISOR} --no-pager 2>&1 || true"
+                    f"sudo systemctl status perimetercontrol-supervisor --no-pager 2>&1 || true"
                 )
                 _LOGGER.warning(
                     "Supervisor service failed to restart: %s\nStatus:\n%s\nJournal:\n%s",
@@ -507,9 +441,9 @@ class Deployer(BaseDeployer):
             except Exception:
                 _LOGGER.warning("Supervisor service failed to restart: %s", exc)
 
-        supervisor_ok, supervisor_last = await self._wait_for_service_active(SYSTEMD_SUPERVISOR)
+        supervisor_ok, supervisor_last = await self._wait_for_service_active("perimetercontrol-supervisor")
         if not supervisor_ok:
-            status_out, journal = await self._get_condensed_service_diagnostics(SYSTEMD_SUPERVISOR)
+            status_out, journal = await self._get_condensed_service_diagnostics("perimetercontrol-supervisor")
             _LOGGER.error(
                 "Supervisor failed post-restart health gate (last is-active=%s).\nStatus:\n%s\nRecent Journal:\n%s",
                 supervisor_last.strip() or "<empty>",
@@ -518,10 +452,12 @@ class Deployer(BaseDeployer):
             )
             raise RuntimeError("Supervisor failed post-restart health gate")
         
-        for service_id in self._selected_dashboard_services:
-            definition = _DASHBOARD_SERVICE_DEFS[service_id]
-            unit = definition["unit"]
-            port = definition["port"]
+        for service_id in self._selected_services:
+            service_info = SERVICE_REGISTRY.get(service_id, {})
+            unit = service_info.get("unit")
+            port = service_info.get("port")
+            if not unit or not port:
+                continue
             try:
                 await self._client.async_run(
                     f"sudo systemctl reset-failed {unit} 2>/dev/null || true"
@@ -569,32 +505,34 @@ class Deployer(BaseDeployer):
                 )
                 raise RuntimeError(f"Dashboard HTTP probe failed: {unit}")
 
-        non_selected_dashboard_units = {
-            definition["unit"] for definition in _DASHBOARD_SERVICE_DEFS.values()
-        } - self._selected_dashboard_units
-        for unit in sorted(non_selected_dashboard_units):
+        all_units = {info.get("unit") for info in SERVICE_REGISTRY.values() if info.get("unit")}
+        selected_units = {SERVICE_REGISTRY.get(s, {}).get("unit") for s in self._selected_services if SERVICE_REGISTRY.get(s, {}).get("unit")}
+        non_selected_units = all_units - selected_units
+        for unit in sorted(u for u in non_selected_units if u):
             await self._client.async_run(
                 f"sudo systemctl stop {unit} 2>/dev/null || true; "
                 f"sudo systemctl disable {unit} 2>/dev/null || true"
             )
             _LOGGER.info("Dashboard service %s is not selected; ensured it is stopped/disabled", unit)
         
-        self._emit(PHASE_RESTART, "Services restarted", 95)
+        self._emit("restart", "Services restarted", 95)
 
     async def _phase_verify(self) -> None:
         """Verify deployment success."""
-        self._emit(PHASE_VERIFY, "Verifying service health...", 96)
+        self._emit("verify", "Verifying service health...", 96)
         
         # Check supervisor service
         supervisor_status = await self._client.async_run(
-            f"systemctl is-active {SYSTEMD_SUPERVISOR} || echo INACTIVE"
+            f"systemctl is-active perimetercontrol-supervisor || echo INACTIVE"
         )
         supervisor_active = "active" in supervisor_status and "INACTIVE" not in supervisor_status
         
         dashboard_results: list[tuple[str, str, bool]] = []
-        for service_id in self._selected_dashboard_services:
-            definition = _DASHBOARD_SERVICE_DEFS[service_id]
-            unit = definition["unit"]
+        for service_id in self._selected_services:
+            service_info = SERVICE_REGISTRY.get(service_id, {})
+            unit = service_info.get("unit")
+            if not unit:
+                continue
             status = await self._client.async_run(
                 f"systemctl is-active {unit} || echo INACTIVE"
             )
@@ -613,7 +551,7 @@ class Deployer(BaseDeployer):
         dashboards_active = all(active for _, _, active in dashboard_results)
 
         if supervisor_active and dashboards_active:
-            self._emit(PHASE_VERIFY, "Deploy complete — all services running", 100)
+            self._emit("verify", "Deploy complete — all services running", 100)
             _LOGGER.info("Deployment completed successfully - all services active")
         elif supervisor_active:
             failing_units = [unit for _, unit, active in dashboard_results if not active]
@@ -627,11 +565,11 @@ class Deployer(BaseDeployer):
                 )
             raise RuntimeError("Deployment verification failed: selected dashboards inactive")
         else:
-            self._emit(PHASE_VERIFY, "Deploy failed — services need attention", 100)
+            self._emit("verify", "Deploy failed — services need attention", 100)
             _LOGGER.error("Deployment verification failed - services need attention")
             for svc_name, svc_const in (
-                ("Supervisor", SYSTEMD_SUPERVISOR),
-                *[(f"Dashboard({service_id})", _DASHBOARD_SERVICE_DEFS[service_id]["unit"]) for service_id in self._selected_dashboard_services],
+                ("Supervisor", "perimetercontrol-supervisor"),
+                *[(f"Dashboard({service_id})", SERVICE_REGISTRY.get(service_id, {}).get("unit")) for service_id in self._selected_services if SERVICE_REGISTRY.get(service_id, {}).get("unit")],
             ):
                 try:
                     journal = await self._client.async_run(
@@ -702,25 +640,25 @@ class Deployer(BaseDeployer):
 def _build_install_script() -> str:
     """Build the remote install script for Phase 3."""
     web_files = [
-        ("dashboard.py", REMOTE_WEB_DIR, "0644"),
-        ("layouts.py", REMOTE_WEB_DIR, "0644"),
-        ("callbacks.py", REMOTE_WEB_DIR, "0644"),
-        ("data_sources.py", REMOTE_WEB_DIR, "0644"),
-        ("photo_booth_dashboard.py", REMOTE_WEB_DIR, "0644"),
-        ("gpio_control_dashboard.py", REMOTE_WEB_DIR, "0644"),
-        ("ble_gatt_dashboard.py", REMOTE_WEB_DIR, "0644"),
-        ("esl_ap_dashboard.py", REMOTE_WEB_DIR, "0644"),
-        ("wildlife_monitor_dashboard.py", REMOTE_WEB_DIR, "0644"),
+        ("dashboard.py", remote_web_dir, "0644"),
+        ("layouts.py", remote_web_dir, "0644"),
+        ("callbacks.py", remote_web_dir, "0644"),
+        ("data_sources.py", remote_web_dir, "0644"),
+        ("photo_booth_dashboard.py", remote_web_dir, "0644"),
+        ("gpio_control_dashboard.py", remote_web_dir, "0644"),
+        ("ble_gatt_dashboard.py", remote_web_dir, "0644"),
+        ("esl_ap_dashboard.py", remote_web_dir, "0644"),
+        ("wildlife_monitor_dashboard.py", remote_web_dir, "0644"),
     ]
     script_files = [
-        ("ble-scanner-v2.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("ble-sniffer.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("ble-debug.sh", REMOTE_SCRIPTS_DIR, "0755"),
-        ("ble-proxy-profiler.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("ble-gatt-mirror.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("apply-rules.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("network-topology.py", REMOTE_SCRIPTS_DIR, "0755"),
-        ("topology_config.py", REMOTE_SCRIPTS_DIR, "0644"),
+        ("ble-scanner-v2.py", remote_scripts_dir, "0755"),
+        ("ble-sniffer.py", remote_scripts_dir, "0755"),
+        ("ble-debug.sh", remote_scripts_dir, "0755"),
+        ("ble-proxy-profiler.py", remote_scripts_dir, "0755"),
+        ("ble-gatt-mirror.py", remote_scripts_dir, "0755"),
+        ("apply-rules.py", remote_scripts_dir, "0755"),
+        ("network-topology.py", remote_scripts_dir, "0755"),
+        ("topology_config.py", remote_scripts_dir, "0644"),
     ]
     
     # Use the configurable install commands
@@ -728,38 +666,36 @@ def _build_install_script() -> str:
     
     for fname, dest, mode in web_files + script_files:
         lines.append(
-            f"[ -f {REMOTE_TEMP_ROOT}/{fname} ] && sudo install -o root -g root -m {mode} "
-            f"{REMOTE_TEMP_ROOT}/{fname} {dest}/{fname} || true"
+            f"[ -f {remote_temp_root}/{fname} ] && sudo install -o root -g root -m {mode} "
+            f"{remote_temp_root}/{fname} {dest}/{fname} || true"
         )
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)
 
 
 def _build_supervisor_install_script() -> str:
-    _path = get_remote_path_config()
-    _state_root = _path["STATE_ROOT"]
-    _log_root = _path["LOG_ROOT"]
-    return f"""set -e
+        from .const import remote_state_root, remote_log_root, remote_supervisor_dir, remote_temp_root, remote_systemd_root
+        return f"""set -e
 # Ensure required directories exist before service units are started
-sudo mkdir -p {_state_root} {_log_root}
-sudo chmod 755 {_state_root} {_log_root}
+sudo mkdir -p {remote_state_root} {remote_log_root}
+sudo chmod 755 {remote_state_root} {remote_log_root}
 # Deploy tmpfiles.d config so directories survive reboots (runs before services at boot)
-printf 'd {_state_root} 0755 root root -\nd {_log_root} 0755 root root -\n' | sudo tee /etc/tmpfiles.d/perimeter-control.conf > /dev/null
+printf 'd {remote_state_root} 0755 root root -\nd {remote_log_root} 0755 root root -\n' | sudo tee /etc/tmpfiles.d/perimeter-control.conf > /dev/null
 sudo systemd-tmpfiles --create /etc/tmpfiles.d/perimeter-control.conf 2>/dev/null || true
-sudo cp -a {REMOTE_SUPERVISOR_DIR} {REMOTE_TEMP_ROOT}/PerimeterControl-supervisor-backup 2>/dev/null || true
-cd {REMOTE_TEMP_ROOT}
-rm -rf {REMOTE_TEMP_ROOT}/supervisor
-tar --no-same-permissions --no-same-owner -xzf {REMOTE_TEMP_ROOT}/supervisor.tar.gz
-sudo mkdir -p {REMOTE_SUPERVISOR_DIR}
-sudo cp -r {REMOTE_TEMP_ROOT}/supervisor/. {REMOTE_SUPERVISOR_DIR}/
-sudo chown -R root:root {REMOTE_SUPERVISOR_DIR}
-sudo find {REMOTE_SUPERVISOR_DIR} -type f -exec chmod 644 {{}} +
-sudo find {REMOTE_SUPERVISOR_DIR} -type d -exec chmod 755 {{}} +
-[ -f {REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service ] && \\
-  sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{SYSTEMD_SUPERVISOR}.service \\
-  {REMOTE_SYSTEMD_ROOT}/{SYSTEMD_SUPERVISOR}.service && \\
-  sudo systemctl daemon-reload && \\
-  sudo systemctl enable {SYSTEMD_SUPERVISOR}.service || true
+sudo cp -a {remote_supervisor_dir} {remote_temp_root}/PerimeterControl-supervisor-backup 2>/dev/null || true
+cd {remote_temp_root}
+rm -rf {remote_temp_root}/supervisor
+tar --no-same-permissions --no-same-owner -xzf {remote_temp_root}/supervisor.tar.gz
+sudo mkdir -p {remote_supervisor_dir}
+sudo cp -r {remote_temp_root}/supervisor/. {remote_supervisor_dir}/
+sudo chown -R root:root {remote_supervisor_dir}
+sudo find {remote_supervisor_dir} -type f -exec chmod 644 {{}} +
+sudo find {remote_supervisor_dir} -type d -exec chmod 755 {{}} +
+[ -f {remote_temp_root}/perimetercontrol-supervisor.service ] && \
+    sudo install -o root -g root -m 0644 {remote_temp_root}/perimetercontrol-supervisor.service \
+    {remote_systemd_root}/perimetercontrol-supervisor.service && \
+    sudo systemctl daemon-reload && \
+    sudo systemctl enable perimetercontrol-supervisor.service || true
 echo SUPERVISOR_INSTALLED
 """
 

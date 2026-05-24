@@ -54,6 +54,7 @@ The Perimeter Control deployment system has been completely refactored from a mo
 - Validates service selection and checks for conflicts
 - Handles supervisor installation and service coordination
 - Provides fallback legacy deployment for unknown services
+- Must remain descriptor-driven and registry-driven rather than accumulating one-off branches per service
 
 ## Deployment Flow
 
@@ -71,6 +72,15 @@ The Perimeter Control deployment system has been completely refactored from a mo
    - Package installation
    - Configuration deployment
    - Service descriptor deployment
+
+### Generic Orchestration Rule
+
+Deployment logic should scale by adding metadata, not by adding ad hoc `if service_id == ...` branches.
+
+- If a service needs a dashboard unit, runtime config template, backend deploy call, or post-deploy action, describe it in a shared table, registry entry, or service descriptor.
+- The main deploy loop should iterate those definitions generically for every selected service.
+- A patch that fixes one capability by hard-coding its service ID, endpoint, or config file path in `deployer.py` should be treated as a temporary smell and refactored into declarative metadata.
+- `gpio_control` is not a special architecture path. It should use the same deployment primitives and iteration model as every other service.
 
 ### Phase 3: Supervisor Installation
 1. Install supervisor package and systemd services
@@ -107,6 +117,7 @@ The Perimeter Control deployment system has been completely refactored from a mo
 - **Focused Development**: Changes to one service don't affect others
 - **Easier Extension**: New services can be added by creating new deployers
 - **Better Error Messages**: Service-specific error messages and diagnostics
+- **Generic Extensibility**: New deploy-time behaviors should be onboarded by extending configuration data, not by copying service-name conditionals
 
 ## Backward Compatibility
 
@@ -126,6 +137,8 @@ Version 0.5.0 introduces this new architecture automatically. No manual migratio
 ## Configuration
 
 Service-specific deployment is automatic based on service selection. No additional configuration is required.
+
+When new deployment behavior is needed, prefer adding structured metadata to the existing service configuration surfaces instead of introducing new environment-variable-driven Python branches.
 
 ### Example Service Selection
 ```python

@@ -515,6 +515,14 @@ documentation:
   troubleshooting: "docs/capabilities/my-capability-troubleshooting.md"
 ```
 
+### Step 5: Keep Deployment Metadata Declarative
+
+When a capability needs deploy-time behavior outside the default flow, do not patch `deployer.py` with a capability-specific branch.
+
+- Put reusable metadata in the service descriptor, service registry, or another shared configuration structure.
+- Make the deployer iterate that metadata for all selected services.
+- Do not bind capability IDs, config paths, or endpoints from repeated environment-variable lookups in Python. Resolve them once through the project configuration layer and reuse the resolved value.
+
 ## Advanced Features
 
 ### Entity Management

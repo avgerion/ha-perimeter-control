@@ -1,37 +1,119 @@
 """Constants for Perimeter Control integration."""
 import os
-from pathlib import Path
 
-DOMAIN = "perimeter_control"
-PLATFORMS: list[str] = ["sensor", "button", "binary_sensor", "camera", "switch", "light"]
+def _env(key, default):
+    return os.environ.get(key, default)
 
-# Config entry keys
-CONF_HOST = "host"
-CONF_PORT = "port"
-CONF_USER = "user"
-CONF_SSH_KEY = "ssh_key"       # Private key content (stored in HA secrets)
-CONF_SSH_KEY_PATH = "ssh_key_path"  # Alternative: path on HA host
-CONF_SUPERVISOR_PORT = "supervisor_port"  # Supervisor API port
-CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
+# Paths (resolved once)
+install_root = _env("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")
+state_root = _env("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl")
+log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl")
+temp_root = _env("PERIMETER_TEMP_ROOT", "/tmp")
+systemd_root = _env("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system")
 
-DEFAULT_SSH_PORT = 22
-DEFAULT_API_PORT = 8080  # Supervisor API port
-import os
+install_root = _env("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")  # Local (controller/HA) paths
+state_root = _env("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl") 
+log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl") 
+temp_root = _env("PERIMETER_TEMP_ROOT", "/tmp") 
+systemd_root = _env("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system") 
+conf_dir = f"{state_root}/conf"
+services_dir = f"{state_root}/conf/services"
 
-# ─── Configurable Constants ─────────────────────────────────────────────
-DEFAULT_DASHBOARD_PORT = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', 5006))  # PerimeterControl dashboard port
-DEFAULT_USER = "pi"
+service_prefix = _env("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
 
-# Legacy static service list - will be replaced by dynamic discovery
-# TODO: Remove once all platforms use dynamic entity discovery
-AVAILABLE_SERVICES = [
-    os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator'),
-    os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'),
-    os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'),
-    os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater'),
-    os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'),
-    os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'),
-]
+remote_install_root = _env("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
+remote_state_root = _env("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
+remote_log_root = _env("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
+remote_temp_root = _env("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
+remote_systemd_root = _env("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
+remote_web_dir = f"{remote_install_root}/web"
+remote_scripts_dir = f"{remote_install_root}/scripts"
+remote_supervisor_dir = f"{remote_install_root}/supervisor"
+remote_state_dir = f"{remote_install_root}/state"
+remote_venv_dir = f"{remote_install_root}/venv"
+remote_conf_dir = f"{remote_state_root}/conf"
+remote_services_dir = f"{remote_state_root}/conf/services"
+
+remote_install_root = _env("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
+remote_state_root = _env("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
+remote_log_root = _env("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
+remote_temp_root = _env("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
+remote_systemd_root = _env("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
+remote_web_dir = f"{remote_install_root}/web"
+remote_scripts_dir = f"{remote_install_root}/scripts"
+remote_supervisor_dir = f"{remote_install_root}/supervisor"
+remote_state_dir = f"{remote_install_root}/state"
+remote_venv_dir = f"{remote_install_root}/venv"
+remote_conf_dir = f"{remote_state_root}/conf"
+remote_services_dir = f"{remote_state_root}/conf/services"
+
+# Unified service registry: all per-service config here
+SERVICE_REGISTRY = {
+    _env("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
+        "unit": f"{service_prefix}-dashboard",
+        "port": int(_env("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
+        "template": "PerimeterControl-dashboard.service.template",
+        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
+        "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+    _env("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
+        "unit": "PerimeterControl-photo-booth-dashboard",
+        "port": 8093,
+        "template": "PerimeterControl-photo-booth-dashboard.service.template",
+        "web_files": ["photo_booth_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": "config/templates/photo_booth_config.yaml",
+        "config_target": "photo-booth.yaml",
+        "deploy_api": None,
+    },
+    _env("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
+        "unit": "PerimeterControl-gpio-dashboard",
+        "port": 8095,
+        "template": "PerimeterControl-gpio-dashboard.service.template",
+        "web_files": ["gpio_control_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": "config/templates/gpio_control_config.yaml",
+        "config_target": "gpio-control.yaml",
+        "deploy_api": "http://127.0.0.1:8080/api/v1/capabilities/gpio_control/deploy",
+    },
+    _env("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
+        "unit": "PerimeterControl-ble-dashboard",
+        "port": 8091,
+        "template": "PerimeterControl-ble-dashboard.service.template",
+        "web_files": ["ble_gatt_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+    _env("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
+        "unit": "PerimeterControl-esl-dashboard",
+        "port": 8092,
+        "template": "PerimeterControl-esl-dashboard.service.template",
+        "web_files": ["esl_ap_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+    _env("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
+        "unit": "PerimeterControl-wildlife-dashboard",
+        "port": 8094,
+        "template": "PerimeterControl-wildlife-dashboard.service.template",
+        "web_files": ["wildlife_monitor_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+}
+
+def iter_services():
+    """Yield (service_id, service_info) for all known services."""
+    return SERVICE_REGISTRY.items()
 
 # System dependency groups (maps apt group tag → actual packages)
 APT_DEPENDENCY_GROUPS: dict[str, list[str]] = {
@@ -39,76 +121,56 @@ APT_DEPENDENCY_GROUPS: dict[str, list[str]] = {
         "gstreamer1.0-tools",
         "gstreamer1.0-plugins-base",
         "gstreamer1.0-plugins-good",
-        "gstreamer1.0-plugins-bad",
-        "gstreamer1.0-libav",
-        "gstreamer1.0-alsa",
-        "python3-gi",
-        "python3-gi-cairo",
-        "python3-gst-1.0",
-        "gir1.2-gst-plugins-base-1.0",
-    ],
-    "i2c": [
-        "i2c-tools",
-        "python3-smbus2",
     ],
 }
 
-# Configurable remote paths (can be overridden via environment variables)
-# Base paths
-REMOTE_INSTALL_ROOT = os.getenv("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")
-REMOTE_STATE_ROOT = os.getenv("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl")
-REMOTE_LOG_ROOT = os.getenv("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl")
-REMOTE_TEMP_ROOT = os.getenv("PERIMETER_TEMP_ROOT", "/tmp")
-REMOTE_SYSTEMD_ROOT = os.getenv("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system")
-
-# Derived paths (built from base paths)
-REMOTE_WEB_DIR = f"{REMOTE_INSTALL_ROOT}/web"
-REMOTE_SCRIPTS_DIR = f"{REMOTE_INSTALL_ROOT}/scripts"
-REMOTE_SUPERVISOR_DIR = f"{REMOTE_INSTALL_ROOT}/supervisor"
-REMOTE_STATE_DIR = f"{REMOTE_INSTALL_ROOT}/state"
-REMOTE_VENV = f"{REMOTE_INSTALL_ROOT}/venv"
-REMOTE_CONF_DIR = f"{REMOTE_STATE_ROOT}/conf"
-REMOTE_SERVICES_DIR = f"{REMOTE_STATE_ROOT}/conf/services"
-
-# Configurable systemd services (can be overridden via environment variables)
-SYSTEMD_SERVICE_PREFIX = os.getenv("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
-SYSTEMD_DASHBOARD = f"{SYSTEMD_SERVICE_PREFIX}-dashboard"
-SYSTEMD_SUPERVISOR = f"{SYSTEMD_SERVICE_PREFIX}-supervisor"
-
 # Helper functions for path management
 def get_remote_path_config() -> dict[str, str]:
-    """Get all configurable remote paths as a dictionary for templating."""
-    return {
-        "INSTALL_ROOT": REMOTE_INSTALL_ROOT,
-        "STATE_ROOT": REMOTE_STATE_ROOT, 
-        "LOG_ROOT": REMOTE_LOG_ROOT,
-        "TEMP_ROOT": REMOTE_TEMP_ROOT,
-        "SYSTEMD_ROOT": REMOTE_SYSTEMD_ROOT,
-        "WEB_DIR": REMOTE_WEB_DIR,
-        "SCRIPTS_DIR": REMOTE_SCRIPTS_DIR,
-        "SUPERVISOR_DIR": REMOTE_SUPERVISOR_DIR,
-        "STATE_DIR": REMOTE_STATE_DIR,
-        "VENV": REMOTE_VENV,
-        "CONF_DIR": REMOTE_CONF_DIR,
-        "SERVICES_DIR": REMOTE_SERVICES_DIR,
-        "SERVICE_PREFIX": SYSTEMD_SERVICE_PREFIX,
-        "DASHBOARD_SERVICE": SYSTEMD_DASHBOARD,
-        "SUPERVISOR_SERVICE": SYSTEMD_SUPERVISOR,
-    }
+    """Get all configurable remote paths as a dictionary for templating, omitting None values."""
+    return {k: v for k, v in {
+        "INSTALL_ROOT": remote_install_root,
+        "WEB_DIR": remote_web_dir,
+        "SCRIPTS_DIR": remote_scripts_dir,
+        "SUPERVISOR_DIR": remote_supervisor_dir,
+        "STATE_DIR": remote_state_dir,
+        "STATE_ROOT": remote_state_root,
+        "CONF_DIR": remote_conf_dir,
+        "SERVICES_DIR": remote_services_dir,
+        "LOG_ROOT": remote_log_root,
+        "TEMP_ROOT": remote_temp_root,
+        "SYSTEMD_ROOT": remote_systemd_root,
+        "VENV": remote_venv_dir,
+        "SERVICE_PREFIX": service_prefix,
+    }.items() if v is not None}
 
-def get_install_directories() -> list[str]:
-    """Get list of all directories that need to be created during installation."""
-    return [
-        REMOTE_INSTALL_ROOT,
-        REMOTE_WEB_DIR,
-        REMOTE_SCRIPTS_DIR,
-        REMOTE_SUPERVISOR_DIR,
-        REMOTE_STATE_DIR,
-        REMOTE_STATE_ROOT,
-        REMOTE_CONF_DIR,
-        REMOTE_SERVICES_DIR,
-        REMOTE_LOG_ROOT,
+def get_local_install_directories() -> list[str]:
+    """Get list of all local directories that need to be created during installation (controller/HA)."""
+    # Only use defined variables, filter out None
+    dirs = [
+        install_root,
+        state_root,
+        conf_dir,
+        services_dir,
+        log_root,
+        temp_root,
+        systemd_root,
     ]
+    return [d for d in dirs if d is not None]
+
+def get_remote_install_directories() -> list[str]:
+    """Get list of all remote directories that need to be created during installation (on Pi)."""
+    dirs = [
+        remote_install_root,
+        remote_web_dir,
+        remote_scripts_dir,
+        remote_supervisor_dir,
+        remote_state_dir,
+        remote_state_root,
+        remote_conf_dir,
+        remote_services_dir,
+        remote_log_root,
+    ]
+    return [d for d in dirs if d is not None]
 
 # Deploy phases
 PHASE_PREFLIGHT = "preflight"

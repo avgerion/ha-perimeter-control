@@ -17,29 +17,21 @@ from typing import Any
 import yaml
 
 from .const import (
-    PHASE_INSTALL,
-    PHASE_PREFLIGHT,
-    PHASE_RESTART,
-    PHASE_SUPERVISOR,
-    PHASE_UPLOAD,
-    PHASE_VERIFY,
-    REMOTE_CONF_DIR,
-    REMOTE_LOG_ROOT,
-    REMOTE_SCRIPTS_DIR,
-    REMOTE_SERVICES_DIR,
-    REMOTE_SUPERVISOR_DIR,
-    REMOTE_SYSTEMD_ROOT,
-    REMOTE_TEMP_ROOT,
-    REMOTE_VENV,
-    REMOTE_WEB_DIR,
-    SYSTEMD_DASHBOARD,
-    SYSTEMD_SERVICE_PREFIX,
-    SYSTEMD_SUPERVISOR,
-    get_install_directories,
-    get_remote_path_config,
+    remote_temp_root,
+    remote_web_dir,
+    remote_scripts_dir,
+    remote_venv_dir,
+    remote_conf_dir,
+    remote_services_dir,
+    remote_systemd_root,
+    remote_supervisor_dir,
+    remote_log_root,
+    remote_state_root,
 )
 from .service_descriptor import ServiceDescriptor
 from .ssh_client import SshClient, SshCommandError
+
+from .const import SERVICE_REGISTRY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,8 +51,16 @@ async def _render_service_template(template_path: Path) -> str:
         raise FileNotFoundError(f"Service template not found: {template_path}")
     
     template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
-    path_config = get_remote_path_config()
-    
+    path_config = {
+        "INSTALL_ROOT": remote_temp_root,
+        "WEB_DIR": remote_web_dir,
+        "SCRIPTS_DIR": remote_scripts_dir,
+        "SUPERVISOR_DIR": remote_supervisor_dir,
+        "CONF_DIR": remote_conf_dir,
+        "SERVICES_DIR": remote_services_dir,
+        "LOG_ROOT": remote_log_root,
+        "STATE_ROOT": remote_state_root,
+    }
     try:
         return template_content.format(**path_config)
     except KeyError as e:
@@ -69,17 +69,20 @@ async def _render_service_template(template_path: Path) -> str:
 
 def _get_install_commands() -> list[str]:
     """Generate installation commands using configurable paths."""
-    dirs = get_install_directories()
-    path_config = get_remote_path_config()
+    dirs = [
+        remote_conf_dir,
+        remote_scripts_dir,
+        remote_supervisor_dir,
+        remote_log_root,
+        remote_state_root,
+    ]
     commands = [f"sudo mkdir -p {d}" for d in dirs]
-    
     # Add ownership commands for directories that need root ownership
     commands.extend([
-        f"sudo chown root:root {path_config['LOG_ROOT']}",
-        f"sudo chown root:root {path_config['STATE_ROOT']}",
-        f"sudo chmod 755 {path_config['LOG_ROOT']}",
+        f"sudo chown root:root {remote_log_root}",
+        f"sudo chown root:root {remote_state_root}",
+        f"sudo chmod 755 {remote_log_root}",
     ])
-    
     return commands
 
 
@@ -89,9 +92,9 @@ def _build_install_script() -> str:
     
     # Add file installation commands
     commands.extend([
-        f"sudo cp {REMOTE_TEMP_ROOT}/*.py {REMOTE_WEB_DIR}/ 2>/dev/null || true",
-        f"sudo cp {REMOTE_TEMP_ROOT}/*.sh {REMOTE_SCRIPTS_DIR}/ 2>/dev/null || true",
-        f"sudo chmod +x {REMOTE_SCRIPTS_DIR}/*.sh 2>/dev/null || true",
+        f"sudo cp {remote_temp_root}/*.py {remote_web_dir}/ 2>/dev/null || true",
+        f"sudo cp {remote_temp_root}/*.sh {remote_scripts_dir}/ 2>/dev/null || true",
+        f"sudo chmod +x {remote_scripts_dir}/*.sh 2>/dev/null || true",
     ])
     
     return "; ".join(commands)
@@ -135,7 +138,7 @@ class BaseDeployer:
 
     async def check_system_resources(self, required_cpu: float = 0.1, required_memory: int = 64, required_disk: int = 50) -> None:
         """Check system resources before deployment to prevent failures."""
-        self._emit(PHASE_PREFLIGHT, "Checking system resources...", 1)
+        self._emit("preflight", "Checking system resources...", 1)
         
         try:
             resource_check_script = """
@@ -172,7 +175,7 @@ else
 fi
 """
             
-            self._emit(PHASE_PREFLIGHT, "Gathering system information...", 2)
+            self._emit("preflight", "Gathering system information...", 2)
             resource_output = await self._client.async_run(resource_check_script)
             
             # Parse the output
@@ -184,7 +187,7 @@ fi
             
             _LOGGER.debug("System resources detected: %s", resources)
             
-            self._emit(PHASE_PREFLIGHT, "Validating resource requirements...", 3)
+            self._emit("preflight", "Validating resource requirements...", 3)
             
             # Check CPU cores
             cpu_cores = float(resources.get('CPU_CORES', 1))
@@ -228,7 +231,7 @@ fi
             if load_avg > cpu_cores * 2:
                 _LOGGER.warning("High system load detected: %.2f (CPU cores: %.0f). Deployment may be slow.", 
                               load_avg, cpu_cores)
-                self._emit(PHASE_PREFLIGHT, f"High system load detected ({load_avg:.1f}), continuing anyway...", 4)
+                self._emit("preflight", f"High system load detected ({load_avg:.1f}), continuing anyway...", 4)
             
             # Check systemd availability
             if resources.get('SYSTEMD') != 'available':
@@ -241,11 +244,11 @@ fi
             # Check sudo access
             if resources.get('SUDO') != 'available':
                 _LOGGER.warning("Sudo access may require password. Deployment may prompt for password.")
-                self._emit(PHASE_PREFLIGHT, "Sudo access may require password prompt...", 4)
+                self._emit("preflight", "Sudo access may require password prompt...", 4)
             
             _LOGGER.info("Resource check passed - CPU: %.1f cores, Memory: %.0fMB, Disk: /tmp %.0fMB /opt %.0fMB", 
                         cpu_cores, memory_mb, tmp_space_mb, opt_space_mb)
-            self._emit(PHASE_PREFLIGHT, "System resources validated successfully", 4)
+            self._emit("preflight", "System resources validated successfully", 4)
             
         except SshCommandError:
             raise
@@ -256,31 +259,31 @@ fi
         """Common preflight checks for all deployers."""
         await self.check_system_resources(required_cpu, required_memory, required_disk)
         
-        self._emit(PHASE_PREFLIGHT, "Verifying Python interpreter and environment...", 5)
+        self._emit("preflight", "Verifying Python interpreter and environment...", 5)
         out = await self._client.async_run(
             "set -e; "
             "python3 --version && echo PYTHON_OK; "
-            f"[ -x {REMOTE_VENV}/bin/python3 ] && echo VENV_OK "
+            f"[ -x {remote_venv_dir}/bin/python3 ] && echo VENV_OK "
             "|| echo VENV_MISSING; "
-            f"[ -d {REMOTE_WEB_DIR} ] && echo WEBDIR_OK || echo WEBDIR_MISSING"
+            f"[ -d {remote_web_dir} ] && echo WEBDIR_OK || echo WEBDIR_MISSING"
         )
         
         # Check if we need to create the venv
         if "VENV_MISSING" in out:
-            self._emit(PHASE_PREFLIGHT, "Creating Python virtual environment...", 7)
+            self._emit("preflight", "Creating Python virtual environment...", 7)
             await self._client.async_run(
-                f"sudo mkdir -p $(dirname {REMOTE_VENV}) && "
-                f"cd $(dirname {REMOTE_VENV}) && "
-                f"sudo python3 -m venv --system-site-packages $(basename {REMOTE_VENV})"
+                f"sudo mkdir -p $(dirname {remote_venv_dir}) && "
+                f"cd $(dirname {remote_venv_dir}) && "
+                f"sudo python3 -m venv --system-site-packages $(basename {remote_venv_dir})"
             )
-            self._emit(PHASE_PREFLIGHT, "Virtual environment created", 8)
+            self._emit("preflight", "Virtual environment created", 8)
         
         # Ensure web directory exists
         if "WEBDIR_MISSING" in out:
-            self._emit(PHASE_PREFLIGHT, "Creating web directory...", 9)
-            await self._client.async_run(f"sudo mkdir -p {REMOTE_WEB_DIR}")
+            self._emit("preflight", "Creating web directory...", 9)
+            await self._client.async_run(f"sudo mkdir -p {remote_web_dir}")
             
-        self._emit(PHASE_PREFLIGHT, "Preflight passed", 10)
+        self._emit("preflight", "Preflight passed", 10)
 
     async def phase_upload_files(self, files_to_upload: dict[str, list[str]]) -> None:
         """Upload files for deployment.
@@ -288,14 +291,14 @@ fi
         Args:
             files_to_upload: Dict with 'web' and 'scripts' keys containing file lists
         """
-        self._emit(PHASE_UPLOAD, "Uploading service files...", 15)
+        self._emit("upload", "Uploading service files...", 15)
         
         web_files = files_to_upload.get('web', [])
         script_files = files_to_upload.get('scripts', [])
         total = len(web_files) + len(script_files)
         
         if not total:
-            self._emit(PHASE_UPLOAD, "No files to upload", 30)
+            self._emit("upload", "No files to upload", 30)
             return
         
         # Upload web files from dashboard_web directory
@@ -304,9 +307,9 @@ fi
             if not src.exists():
                 _LOGGER.warning("Web file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"{REMOTE_TEMP_ROOT}/{fname}")
+            await self._client.async_put_file(src, f"{remote_temp_root}/{fname}")
             pct = 15 + int(15 * (i + 1) / len(web_files))
-            self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
+            self._emit("upload", f"Uploaded {fname}", pct)
         
         # Upload script files from scripts directory
         for i, fname in enumerate(script_files):
@@ -314,32 +317,32 @@ fi
             if not src.exists():
                 _LOGGER.warning("Script file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"{REMOTE_TEMP_ROOT}/{fname}")
+            await self._client.async_put_file(src, f"{remote_temp_root}/{fname}")
             pct = 30 + int(15 * (i + 1) / len(script_files))
-            self._emit(PHASE_UPLOAD, f"Uploaded {fname}", pct)
+            self._emit("upload", f"Uploaded {fname}", pct)
 
     async def phase_install(self) -> None:
         """Install uploaded files into active directories."""
-        self._emit(PHASE_INSTALL, "Installing files into active directories...", 45)
+        self._emit("install", "Installing files into active directories...", 45)
         install_script = _build_install_script()
         await self._client.async_run_b64(install_script)
-        self._emit(PHASE_INSTALL, "Files installed", 55)
+        self._emit("install", "Files installed", 55)
 
     async def phase_config(self, config_files: list[str]) -> None:
         """Deploy configuration files to their expected locations."""
-        self._emit(PHASE_INSTALL, "Deploying configuration files...", 57)
+        self._emit("install", "Deploying configuration files...", 57)
         
         for config_file_name in config_files:
             config_file = _CONFIG_DIR / config_file_name
             if config_file.exists():
                 try:
                     _LOGGER.debug("Uploading config file from %s", config_file)
-                    await self._client.async_put_file(config_file, f"{REMOTE_TEMP_ROOT}/{config_file_name}")
+                    await self._client.async_put_file(config_file, f"{remote_temp_root}/{config_file_name}")
                     
                     # Ensure target directory exists and move to final location
-                    await self._client.async_run(f"sudo mkdir -p {REMOTE_CONF_DIR}")
+                    await self._client.async_run(f"sudo mkdir -p {remote_conf_dir}")
                     await self._client.async_run(
-                        f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{config_file_name} {REMOTE_CONF_DIR}/{config_file_name}"
+                        f"sudo install -o root -g root -m 0644 {remote_temp_root}/{config_file_name} {remote_conf_dir}/{config_file_name}"
                     )
                     _LOGGER.debug("Config file %s installed successfully", config_file_name)
                     
@@ -354,11 +357,11 @@ fi
         if not packages:
             return
 
-        self._emit(PHASE_SUPERVISOR, f"Installing {service_name} Python packages...", 70)
+        self._emit("supervisor", f"Installing {service_name} Python packages...", 70)
 
         for package in packages:
             try:
-                cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {package}"
+                cmd = f"sudo {remote_venv_dir}/bin/python3 -m pip install {package}"
                 _LOGGER.info("Installing Python package: %s", package)
                 _LOGGER.debug("Running command: %s", cmd)
                 result = await self._client.async_run(cmd)
@@ -373,7 +376,7 @@ fi
 
     async def deploy_service_descriptors(self, service_ids: list[str]) -> None:
         """Deploy service descriptor files for specified services."""
-        self._emit(PHASE_SUPERVISOR, "Deploying service descriptors...", 78)
+        self._emit("supervisor", "Deploying service descriptors...", 78)
         
         for service_id in service_ids:
             fname = f"{service_id}.service.yaml"
@@ -382,10 +385,12 @@ fi
                 descriptor_text = await asyncio.to_thread(src.read_text, encoding="utf-8")
                 descriptor_data = await asyncio.to_thread(yaml.safe_load, descriptor_text) or {}
 
-                if service_id == os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"):
+                service_info = SERVICE_REGISTRY.get(service_id, {})
+                config_target = service_info.get("config_target")
+                if config_target:
                     spec = descriptor_data.setdefault("spec", {})
                     config_file = spec.setdefault("config_file", {})
-                    config_file["path"] = "/mnt/PerimeterControl/conf/gpio-control.yaml"
+                    config_file["path"] = f"/mnt/PerimeterControl/conf/{config_target}"
 
                 rendered_text = await asyncio.to_thread(
                     yaml.safe_dump,
@@ -393,18 +398,18 @@ fi
                     sort_keys=False,
                     allow_unicode=False,
                 )
-                await self._client.async_put_bytes(rendered_text.encode("utf-8"), f"{REMOTE_TEMP_ROOT}/{fname}")
+                await self._client.async_put_bytes(rendered_text.encode("utf-8"), f"{remote_temp_root}/{fname}")
                 await self._client.async_run(
-                    f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{fname} {REMOTE_SERVICES_DIR}/{fname}"
+                    f"sudo install -o root -g root -m 0644 {remote_temp_root}/{fname} {remote_services_dir}/{fname}"
                 )
             else:
                 _LOGGER.warning("Service descriptor not found: %s", src)
                 
-        self._emit(PHASE_SUPERVISOR, "Service descriptors deployed", 80)
+        self._emit("supervisor", "Service descriptors deployed", 80)
 
     async def install_systemd_services(self, template_files: list[str]) -> None:
         """Install systemd service templates."""
-        self._emit(PHASE_SUPERVISOR, "Installing systemd service units...", 82)
+        self._emit("supervisor", "Installing systemd service units...", 82)
         
         for template_name in template_files:
             template_file = _COMPONENT_DIR / template_name
@@ -419,9 +424,9 @@ fi
                     await asyncio.to_thread(os.close, temp_fd)
                     
                     service_name = template_name.replace('.template', '')
-                    await self._client.async_put_file(Path(temp_service_file), f"{REMOTE_TEMP_ROOT}/{service_name}")
+                    await self._client.async_put_file(Path(temp_service_file), f"{remote_temp_root}/{service_name}")
                     await self._client.async_run(
-                        f"sudo install -o root -g root -m 0644 {REMOTE_TEMP_ROOT}/{service_name} {REMOTE_SYSTEMD_ROOT}/{service_name}"
+                        f"sudo install -o root -g root -m 0644 {remote_temp_root}/{service_name} {remote_systemd_root}/{service_name}"
                     )
                     await self._client.async_run(f"sudo systemctl daemon-reload")
                     await self._client.async_run(f"sudo systemctl enable {service_name}")
@@ -432,4 +437,4 @@ fi
             else:
                 _LOGGER.warning("Template not found: %s", template_file)
                 
-        self._emit(PHASE_SUPERVISOR, "Systemd services installed", 85)
+        self._emit("supervisor", "Systemd services installed", 85)
