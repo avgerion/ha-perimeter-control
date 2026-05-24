@@ -1,5 +1,16 @@
-"""Constants for Perimeter Control integration."""
 import os
+
+DOMAIN = "perimeter_control"
+PLATFORMS = [
+    "sensor",
+    "switch",
+    "binary_sensor",
+    "button",
+    "camera",
+    "light",
+]
+"""Constants for Perimeter Control integration."""
+
 
 def _env(key, default):
     return os.environ.get(key, default)
