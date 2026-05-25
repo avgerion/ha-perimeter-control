@@ -10,6 +10,9 @@ PLATFORMS = [
     "light",
 ]
 
+# List of all available service IDs (for Home Assistant integration compatibility)
+AVAILABLE_SERVICES = list(SERVICE_REGISTRY.keys())
+
 # Config entry keys
 CONF_HOST = "host"
 CONF_PORT = "port"
