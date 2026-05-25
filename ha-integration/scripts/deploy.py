@@ -42,13 +42,21 @@ except ImportError:
 
 import subprocess
 
-# ── Configurable Constants ─────────────────────────────────────────────
-PERIMETERCONTROL_SUPERVISOR_SERVICE = os.environ.get('PERIMETERCONTROL_SUPERVISOR_SERVICE', 'PerimeterControl-supervisor')
-PERIMETERCONTROL_DASHBOARD_SERVICE = os.environ.get('PERIMETERCONTROL_DASHBOARD_SERVICE', 'PerimeterControl-dashboard')
-PERIMETERCONTROL_OPT_PATH = os.environ.get('PERIMETERCONTROL_OPT_PATH', '/opt/PerimeterControl')
-PERIMETERCONTROL_TMP_PATH = os.environ.get('PERIMETERCONTROL_TMP_PATH', '/tmp')
-PERIMETERCONTROL_CONF_PATH = os.environ.get('PERIMETERCONTROL_CONF_PATH', '/mnt/PerimeterControl/conf')
-PERIMETERCONTROL_LOG_PATH = os.environ.get('PERIMETERCONTROL_LOG_PATH', '/var/log/PerimeterControl')
+# ── Configurable Constants (imported from const.py) ────────────────────
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # Ensure repo root is on sys.path
+from const import (
+    systemd_root as PERIMETERCONTROL_SYSTEMD_ROOT,
+    install_root as PERIMETERCONTROL_OPT_PATH,
+    temp_root as PERIMETERCONTROL_TMP_PATH,
+    conf_dir as PERIMETERCONTROL_CONF_PATH,
+    log_root as PERIMETERCONTROL_LOG_PATH,
+    service_prefix,
+)
+
+# Service names (unit files)
+PERIMETERCONTROL_SUPERVISOR_SERVICE = f"{service_prefix}-supervisor"
+PERIMETERCONTROL_DASHBOARD_SERVICE = f"{service_prefix}-dashboard"
 
 # ── Repo layout (relative to repo root) ─────────────────────────────────────
 WEB_FILES = [

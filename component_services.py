@@ -86,12 +86,9 @@ class PhotoBoothService(BaseService):
         self.add_component(DataLogging(["event", "capture"]), 6)
 
 
-# ─── Configurable Constants ─────────────────────────────────────────────
-import os
 
-# Default config template paths (can be overridden by env/config)
-DEFAULT_CONF_TEMPLATE = os.environ.get('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
-DEFAULT_FIREWALL_RULES_TEMPLATE = os.environ.get('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
+# ─── Configurable Constants ─────────────────────────────────────────────
+from .const import DEFAULT_CONF_TEMPLATE, DEFAULT_FIREWALL_RULES_TEMPLATE
 
 
 class NetworkService(BaseService):
@@ -265,21 +262,21 @@ def register_service_components():
             hardware_registry.register_hardware_handler(hardware_type, alternative_service, priority=False)
 
 
-# Service factory for creating service instances
-SERVICE_REGISTRY = {
-    os.environ.get('PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE', 'ble_gatt_repeater'): BleService,
-    os.environ.get('PERIMETERCONTROL_PHOTO_BOOTH_SERVICE', 'photo_booth'): PhotoBoothService,
-    os.environ.get('PERIMETERCONTROL_NETWORK_SERVICE', 'network_isolator'): NetworkService,
-    os.environ.get('PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE', 'wildlife_monitor'): WildlifeService,
-    os.environ.get('PERIMETERCONTROL_ESL_AP_SERVICE', 'esl_ap'): EslService,
-    os.environ.get('PERIMETERCONTROL_GPIO_CONTROL_SERVICE', 'gpio_control'): GpioControlService,
+
+# Service class registry for instantiating service objects by ID (not config)
+SERVICE_CLASS_REGISTRY = {
+    'ble_gatt_repeater': BleService,
+    'photo_booth': PhotoBoothService,
+    'network_isolator': NetworkService,
+    'wildlife_monitor': WildlifeService,
+    'esl_ap': EslService,
+    'gpio_control': GpioControlService,
 }
 
 
 def create_service(service_id: str) -> BaseService:
-    """Create a service instance by ID."""
-    if service_id not in SERVICE_REGISTRY:
+    """Create a service instance by ID (using class registry, not config)."""
+    if service_id not in SERVICE_CLASS_REGISTRY:
         raise ValueError(f"Unknown service: {service_id}")
-    
-    service_class = SERVICE_REGISTRY[service_id]
+    service_class = SERVICE_CLASS_REGISTRY[service_id]
     return service_class()

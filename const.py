@@ -39,6 +39,10 @@ log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl")
 temp_root = _env("PERIMETER_TEMP_ROOT", "/tmp")
 systemd_root = _env("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system")
 
+# Default config template paths (can be overridden by env/config)
+DEFAULT_CONF_TEMPLATE = _env('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
+DEFAULT_FIREWALL_RULES_TEMPLATE = _env('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
+
 install_root = _env("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")  # Local (controller/HA) paths
 state_root = _env("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl") 
 log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl") 
@@ -48,19 +52,6 @@ conf_dir = f"{state_root}/conf"
 services_dir = f"{state_root}/conf/services"
 
 service_prefix = _env("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
-
-remote_install_root = _env("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
-remote_state_root = _env("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
-remote_log_root = _env("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
-remote_temp_root = _env("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
-remote_systemd_root = _env("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
-remote_web_dir = f"{remote_install_root}/web"
-remote_scripts_dir = f"{remote_install_root}/scripts"
-remote_supervisor_dir = f"{remote_install_root}/supervisor"
-remote_state_dir = f"{remote_install_root}/state"
-remote_venv_dir = f"{remote_install_root}/venv"
-remote_conf_dir = f"{remote_state_root}/conf"
-remote_services_dir = f"{remote_state_root}/conf/services"
 
 remote_install_root = _env("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
 remote_state_root = _env("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
