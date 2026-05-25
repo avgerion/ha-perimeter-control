@@ -94,7 +94,7 @@ CONF_SERVICES = "services"     # List of enabled service IDs (legacy)
 
 DEFAULT_SSH_PORT = 22
 DEFAULT_API_PORT = 8080  # Supervisor API port
-
+DEFAULT_USER = "pi"
 
 
 # Paths (resolved once)
