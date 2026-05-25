@@ -11,6 +11,10 @@ PLATFORMS = [
 ]
 
 
+
+# Paths (resolved once)
+service_prefix = "PerimeterControl"
+
 # Unified service registry: all per-service config here
 SERVICE_REGISTRY = {
     os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
@@ -107,8 +111,6 @@ temp_root = os.environ.get("PERIMETER_TEMP_ROOT", "/tmp")
 systemd_root = os.environ.get("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system") 
 conf_dir = f"{state_root}/conf"
 services_dir = f"{state_root}/conf/services"
-
-service_prefix = os.environ.get("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
 
 remote_install_root = os.environ.get("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
 remote_state_root = os.environ.get("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
