@@ -10,6 +10,72 @@ PLATFORMS = [
     "light",
 ]
 
+
+# Unified service registry: all per-service config here
+SERVICE_REGISTRY = {
+    os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
+        "unit": f"{service_prefix}-dashboard",
+        "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
+        "template": "PerimeterControl-dashboard.service.template",
+        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
+        "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+        "is_default_dashboard": True,  # This service is the default dashboard for generic/fallback logic
+    },
+    os.environ.get("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
+        "unit": "PerimeterControl-photo-booth-dashboard",
+        "port": 8093,
+        "template": "PerimeterControl-photo-booth-dashboard.service.template",
+        "web_files": ["photo_booth_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": "config/templates/photo_booth_config.yaml",
+        "config_target": "photo-booth.yaml",
+        "deploy_api": None,
+    },
+    os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
+        "unit": "PerimeterControl-gpio-dashboard",
+        "port": 8095,
+        "template": "PerimeterControl-gpio-dashboard.service.template",
+        "web_files": ["gpio_control_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": "config/templates/gpio_control_config.yaml",
+        "config_target": "gpio-control.yaml",
+        "deploy_api": "http://127.0.0.1:8080/api/v1/capabilities/gpio_control/deploy",
+    },
+    os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
+        "unit": "PerimeterControl-ble-dashboard",
+        "port": 8091,
+        "template": "PerimeterControl-ble-dashboard.service.template",
+        "web_files": ["ble_gatt_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+    os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
+        "unit": "PerimeterControl-esl-dashboard",
+        "port": 8092,
+        "template": "PerimeterControl-esl-dashboard.service.template",
+        "web_files": ["esl_ap_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+    os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
+        "unit": "PerimeterControl-wildlife-dashboard",
+        "port": 8094,
+        "template": "PerimeterControl-wildlife-dashboard.service.template",
+        "web_files": ["wildlife_monitor_dashboard.py"],
+        "pip_packages": ["tornado"],
+        "config_template": None,
+        "config_target": None,
+        "deploy_api": None,
+    },
+}
+
 # List of all available service IDs (for Home Assistant integration compatibility)
 AVAILABLE_SERVICES = list(SERVICE_REGISTRY.keys())
 
@@ -26,38 +92,29 @@ DEFAULT_SSH_PORT = 22
 DEFAULT_API_PORT = 8080  # Supervisor API port
 
 
-"""Constants for Perimeter Control integration."""
-
-
-def _env(key, default):
-    return os.environ.get(key, default)
 
 # Paths (resolved once)
-install_root = _env("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")
-state_root = _env("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl")
-log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl")
-temp_root = _env("PERIMETER_TEMP_ROOT", "/tmp")
-systemd_root = _env("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system")
+
 
 # Default config template paths (can be overridden by env/config)
-DEFAULT_CONF_TEMPLATE = _env('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
-DEFAULT_FIREWALL_RULES_TEMPLATE = _env('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
+DEFAULT_CONF_TEMPLATE = os.environ.get('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
+DEFAULT_FIREWALL_RULES_TEMPLATE = os.environ.get('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
 
-install_root = _env("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")  # Local (controller/HA) paths
-state_root = _env("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl") 
-log_root = _env("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl") 
-temp_root = _env("PERIMETER_TEMP_ROOT", "/tmp") 
-systemd_root = _env("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system") 
+install_root = os.environ.get("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")  # Local (controller/HA) paths
+state_root = os.environ.get("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl") 
+log_root = os.environ.get("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl") 
+temp_root = os.environ.get("PERIMETER_TEMP_ROOT", "/tmp") 
+systemd_root = os.environ.get("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system") 
 conf_dir = f"{state_root}/conf"
 services_dir = f"{state_root}/conf/services"
 
-service_prefix = _env("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
+service_prefix = os.environ.get("PERIMETER_SERVICE_PREFIX", "PerimeterControl")
 
-remote_install_root = _env("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
-remote_state_root = _env("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
-remote_log_root = _env("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
-remote_temp_root = _env("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
-remote_systemd_root = _env("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
+remote_install_root = os.environ.get("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
+remote_state_root = os.environ.get("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
+remote_log_root = os.environ.get("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
+remote_temp_root = os.environ.get("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
+remote_systemd_root = os.environ.get("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
 remote_web_dir = f"{remote_install_root}/web"
 remote_scripts_dir = f"{remote_install_root}/scripts"
 remote_supervisor_dir = f"{remote_install_root}/supervisor"
@@ -66,70 +123,7 @@ remote_venv_dir = f"{remote_install_root}/venv"
 remote_conf_dir = f"{remote_state_root}/conf"
 remote_services_dir = f"{remote_state_root}/conf/services"
 
-# Unified service registry: all per-service config here
-SERVICE_REGISTRY = {
-    _env("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
-        "unit": f"{service_prefix}-dashboard",
-        "port": int(_env("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
-        "template": "PerimeterControl-dashboard.service.template",
-        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
-        "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
-        "config_template": None,
-        "config_target": None,
-        "deploy_api": None,
-        "is_default_dashboard": True,  # This service is the default dashboard for generic/fallback logic
-    },
-    _env("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
-        "unit": "PerimeterControl-photo-booth-dashboard",
-        "port": 8093,
-        "template": "PerimeterControl-photo-booth-dashboard.service.template",
-        "web_files": ["photo_booth_dashboard.py"],
-        "pip_packages": ["tornado"],
-        "config_template": "config/templates/photo_booth_config.yaml",
-        "config_target": "photo-booth.yaml",
-        "deploy_api": None,
-    },
-    _env("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
-        "unit": "PerimeterControl-gpio-dashboard",
-        "port": 8095,
-        "template": "PerimeterControl-gpio-dashboard.service.template",
-        "web_files": ["gpio_control_dashboard.py"],
-        "pip_packages": ["tornado"],
-        "config_template": "config/templates/gpio_control_config.yaml",
-        "config_target": "gpio-control.yaml",
-        "deploy_api": "http://127.0.0.1:8080/api/v1/capabilities/gpio_control/deploy",
-    },
-    _env("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
-        "unit": "PerimeterControl-ble-dashboard",
-        "port": 8091,
-        "template": "PerimeterControl-ble-dashboard.service.template",
-        "web_files": ["ble_gatt_dashboard.py"],
-        "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
-        "deploy_api": None,
-    },
-    _env("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
-        "unit": "PerimeterControl-esl-dashboard",
-        "port": 8092,
-        "template": "PerimeterControl-esl-dashboard.service.template",
-        "web_files": ["esl_ap_dashboard.py"],
-        "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
-        "deploy_api": None,
-    },
-    _env("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
-        "unit": "PerimeterControl-wildlife-dashboard",
-        "port": 8094,
-        "template": "PerimeterControl-wildlife-dashboard.service.template",
-        "web_files": ["wildlife_monitor_dashboard.py"],
-        "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
-        "deploy_api": None,
-    },
-}
+
 
 def iter_services():
     """
