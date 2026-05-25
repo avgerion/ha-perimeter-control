@@ -22,10 +22,8 @@ from .const import (
     CONF_SUPERVISOR_PORT,
     CONF_USER,
     DEFAULT_API_PORT,
-    DEFAULT_DASHBOARD_PORT,
     DEFAULT_SSH_PORT,
     DOMAIN,
-    SYSTEMD_SUPERVISOR,
 )
 from .deployer import DeployProgress, Deployer
 from .ssh_client import SshClient, SshConnectionError
@@ -87,10 +85,18 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return cast(asyncio.Task[Any], create_bg(coro, name))
         return cast(asyncio.Task[Any], self.hass.async_create_task(coro, name=name))
 
-    def _is_network_dashboard_selected(self) -> bool:
-        """Return whether the network dashboard service is selected for this entry."""
-        dashboard_service_id = "network_isolator"
-        return dashboard_service_id in set(self._selected_services)
+    def _get_default_dashboard_service_id(self) -> str | None:
+        """Return the service_id of the default dashboard service, or None if not found."""
+        from .const import SERVICE_REGISTRY
+        for sid, sinfo in SERVICE_REGISTRY.items():
+            if sinfo.get("is_default_dashboard"):
+                return sid
+        return None
+
+    def _is_default_dashboard_selected(self) -> bool:
+        """Return whether the default dashboard service is selected for this entry."""
+        default_id = self._get_default_dashboard_service_id()
+        return default_id in set(self._selected_services) if default_id else False
 
     @classmethod
     async def create(cls, hass: HomeAssistant, entry: ConfigEntry) -> PerimeterControlCoordinator:
@@ -149,10 +155,13 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception as _ap_exc:
                 _LOGGER.debug("Access profile push skipped at startup: %s", _ap_exc)
 
-            if not instance._is_network_dashboard_selected():
+            default_dashboard_id = instance._get_default_dashboard_service_id()
+            from .const import SERVICE_REGISTRY
+            dashboard_port = SERVICE_REGISTRY.get(default_dashboard_id, {}).get("port") if default_dashboard_id else None
+            if not instance._is_default_dashboard_selected():
                 _LOGGER.info(
-                    "Network dashboard service is not selected; skipping port %s health checks.",
-                    DEFAULT_DASHBOARD_PORT,
+                    "Default dashboard service is not selected; skipping port %s health checks.",
+                    dashboard_port,
                 )
                 instance._spawn_background_task(
                     instance._delayed_websocket_start(),
@@ -161,12 +170,9 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 # Also check if dashboard is healthy by testing a simple HTTP request
                 try:
-                    # Use the PerimeterControl dashboard port for health check
-                    import os
-                    dashboard_port = int(os.environ.get('PERIMETERCONTROL_DASHBOARD_PORT', DEFAULT_DASHBOARD_PORT))
-                    dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/"
+                    dashboard_url = f"http://{instance._entry.data[CONF_HOST]}:{dashboard_port}/" if dashboard_port else None
                     _LOGGER.debug("Dashboard health check URL: %s", dashboard_url)
-                    if not instance._http_session.closed:
+                    if dashboard_url and not instance._http_session.closed:
                         async with instance._http_session.get(dashboard_url) as resp:
                             if resp.status == 200:
                                 _LOGGER.info("Dashboard is also healthy. Both services running, skipping deployment.")
@@ -602,25 +608,33 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.warning("Cannot run supervisor recovery restart: SSH client not initialized")
             return
 
+        # Use the default dashboard service's unit name for supervisor restarts
+        from .const import SERVICE_REGISTRY
+        default_dashboard_id = self._get_default_dashboard_service_id()
+        unit_name = SERVICE_REGISTRY.get(default_dashboard_id, {}).get("unit") if default_dashboard_id else None
+        if not unit_name:
+            _LOGGER.warning("No default dashboard service unit found for supervisor recovery restart")
+            return
+
         try:
             # Clear systemd rate-limit counter so a fresh restart is allowed
             await self._client.async_run(
-                f"sudo systemctl reset-failed {SYSTEMD_SUPERVISOR} 2>/dev/null || true"
+                f"sudo systemctl reset-failed {unit_name} 2>/dev/null || true"
             )
-            await self._client.async_run(f"sudo systemctl restart {SYSTEMD_SUPERVISOR}")
+            await self._client.async_run(f"sudo systemctl restart {unit_name}")
             await asyncio.sleep(2)
             status = await self._client.async_run(
-                f"systemctl is-active {SYSTEMD_SUPERVISOR} 2>/dev/null || echo inactive"
+                f"systemctl is-active {unit_name} 2>/dev/null || echo inactive"
             )
             _LOGGER.warning("Supervisor recovery restart status: %s", status.strip())
         except Exception as exc:
             # Capture crash logs so the root cause is visible in HA logs
             try:
                 journal = await self._client.async_run(
-                    f"sudo journalctl -u {SYSTEMD_SUPERVISOR} -n 50 --no-pager 2>&1 || true"
+                    f"sudo journalctl -u {unit_name} -n 50 --no-pager 2>&1 || true"
                 )
                 status_out = await self._client.async_run(
-                    f"sudo systemctl status {SYSTEMD_SUPERVISOR} --no-pager 2>&1 || true"
+                    f"sudo systemctl status {unit_name} --no-pager 2>&1 || true"
                 )
                 _LOGGER.warning(
                     "Supervisor recovery restart failed: %s\nStatus:\n%s\nJournal:\n%s",
@@ -915,11 +929,21 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Last-resort fallback: publish a main dashboard URL on default dashboard port.
         # This ensures at least one clickable URL entity when API-provided links are not available yet.
         if not normalized_urls and (not selected_ids or "network_isolator" in selected_ids):
-            normalized_urls["network_isolator"] = f"http://{host}:{DEFAULT_DASHBOARD_PORT}/"
-            _LOGGER.warning(
-                "No service dashboard URLs were available; publishing fallback main dashboard URL: %s",
-                normalized_urls["network_isolator"],
-            )
+            from .const import SERVICE_REGISTRY
+            # Find the default dashboard service for fallback
+            default_dashboard_id = None
+            dashboard_port = None
+            for sid, sinfo in SERVICE_REGISTRY.items():
+                if sinfo.get("is_default_dashboard"):
+                    default_dashboard_id = sid
+                    dashboard_port = sinfo.get("port")
+                    break
+            if default_dashboard_id and dashboard_port:
+                normalized_urls[default_dashboard_id] = f"http://{host}:{dashboard_port}/"
+                _LOGGER.warning(
+                    "No service dashboard URLs were available; publishing fallback main dashboard URL: %s",
+                    normalized_urls[default_dashboard_id],
+                )
 
         for service_id, dashboard_url in normalized_urls.items():
             service = service_by_id.get(service_id, {})
@@ -951,7 +975,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "attributes": {
                     "service_id": service_id,
                     "service_name": service_name,
-                    "port": service.get("port", DEFAULT_DASHBOARD_PORT),
+                    "port": service.get("port"),
                     "access_mode": access_mode,
                     "status": service.get("status", "unknown"),
                     "url": dashboard_url,

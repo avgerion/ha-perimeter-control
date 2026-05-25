@@ -83,6 +83,7 @@ SERVICE_REGISTRY = {
         "config_template": None,
         "config_target": None,
         "deploy_api": None,
+        "is_default_dashboard": True,  # This service is the default dashboard for generic/fallback logic
     },
     _env("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
         "unit": "PerimeterControl-photo-booth-dashboard",
@@ -137,7 +138,14 @@ SERVICE_REGISTRY = {
 }
 
 def iter_services():
-    """Yield (service_id, service_info) for all known services."""
+    """
+    Yield (service_id, service_info) for all known services.
+    
+    Coordinator and all integration logic should be generic and treat all services equally.
+    If a service requires special handling (e.g., default dashboard, health check, etc.),
+    this MUST be indicated by a config flag in SERVICE_REGISTRY (e.g., 'is_default_dashboard').
+    Hardcoding service IDs in logic is not allowed.
+    """
     return SERVICE_REGISTRY.items()
 
 # System dependency groups (maps apt group tag → actual packages)
