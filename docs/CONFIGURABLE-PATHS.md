@@ -114,7 +114,7 @@ replace the instance rather than extending it. Preferred replacements are:
 
 - a constant in `const.py` or another single configuration module
 - a value loaded from `get_remote_path_config()` or an equivalent helper
-- metadata stored in `_DASHBOARD_SERVICE_DEFS`, `SERVICE_REGISTRY`, or a service descriptor
+- metadata stored in `_DASHBOARD_SERVICE_DEFS`, `SERVICE_REGISTRY` (always import from `const.py`), or a service descriptor
 
 The goal is that Python behavior comes from one resolved configuration source, not from repeated environment lookups spread across the codebase.
 

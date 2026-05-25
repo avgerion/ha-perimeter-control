@@ -33,7 +33,8 @@ from typing import Any, Optional
 
 from .base_deployer import BaseDeployer
 from .base_deployer import DeployProgress, ProgressCallback
-from .component_services import create_service, register_service_components, SERVICE_REGISTRY
+from .component_services import create_service, register_service_components
+from .const import SERVICE_REGISTRY
 from .service_framework import ComponentRegistry, hardware_registry
 from .const import (
     remote_temp_root,
