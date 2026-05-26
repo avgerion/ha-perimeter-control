@@ -24,6 +24,15 @@ logger = logging.getLogger(LOGGER_NAME)
 
 
 class DataManager:
+        def get_gpio_entities(self):
+            """Return a list of GPIO entities for the dashboard table. Stub: replace with real logic."""
+            # Example: [{"friendly_name": "Relay 1", "id": "switch.relay1", "state": "off"}]
+            return []
+
+        def get_ble_gatt_entities(self):
+            """Return a list of BLE GATT entities for the dashboard table. Stub: replace with real logic."""
+            # Example: [{"friendly_name": "BLE Sensor", "type": "sensor", "state": "on"}]
+            return []
     """Manages all data sources for the dashboard."""
     
     def __init__(self, config_path: Path):
