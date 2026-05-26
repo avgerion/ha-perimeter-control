@@ -64,6 +64,12 @@ WEB_FILES = [
     ("remote_services/dashboard_web/layouts.py",     f"{PERIMETERCONTROL_TMP_PATH}/layouts.py",     "web", "0644"),
     ("remote_services/dashboard_web/callbacks.py",   f"{PERIMETERCONTROL_TMP_PATH}/callbacks.py",   "web", "0644"),
     ("remote_services/dashboard_web/data_sources.py",f"{PERIMETERCONTROL_TMP_PATH}/data_sources.py","web", "0644"),
+    ("remote_services/dashboard_web/gpio_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/gpio_bokeh_dashboard.py", "web", "0644"),
+    ("remote_services/dashboard_web/ble_gatt_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/ble_gatt_bokeh_dashboard.py", "web", "0644"),
+    ("remote_services/dashboard_web/photo_booth_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/photo_booth_bokeh_dashboard.py", "web", "0644"),
+    ("remote_services/dashboard_web/gpio_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/gpio_bokeh_layouts.py", "web", "0644"),
+    ("remote_services/dashboard_web/ble_gatt_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/ble_gatt_bokeh_layouts.py", "web", "0644"),
+    ("remote_services/dashboard_web/photo_booth_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/photo_booth_bokeh_layouts.py", "web", "0644"),
 ]
 
 SCRIPT_FILES = [
