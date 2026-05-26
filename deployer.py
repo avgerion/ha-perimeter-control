@@ -148,40 +148,59 @@ class Deployer(BaseDeployer):
             else:
                 _LOGGER.warning(f"No component service for {service_id}, will use legacy deployment")
 
+
     async def async_deploy(self) -> bool:
         """Run service-aware deployment using specialized deployers."""
         deployment_id = id(self)
         _LOGGER.warning("=== SERVICE-AWARE DEPLOYMENT STARTED === (ID: %s)", deployment_id)
         _LOGGER.info("Deploying services: %s", self._selected_services)
-        
+
         try:
+            # Phase 0: Stop all managed services before deployment
+            _LOGGER.info("Phase 0: Stop managed services (ID: %s)", deployment_id)
+            await self._phase_stop_services()
+
             # Phase 1: Service Selection & Validation
             _LOGGER.info("Phase 1: Service selection and validation (ID: %s)", deployment_id)
             await self._phase_service_selection()
-            
+
             # Phase 2: Service-Specific Deployment
             _LOGGER.info("Phase 2: Service-specific deployments (ID: %s)", deployment_id)
             await self._phase_service_deployment()
-            
+
             # Phase 3: Supervisor Installation
             _LOGGER.info("Phase 3: Install supervisor (ID: %s)", deployment_id)
             await self._phase_supervisor()
-            
+
             # Phase 4: Service Restart
             _LOGGER.info("Phase 4: Restart services (ID: %s)", deployment_id)
             await self._phase_restart()
-            
+
             # Phase 5: Service Verification
             _LOGGER.info("Phase 5: Verify deployment (ID: %s)", deployment_id)
             await self._phase_verify()
-            
+
             _LOGGER.warning("=== SERVICE-AWARE DEPLOYMENT COMPLETED === (ID: %s)", deployment_id)
             return True
-            
+
         except Exception as exc:
             _LOGGER.error("Service-aware deployment failed (ID: %s): %s", deployment_id, exc)
             self._emit_error("service_deploy", f"Service deployment error: {exc}")
             return False
+
+    async def _phase_stop_services(self) -> None:
+        """Stop all managed systemd services before deployment."""
+        self._emit("stop", "Stopping managed services before deployment...", 2)
+        # Collect all units from SERVICE_REGISTRY (including supervisor)
+        all_units = {info.get("unit") for info in SERVICE_REGISTRY.values() if info.get("unit")}
+        all_units.add("perimetercontrol-supervisor")
+        for unit in sorted(u for u in all_units if u):
+            try:
+                await self._client.async_run(f"sudo systemctl stop {unit} 2>/dev/null || true")
+                _LOGGER.info("Stopped service: %s", unit)
+            except Exception as exc:
+                _LOGGER.warning("Failed to stop service %s: %s", unit, exc)
+        self._emit("stop", "All managed services stopped (if running)", 3)
 
     async def _phase_service_selection(self) -> None:
         """Validate service selection and check for conflicts using component architecture."""
