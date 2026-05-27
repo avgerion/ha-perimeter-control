@@ -1,35 +1,3 @@
-#!/usr/bin/env python3
-"""
-Start Packet Capture for a Device
-
-This script is called when a new device connects to the AP.
-It starts a tcpdump instance specific to that device's MAC address.
-
-Usage:
-    python3 start-capture.py --mac AA:BB:CC:DD:EE:FF --device-id my-camera
-
-The capture service (isolator-capture@.service) will be started with the device ID.
-"""
-
-
-import argparse
-import subprocess
-import logging
-import sys
-from pathlib import Path
-import os
-
-# ---------------- Configurable Constants ----------------
-SERVICE_TEMPLATE = os.environ.get('PERIMETERCONTROL_CAPTURE_SERVICE_TEMPLATE', 'perimetercontrol-capture@{mac}.service')
-LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.start-capture')
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
-logger = logging.getLogger(LOGGER_NAME)
-
-
 def normalize_mac(mac: str) -> str:
     """
     Normalize MAC address for use in systemd service name.

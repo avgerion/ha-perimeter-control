@@ -21,7 +21,16 @@ SERVICE_REGISTRY = {
         "unit": f"{service_prefix}-dashboard",
         "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
         "template": "PerimeterControl-dashboard.service.template",
-        "web_files": ["dashboard.py", "layouts.py", "callbacks.py", "data_sources.py"],
+        "web_files": [
+            "dashboard_web/network_isolator_dashboard.py",
+            "dashboard_web/network_isolator_layouts.py",
+            "dashboard_web/network_isolator_callbacks.py"
+        ],
+        "script_files": [
+            "network_isolator/apply-rules.py",
+            "network_isolator/network-topology.py",
+            "network_isolator/topology_config.py"
+        ],
         "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
         "config_template": None,
         "config_target": None,
@@ -33,6 +42,7 @@ SERVICE_REGISTRY = {
         "port": 8093,
         "template": "PerimeterControl-photo-booth-dashboard.service.template",
         "web_files": ["photo_booth_dashboard.py"],
+        "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/photo_booth_config.yaml",
         "config_target": "photo-booth.yaml",
@@ -42,7 +52,8 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-gpio-dashboard",
         "port": 8095,
         "template": "PerimeterControl-gpio-dashboard.service.template",
-        "web_files": ["gpio_control_dashboard.py"],
+        "web_files": ["scripts/gpio_control/gpio_control_dashboard.py"],
+        "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/gpio_control_config.yaml",
         "config_target": "gpio-control.yaml",
@@ -53,6 +64,13 @@ SERVICE_REGISTRY = {
         "port": 8091,
         "template": "PerimeterControl-ble-dashboard.service.template",
         "web_files": ["ble_gatt_dashboard.py"],
+        "script_files": [
+            "ble_gatt_repeater/ble-gatt-mirror.py",
+            "ble_gatt_repeater/ble-proxy-profiler.py",
+            "ble_gatt_repeater/ble-scanner-v2.py",
+            "ble_gatt_repeater/ble-scanner.py",
+            "ble_gatt_repeater/ble-sniffer.py"
+        ],
         "pip_packages": ["tornado"],
         "config_template": None,
         "config_target": None,
@@ -63,6 +81,7 @@ SERVICE_REGISTRY = {
         "port": 8092,
         "template": "PerimeterControl-esl-dashboard.service.template",
         "web_files": ["esl_ap_dashboard.py"],
+        "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": None,
         "config_target": None,
@@ -73,6 +92,7 @@ SERVICE_REGISTRY = {
         "port": 8094,
         "template": "PerimeterControl-wildlife-dashboard.service.template",
         "web_files": ["wildlife_monitor_dashboard.py"],
+        "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": None,
         "config_target": None,
@@ -80,6 +100,9 @@ SERVICE_REGISTRY = {
     },
 }
 
+    # Supervisor deployment is handled as a special case in deployment logic and is NOT included as a service in SERVICE_REGISTRY.
+    # This avoids confusion and keeps SERVICE_REGISTRY focused on dashboard/capability services only.
+    # See deployer.py for supervisor deployment logic.
 # List of all available service IDs (for Home Assistant integration compatibility)
 AVAILABLE_SERVICES = list(SERVICE_REGISTRY.keys())
 

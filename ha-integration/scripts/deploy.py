@@ -58,29 +58,23 @@ from const import (
 PERIMETERCONTROL_SUPERVISOR_SERVICE = f"{service_prefix}-supervisor"
 PERIMETERCONTROL_DASHBOARD_SERVICE = f"{service_prefix}-dashboard"
 
-# ── Repo layout (relative to repo root) ─────────────────────────────────────
-WEB_FILES = [
-    ("remote_services/dashboard_web/dashboard.py",   f"{PERIMETERCONTROL_TMP_PATH}/dashboard.py",   "web", "0644"),
-    ("remote_services/dashboard_web/layouts.py",     f"{PERIMETERCONTROL_TMP_PATH}/layouts.py",     "web", "0644"),
-    ("remote_services/dashboard_web/callbacks.py",   f"{PERIMETERCONTROL_TMP_PATH}/callbacks.py",   "web", "0644"),
-    ("remote_services/dashboard_web/data_sources.py",f"{PERIMETERCONTROL_TMP_PATH}/data_sources.py","web", "0644"),
-    ("remote_services/dashboard_web/gpio_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/gpio_bokeh_dashboard.py", "web", "0644"),
-    ("remote_services/dashboard_web/ble_gatt_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/ble_gatt_bokeh_dashboard.py", "web", "0644"),
-    ("remote_services/dashboard_web/photo_booth_bokeh_dashboard.py", f"{PERIMETERCONTROL_TMP_PATH}/photo_booth_bokeh_dashboard.py", "web", "0644"),
-    ("remote_services/dashboard_web/gpio_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/gpio_bokeh_layouts.py", "web", "0644"),
-    ("remote_services/dashboard_web/ble_gatt_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/ble_gatt_bokeh_layouts.py", "web", "0644"),
-    ("remote_services/dashboard_web/photo_booth_bokeh_layouts.py", f"{PERIMETERCONTROL_TMP_PATH}/photo_booth_bokeh_layouts.py", "web", "0644"),
-]
+# ── Canonical deployable files from SERVICE_REGISTRY (const.py) ─────────────
+from const import SERVICE_REGISTRY
 
-SCRIPT_FILES = [
-    ("scripts/ble-scanner-v2.py",      f"{PERIMETERCONTROL_TMP_PATH}/ble-scanner-v2.py",      "scripts", "0755"),
-    ("scripts/ble-sniffer.py",         f"{PERIMETERCONTROL_TMP_PATH}/ble-sniffer.py",          "scripts", "0755"),
-    ("scripts/ble-proxy-profiler.py",  f"{PERIMETERCONTROL_TMP_PATH}/ble-proxy-profiler.py",   "scripts", "0755"),
-    ("scripts/ble-gatt-mirror.py",     f"{PERIMETERCONTROL_TMP_PATH}/ble-gatt-mirror.py",      "scripts", "0755"),
-    ("scripts/apply-rules.py",         f"{PERIMETERCONTROL_TMP_PATH}/apply-rules.py",          "scripts", "0755"),
-    ("scripts/network-topology.py",    f"{PERIMETERCONTROL_TMP_PATH}/network-topology.py",     "scripts", "0755"),
-    ("scripts/topology_config.py",     f"{PERIMETERCONTROL_TMP_PATH}/topology_config.py",      "scripts", "0644"),
-]
+WEB_FILES = []
+SCRIPT_FILES = []
+for service_info in SERVICE_REGISTRY.values():
+    for fname in service_info.get("web_files", []):
+        WEB_FILES.append((fname, f"{PERIMETERCONTROL_TMP_PATH}/" + fname.split("/")[-1], "web", "0644"))
+    for fname in service_info.get("script_files", []):
+        # Use 0755 for .py scripts, 0644 for .yaml/.conf, else default to 0755
+        if fname.endswith(".py"):
+            mode = "0755"
+        elif fname.endswith((".yaml", ".yml", ".conf")):
+            mode = "0644"
+        else:
+            mode = "0755"
+        SCRIPT_FILES.append((fname, f"{PERIMETERCONTROL_TMP_PATH}/" + fname.split("/")[-1], "scripts", mode))
 
 # ── Supervisor pip packages ───────────────────────────────────────────────────
 SUPERVISOR_PIP = ["aiohttp", "psutil", "python-json-logger"]

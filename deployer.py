@@ -659,35 +659,28 @@ class Deployer(BaseDeployer):
 
 def _build_install_script() -> str:
     """Build the remote install script for Phase 3."""
-    web_files = [
-        ("dashboard.py", remote_web_dir, "0644"),
-        ("layouts.py", remote_web_dir, "0644"),
-        ("callbacks.py", remote_web_dir, "0644"),
-        ("data_sources.py", remote_web_dir, "0644"),
-        ("photo_booth_dashboard.py", remote_web_dir, "0644"),
-        ("gpio_control_dashboard.py", remote_web_dir, "0644"),
-        ("ble_gatt_dashboard.py", remote_web_dir, "0644"),
-        ("esl_ap_dashboard.py", remote_web_dir, "0644"),
-        ("wildlife_monitor_dashboard.py", remote_web_dir, "0644"),
-    ]
-    script_files = [
-        ("ble-scanner-v2.py", remote_scripts_dir, "0755"),
-        ("ble-sniffer.py", remote_scripts_dir, "0755"),
-        ("ble-debug.sh", remote_scripts_dir, "0755"),
-        ("ble-proxy-profiler.py", remote_scripts_dir, "0755"),
-        ("ble-gatt-mirror.py", remote_scripts_dir, "0755"),
-        ("apply-rules.py", remote_scripts_dir, "0755"),
-        ("network-topology.py", remote_scripts_dir, "0755"),
-        ("topology_config.py", remote_scripts_dir, "0644"),
-    ]
-    
+    # Dynamically collect all web_files and script_files from SERVICE_REGISTRY
+    file_entries = []
+    for service_info in SERVICE_REGISTRY.values():
+        for fname in service_info.get("web_files", []):
+            file_entries.append((fname, remote_web_dir, "0644"))
+        for fname in service_info.get("script_files", []):
+            # Use 0755 for .py scripts, 0644 for .yaml/.conf, else default to 0755
+            if fname.endswith(".py"):
+                mode = "0755"
+            elif fname.endswith(('.yaml', '.yml', '.conf')):
+                mode = "0644"
+            else:
+                mode = "0755"
+            file_entries.append((fname, remote_scripts_dir, mode))
+
     # Use the configurable install commands
     lines = ["set -e"] + _get_install_commands()
-    
-    for fname, dest, mode in web_files + script_files:
+    for fname, dest, mode in file_entries:
+        base = fname.split("/")[-1]
         lines.append(
-            f"[ -f {remote_temp_root}/{fname} ] && sudo install -o root -g root -m {mode} "
-            f"{remote_temp_root}/{fname} {dest}/{fname} || true"
+            f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
+            f"{remote_temp_root}/{base} {dest}/{base} || true"
         )
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)

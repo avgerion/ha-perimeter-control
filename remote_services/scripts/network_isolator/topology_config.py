@@ -1,12 +1,3 @@
-#!/usr/bin/env python3
-"""Helpers for resolving network topology from perimetercontrol.conf.yaml."""
-
-from __future__ import annotations
-
-import ipaddress
-from typing import Any, Dict
-
-
 def resolve_topology(config: Dict[str, Any]) -> Dict[str, Any]:
     topology = config.get("topology", {}) or {}
     upstream = topology.get("upstream", {}) or {}

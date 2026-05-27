@@ -1,12 +1,19 @@
+"""
+BLE GATT Repeater service-specific layouts.
+Move all logic from layouts.py that is specific to ble_gatt_repeater here.
+"""
+
+
 from bokeh.layouts import column
 from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
+from .ble_gatt_repeater_callbacks import get_ble_gatt_entities
 
-def create_ble_gatt_dashboard_layout(data_manager):
+def create_ble_gatt_repeater_dashboard_layout(data_manager):
     """
     Bokeh layout for BLE GATT dashboard, with entity table.
     """
     header = Div(text="<h1>BLE GATT Repeater Dashboard</h1>")
-    entities = data_manager.get_ble_gatt_entities() if hasattr(data_manager, 'get_ble_gatt_entities') else []
+    entities = get_ble_gatt_entities(data_manager.config)
     columns = [
         TableColumn(field="friendly_name", title="Name"),
         TableColumn(field="type", title="Type"),

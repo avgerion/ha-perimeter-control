@@ -1,12 +1,16 @@
+"""
+GPIO Control service-specific layouts.
+Move all logic from layouts.py that is specific to gpio_control here.
+"""
+
 from bokeh.layouts import column
 from bokeh.models import Div, Button, DataTable, TableColumn, ColumnDataSource
 
-def create_gpio_dashboard_layout(data_manager):
+def create_gpio_control_dashboard_layout(data_manager):
     """
     Bokeh layout for GPIO dashboard, with entity table and diagnostics.
     """
     header = Div(text="<h1>GPIO Control Dashboard</h1>")
-    # Fetch entities from supervisor
     entities = data_manager.get_gpio_entities() if hasattr(data_manager, 'get_gpio_entities') else []
     columns = [
         TableColumn(field="friendly_name", title="Name"),
@@ -15,7 +19,6 @@ def create_gpio_dashboard_layout(data_manager):
     ]
     source = ColumnDataSource(entities)
     table = DataTable(source=source, columns=columns, width=600)
-    # Diagnostic panel if no entities
     diagnostics = Div(text="")
     if not entities:
         diagnostics.text = """

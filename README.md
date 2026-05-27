@@ -61,6 +61,50 @@ ha-perimeter-control/
 └── 📄 README.md                           # This file
 ```
 
+
+## 🔑 Unified YAML-Only Multi-Instance Configuration
+
+All configuration is now managed in a single YAML file, with **no environment variables required** for service configuration. The schema supports multiple instances of each service type, and is compatible with both Home Assistant and Pi deployments.
+
+**Example:**
+
+```yaml
+supervisor_api_url: http://192.168.111.1:8080/api/v1
+
+services:
+  network_isolator:
+    networkIsolator1:
+      topology:
+        upstream:
+          interface: eth0
+          kind: ethernet
+        isolated:
+          interface: wlan0
+          kind: wifi-ap
+      devices: [...]
+    networkIsolator2:
+      topology:
+        upstream:
+          interface: eth1
+          kind: ethernet
+        isolated:
+          interface: wlan1
+          kind: wifi-ap
+      devices: [...]
+  photo_booth:
+    booth1:
+      camera_device: /dev/video0
+    booth2:
+      camera_device: /dev/video2
+```
+
+**Key points:**
+- All service configuration is in YAML, under the `services:` section, with one or more named instances per service type.
+- No environment variables are used for service configuration or systemd templates.
+- At deployment, the correct instance config is extracted and written to the Pi for each service instance.
+- Home Assistant and Pi code both use the same schema and config structure.
+
+---
 ## 🚀 **Dual Deployment System**
 
 This integration provides **two deployment methods** for setting up fresh Pi nodes:

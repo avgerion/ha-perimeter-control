@@ -1,20 +1,3 @@
-#!/usr/bin/env python3
-"""Prepare and inspect resolved network topology for the isolator."""
-
-from __future__ import annotations
-
-import argparse
-import json
-import shlex
-import subprocess
-import sys
-from pathlib import Path
-
-import yaml
-
-from topology_config import resolve_topology, validate_topology
-
-
 def _load_config(path: Path):
     with open(path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}

@@ -4,6 +4,50 @@ This guide walks through setting up a **Raspberry Pi target device** from scratc
 
 > **Important**: This Pi device (e.g., `192.168.50.47`) is separate from your Home Assistant server. The HA integration will deploy services to this Pi via SSH.
 
+
+## ⚠️ Unified YAML-Only Multi-Instance Configuration
+
+All configuration is now managed in a single YAML file, with **no environment variables required** for service configuration. The schema supports multiple instances of each service type, and is compatible with both Home Assistant and Pi deployments.
+
+**Example:**
+
+```yaml
+supervisor_api_url: http://192.168.111.1:8080/api/v1
+
+services:
+  network_isolator:
+    networkIsolator1:
+      topology:
+        upstream:
+          interface: eth0
+          kind: ethernet
+        isolated:
+          interface: wlan0
+          kind: wifi-ap
+      devices: [...]
+    networkIsolator2:
+      topology:
+        upstream:
+          interface: eth1
+          kind: ethernet
+        isolated:
+          interface: wlan1
+          kind: wifi-ap
+      devices: [...]
+  photo_booth:
+    booth1:
+      camera_device: /dev/video0
+    booth2:
+      camera_device: /dev/video2
+```
+
+**Key points:**
+- All service configuration is in YAML, under the `services:` section, with one or more named instances per service type.
+- No environment variables are used for service configuration or systemd templates.
+- At deployment, the correct instance config is extracted and written to the Pi for each service instance.
+- Home Assistant and Pi code both use the same schema and config structure.
+
+---
 ## Device Architecture
 
 ```

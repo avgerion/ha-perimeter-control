@@ -19,8 +19,7 @@ from bokeh.plotting import figure
 from bokeh.transform import linear_cmap
 
 # ---------------- Configurable Constants ----------------
-LOGGER_NAME = os.environ.get('PERIMETERCONTROL_LOGGER', 'perimetercontrol.layouts')
-
+LOGGER_NAME = 'perimetercontrol.layouts'
 logger = logging.getLogger(LOGGER_NAME)
 
 

@@ -9,9 +9,7 @@ User=root
 Group=root
 WorkingDirectory={WEB_DIR}
 Environment="PYTHONUNBUFFERED=1"
-Environment="PERIMETERCONTROL_SUPERVISOR_API=http://127.0.0.1:8080/api/v1"
-Environment="PERIMETERCONTROL_WILDLIFE_DASHBOARD_PORT=8094"
-Environment="LOG_ROOT={LOG_ROOT}"
+# All runtime configuration is now loaded from YAML config files, not environment variables.
 ExecStart={VENV}/bin/python3 {WEB_DIR}/wildlife_monitor_dashboard.py
 Restart=on-failure
 RestartSec=10
