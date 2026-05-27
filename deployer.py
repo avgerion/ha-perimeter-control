@@ -1,22 +1,22 @@
-"""Service-aware deployer orchestrating specialized service deployers.
+"""
+Service-aware deployer using a unified, config-driven approach.
 
-import logging
+This deployer iterates over the SERVICE_REGISTRY, which defines all deployable services,
+their files, dependencies, and configuration in a single source of truth.
 
-
-Uses service-specific deployers to handle deployment of individual capabilities:
-- BLE GATT Repeater (ble_deployer.py)  
-- PerimeterControl Network Service (network_deployer.py)
-- Photo Booth (camera_deployer.py)
-- Wildlife Monitor (wildlife_deployer.py)
-- ESL AP (esl_deployer.py)
+All deployment logic is now generic and driven by the SERVICE_REGISTRY and component_services.py.
+There are no longer any individual service-specific deployers (e.g. ble_deployer.py, camera_deployer.py, etc.).
+All service composition, dependencies, and hardware requirements are handled by the component-based model.
 
 Phases:
-  1. service_selection — determine which services to deploy
-  2. service_preflight — run service-specific preflight checks
-  3. service_deploy    — deploy each service with its specialized deployer
-  4. supervisor        — install supervisor package + service unit  
-  5. restart           — restart systemd services
-  6. verify            — poll service health
+    1. service_selection — determine which services to deploy (from SERVICE_REGISTRY)
+    2. service_preflight — run generic and component-based preflight checks
+    3. service_deploy    — deploy each service using the config/component model
+    4. supervisor        — install supervisor package + service unit
+    5. restart           — restart systemd services
+    6. verify            — poll service health
+
+Note: SERVICE_REGISTRY is imported only for config data; all service logic is handled by the component_services.py model.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from typing import Any, Optional
 from .base_deployer import BaseDeployer
 from .base_deployer import DeployProgress, ProgressCallback
 from .component_services import create_service, register_service_components
-from .const import SERVICE_REGISTRY
+
 from .service_framework import ComponentRegistry, hardware_registry
 from .const import (
     remote_temp_root,
@@ -48,7 +48,7 @@ from .const import (
     remote_state_root,
     get_remote_install_directories,
     SERVICE_REGISTRY,
-    INTEGRATION_DIR,
+    DASHBOARD_WEB_DIR,
 )
 
 from pathlib import Path
@@ -101,6 +101,7 @@ async def _render_service_template(template_path: Path) -> str:
         "SUPERVISOR_DIR": remote_supervisor_dir,
         "LOG_ROOT": remote_log_root,
         "STATE_ROOT": remote_state_root,
+        "VENV": remote_venv_dir,
     }
     try:
         return template_content.format(**path_config)
@@ -270,7 +271,7 @@ class Deployer(BaseDeployer):
         # All template/config info is now in SERVICE_REGISTRY in const.py
         
         total_services = len(self._selected_services)
-        deployment_path = Path("/tmp/perimeter_deployment")
+        deployment_path = Path(remote_temp_root)
         
         for i, service_id in enumerate(self._selected_services):
             base_progress = 15 + int(60 * i / total_services)  # Services take 15-75% of total
@@ -340,7 +341,6 @@ class Deployer(BaseDeployer):
         config_files = ["perimeterControl.conf.yaml"]
         await self.phase_config(config_files)
         
-        # gpio_control expects /mnt/PerimeterControl/conf/gpio-control.yaml.
         # Ensure a baseline config is present even when using legacy deployment.
         # Use config_template and config_target from SERVICE_REGISTRY if present
         service_info = SERVICE_REGISTRY.get(service_id, {})
@@ -358,7 +358,7 @@ class Deployer(BaseDeployer):
 
     async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
         """Upload a template config file to the remote runtime config directory."""
-        template_path = INTEGRATION_DIR / template_rel_path
+        template_path = Path(template_rel_path)
         if not template_path.exists():
             _LOGGER.warning("Template config not found, skipping: %s", template_path)
             return
@@ -386,25 +386,22 @@ class Deployer(BaseDeployer):
                 selected_dashboard_templates.append(service_info["template"])
 
         for name in sorted(set(selected_dashboard_files)):
-            src = Path(remote_web_dir) / name
+            # Use canonical dashboard source location for dashboard files
+            if name.startswith("dashboard_web/"):
+                src = DASHBOARD_WEB_DIR / name.split("dashboard_web/")[1]
+            else:
+                src = Path(name)
             if src.exists() and src.suffix == ".py":
                 _validate_python_file_syntax(src)
-        
-        # For now, keep the existing supervisor installation logic
-        # but use base deployer where possible
-        supervisor_src = INTEGRATION_DIR / "remote_services/supervisor"
-        if not supervisor_src.exists():
-            _LOGGER.warning("Supervisor source directory not found at %s — skipping supervisor phase", supervisor_src)
-            return
-        if not supervisor_src.exists():
-            _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
-            return
 
         # Upload selected dashboard web files.
         if selected_dashboard_files:
             self._emit("supervisor", "Deploying dashboard web files...", 77)
             for _fname in sorted(set(selected_dashboard_files)):
-                _src = Path(remote_web_dir) / _fname
+                if _fname.startswith("dashboard_web/"):
+                    _src = DASHBOARD_WEB_DIR / _fname.split("dashboard_web/")[1]
+                else:
+                    _src = Path(_fname)
                 if _src.exists():
                     await self._client.async_put_file(_src, f"{remote_temp_root}/{_fname}")
                 else:

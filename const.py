@@ -17,6 +17,8 @@ INTEGRATION_DIR = Path(__file__).parent
 # Paths (resolved once)
 service_prefix = "PerimeterControl"
 
+## Canonical dashboard source directory (relative to integration dir)
+DASHBOARD_WEB_DIR = INTEGRATION_DIR / "dashboard_web"
 # Unified service registry: all per-service config here
 SERVICE_REGISTRY = {
     os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
