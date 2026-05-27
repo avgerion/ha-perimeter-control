@@ -392,7 +392,10 @@ class Deployer(BaseDeployer):
         
         # For now, keep the existing supervisor installation logic
         # but use base deployer where possible
-        supervisor_src = Path(remote_supervisor_dir)
+        supervisor_src = INTEGRATION_DIR / "remote_services/supervisor"
+        if not supervisor_src.exists():
+            _LOGGER.warning("Supervisor source directory not found at %s — skipping supervisor phase", supervisor_src)
+            return
         if not supervisor_src.exists():
             _LOGGER.warning("supervisor_files/ not found in component dir — skipping supervisor phase")
             return

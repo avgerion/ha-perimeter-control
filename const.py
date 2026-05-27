@@ -34,8 +34,8 @@ SERVICE_REGISTRY = {
             "network_isolator/topology_config.py"
         ],
         "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
-        "config_template": None,
-        "config_target": None,
+        "config_template": "config/templates/network_isolator.conf.yaml",
+        "config_target": "network-isolator.yaml",
         "deploy_api": None,
         "is_default_dashboard": True,  # This service is the default dashboard for generic/fallback logic
     },
@@ -74,8 +74,8 @@ SERVICE_REGISTRY = {
             "ble_gatt_repeater/ble-sniffer.py"
         ],
         "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
+        "config_template": "config/templates/ble_config.yaml",
+        "config_target": "ble-gatt-repeater.yaml",
         "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
@@ -85,8 +85,8 @@ SERVICE_REGISTRY = {
         "web_files": ["esl_ap_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
+        "config_template": "config/templates/esl_config.yaml",
+        "config_target": "esl-ap.yaml",
         "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
@@ -96,8 +96,8 @@ SERVICE_REGISTRY = {
         "web_files": ["wildlife_monitor_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": None,
-        "config_target": None,
+        "config_template": "config/templates/wildlife_config.yaml",
+        "config_target": "wildlife-monitor.yaml",
         "deploy_api": None,
     },
 }
@@ -129,13 +129,6 @@ DEFAULT_USER = "pi"
 DEFAULT_CONF_TEMPLATE = os.environ.get('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
 DEFAULT_FIREWALL_RULES_TEMPLATE = os.environ.get('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
 
-install_root = os.environ.get("PERIMETER_INSTALL_ROOT", "/opt/PerimeterControl")  # Local (controller/HA) paths
-state_root = os.environ.get("PERIMETER_STATE_ROOT", "/mnt/PerimeterControl") 
-log_root = os.environ.get("PERIMETER_LOG_ROOT", "/var/log/PerimeterControl") 
-temp_root = os.environ.get("PERIMETER_TEMP_ROOT", "/tmp") 
-systemd_root = os.environ.get("PERIMETER_SYSTEMD_ROOT", "/etc/systemd/system") 
-conf_dir = f"{state_root}/conf"
-services_dir = f"{state_root}/conf/services"
 
 remote_install_root = os.environ.get("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
 remote_state_root = os.environ.get("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
@@ -191,19 +184,6 @@ def get_remote_path_config() -> dict[str, str]:
         "SERVICE_PREFIX": service_prefix,
     }.items() if v is not None}
 
-def get_local_install_directories() -> list[str]:
-    """Get list of all local directories that need to be created during installation (controller/HA)."""
-    # Only use defined variables, filter out None
-    dirs = [
-        install_root,
-        state_root,
-        conf_dir,
-        services_dir,
-        log_root,
-        temp_root,
-        systemd_root,
-    ]
-    return [d for d in dirs if d is not None]
 
 def get_remote_install_directories() -> list[str]:
     """Get list of all remote directories that need to be created during installation (on Pi)."""
