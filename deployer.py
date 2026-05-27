@@ -48,6 +48,7 @@ from .const import (
     remote_state_root,
     get_remote_install_directories,
     SERVICE_REGISTRY,
+    INTEGRATION_DIR,
 )
 
 from pathlib import Path
@@ -357,7 +358,7 @@ class Deployer(BaseDeployer):
 
     async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
         """Upload a template config file to the remote runtime config directory."""
-        template_path = Path(remote_conf_dir).parent.parent / template_rel_path
+        template_path = INTEGRATION_DIR / template_rel_path
         if not template_path.exists():
             _LOGGER.warning("Template config not found, skipping: %s", template_path)
             return

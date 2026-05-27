@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 DOMAIN = "perimeter_control"
 PLATFORMS = [
@@ -12,6 +13,7 @@ PLATFORMS = [
 
 
 
+INTEGRATION_DIR = Path(__file__).parent
 # Paths (resolved once)
 service_prefix = "PerimeterControl"
 
