@@ -1,7 +1,7 @@
 # Photo Booth Configuration
 camera:
   device: 0
-  resolution: [ 1920, 1080 ]
+  resolution: [1920, 1080]
   fps: 30
 motion:
   sensitivity: 0.6
@@ -9,3 +9,13 @@ motion:
 storage:
   path: "/var/lib/photo_booth"
   max_photos: 1000
+
+dashboard:
+  server:
+    host: "0.0.0.0"
+    port: 8093
+    type: "bokeh"
+  features:
+    live_stream: true
+    motion_detection: true
+    manual_capture: true

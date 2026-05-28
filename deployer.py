@@ -33,9 +33,9 @@ from typing import Any, Optional
 
 from .base_deployer import BaseDeployer
 from .base_deployer import DeployProgress, ProgressCallback
-from .component_services import create_service, register_service_components
+from remote_services.service_components.component_services import create_service, register_service_components
 
-from .service_framework import ComponentRegistry, hardware_registry
+from remote_services.service_components.service_framework import ComponentRegistry, hardware_registry
 from .const import (
     remote_temp_root,
     remote_web_dir,
@@ -49,7 +49,8 @@ from .const import (
     get_remote_install_directories,
     SERVICE_REGISTRY,
     DASHBOARD_WEB_DIR,
-    SUPERVISOR_SRC_DIR
+    SUPERVISOR_SRC_DIR,
+    TEMPLATES_DIR,
 )
 
 from pathlib import Path
@@ -359,9 +360,12 @@ class Deployer(BaseDeployer):
 
     async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
         """Upload a template config file to the remote runtime config directory."""
-        template_path = Path(template_rel_path)
+        # Always resolve config templates using TEMPLATES_DIR for robustness
+
+        template_name = Path(template_rel_path).name
+        template_path = TEMPLATES_DIR / template_name
         if not template_path.exists():
-            _LOGGER.error("Template config not found, skipping: %s (cwd=%s)", template_path, os.getcwd())
+            _LOGGER.error("Service config not found, skipping: %s (cwd=%s)", template_path, os.getcwd())
             return
 
         await self._client.async_put_file(template_path, f"{remote_temp_root}/{target_name}")

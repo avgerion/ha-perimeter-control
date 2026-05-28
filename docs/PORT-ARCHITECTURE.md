@@ -158,7 +158,7 @@ DEFAULT_DASHBOARD_PORT = 5006    # Network Isolator dashboard port
 **Likely Cause**: Port configuration mismatch between service descriptor and component config
 
 **Solutions**:
-- Verify `dashboard_config.yaml` port matches service descriptor port
+
 - Check component service implementations for correct port assignments
 - Ensure no port conflicts between services
 

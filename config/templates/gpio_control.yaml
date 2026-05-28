@@ -1,6 +1,4 @@
-# GPIO Control capability configuration
-# Copy to /mnt/PerimeterControl/conf/gpio-control.yaml on the Pi.
-
+# GPIO Control Service Configuration
 pins:
   - id: relay1
     gpio_pin: 17
@@ -16,3 +14,14 @@ pins:
     active_high: true
     initial_state: on
     initial_brightness: 255
+
+dashboard:
+  server:
+    host: "0.0.0.0"
+    port: 8095
+    type: "bokeh"
+  features:
+    pin_status: true
+    relay_control: true
+    led_control: true
+  data_refresh_interval: 10

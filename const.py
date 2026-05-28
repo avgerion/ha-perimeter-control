@@ -63,7 +63,7 @@ SERVICE_REGISTRY = {
         "web_files": ["remote_services/scripts/gpio_control/gpio_control_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/gpio_control_config.yaml",
+        "config_template": "config/templates/gpio_control.yaml",
         "config_target": "gpio-control.yaml",
         "deploy_api": "http://127.0.0.1:8080/api/v1/capabilities/gpio_control/deploy",
     },

@@ -1,6 +1,16 @@
 """Component-based service implementations using the new service framework."""
 from __future__ import annotations
 
+from remote_services.service_components.service_framework import BaseService, ComponentConfig, component_registry
+from remote_services.service_components.hardware_components import BluetoothInterface, CameraInterface, NetworkInterface, I2CSensorInterface
+from remote_services.service_components.feature_components import (
+    PythonDependencies, SystemDependencies, ConfigurationManager,
+    DataLogging, MotionDetection, AlertSystem, BluetoothAdvertiser
+)
+
+"""Component-based service implementations using the new service framework."""
+from __future__ import annotations
+
 from .service_framework import BaseService, ComponentConfig, component_registry
 from .hardware_components import BluetoothInterface, CameraInterface, NetworkInterface, I2CSensorInterface
 from .feature_components import (

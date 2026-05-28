@@ -5,7 +5,7 @@ import json
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-from .service_framework import HardwareInterface, ResourceRequirement, ComponentConfig, robust_system_package_install
+from remote_services.service_components.service_framework import HardwareInterface, ResourceRequirement, ComponentConfig, robust_system_package_install
 from .ssh_client import SshClient
 
 
