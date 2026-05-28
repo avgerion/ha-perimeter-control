@@ -144,17 +144,18 @@ class ConfigurationManager(ServiceComponent):
         import os
         import asyncio
         config_content = {}
-        # Resolve relative paths from the integration directory
-        integration_dir = os.path.dirname(os.path.abspath(__file__))
+        # Use TEMPLATES_DIR from const.py for template resolution
+        from .const import TEMPLATES_DIR
         for filename, template_path in template_mappings.items():
             try:
-                full_path = os.path.join(integration_dir, template_path)
+                # Use only the filename part to avoid nested paths
+                full_path = str(TEMPLATES_DIR / os.path.basename(template_path))
                 if hass is not None:
                     content = await hass.async_add_executor_job(self._read_file, full_path)
                 else:
                     content = await asyncio.to_thread(self._read_file, full_path)
                 config_content[filename] = content
-                self.logger.debug(f"Loaded template {template_path} for {filename}")
+                self.logger.debug(f"Loaded template {full_path} for {filename}")
             except Exception as exc:
                 self.logger.error(f"Failed to load template {template_path}: {exc}")
                 config_content[filename] = f"# Template load failed: {exc}"
