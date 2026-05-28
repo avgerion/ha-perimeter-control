@@ -8,7 +8,7 @@ from .feature_components import (
     PythonDependencies, SystemDependencies, ConfigurationManager,
     DataLogging, MotionDetection, AlertSystem, BluetoothAdvertiser
 )
-
+from .const import DEFAULT_CONF_TEMPLATE, DEFAULT_FIREWALL_RULES_TEMPLATE
 
 class BleService(BaseService):
     """BLE GATT Repeater service using component composition."""
@@ -39,8 +39,7 @@ class BleService(BaseService):
         # Add configuration from template files
         config_templates = {
             "ble_config.yaml": "config/templates/ble_config.yaml",
-            "mqtt_config.yaml": "config/templates/mqtt_config.yaml", 
-            "dashboard_config.yaml": "config/templates/ble_dashboard_config.yaml"
+            "mqtt_config.yaml": "config/templates/mqtt_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 3)
         
@@ -78,8 +77,7 @@ class PhotoBoothService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "photo_booth_config.yaml": "config/templates/photo_booth_config.yaml",
-            "dashboard_config.yaml": "config/templates/photo_booth_dashboard_config.yaml"
+            "photo_booth_config.yaml": "config/templates/photo_booth_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
         
@@ -89,7 +87,7 @@ class PhotoBoothService(BaseService):
 
 
 # ─── Configurable Constants ─────────────────────────────────────────────
-from .const import DEFAULT_CONF_TEMPLATE, DEFAULT_FIREWALL_RULES_TEMPLATE
+
 
 
 class NetworkService(BaseService):
@@ -165,9 +163,7 @@ class WildlifeService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "wildlife_config.yaml": "config/templates/wildlife_config.yaml",
-            "data_analysis.yaml": "config/templates/wildlife_data_analysis.yaml",
-            "dashboard_config.yaml": "config/templates/wildlife_dashboard_config.yaml"
+            "wildlife_config.yaml": "config/templates/wildlife_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 7)
 
@@ -204,9 +200,7 @@ class EslService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "esl_config.yaml": "config/templates/esl_config.yaml",
-            "layout_config.yaml": "config/templates/esl_layout_config.yaml",
-            "dashboard_config.yaml": "config/templates/esl_dashboard_config.yaml"
+            "esl_config.yaml": "config/templates/esl_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
@@ -224,7 +218,7 @@ class GpioControlService(BaseService):
 
         # Ensure the runtime config exists at the exact filename the descriptor expects.
         config_templates = {
-            "gpio-control.yaml": "config/templates/gpio_control_config.yaml",
+            "gpio_control.yaml": "config/templates/gpio_control.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 1)
 
