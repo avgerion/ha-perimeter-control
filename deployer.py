@@ -103,7 +103,9 @@ async def _render_service_template(template_path: Path) -> str:
         "SUPERVISOR_DIR": remote_supervisor_dir,
         "LOG_ROOT": remote_log_root,
         "STATE_ROOT": remote_state_root,
+        "STATE_DIR": remote_state_dir,
         "VENV": remote_venv_dir,
+        "INSTALL_ROOT": remote_install_root,
     }
     try:
         return template_content.format(**path_config)
