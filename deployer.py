@@ -107,8 +107,7 @@ async def _render_service_template(template_path: Path) -> str:
         "VENV": remote_venv_dir,
         "INSTALL_ROOT": remote_install_root,
     }
-    import logging
-    logging.warning(f"[PerimeterControl] Template path_config for {template_path}: {path_config}")
+    _LOGGER.warning(f"[PerimeterControl] Template path_config for {template_path}: {path_config}")
     try:
         return template_content.format(**path_config)
     except KeyError as e:
