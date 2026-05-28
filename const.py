@@ -60,7 +60,7 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-gpio-dashboard",
         "port": 8095,
         "template": "PerimeterControl-gpio-dashboard.service.template",
-        "web_files": ["remote_services/scripts/gpio_control/gpio_control_dashboard.py"],
+        "web_files": ["remote_services/dashboard_web/gpio_control_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/gpio_control.yaml",

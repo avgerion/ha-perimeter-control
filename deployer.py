@@ -91,6 +91,7 @@ def _validate_dashboard_sources() -> None:
 
 
 async def _render_service_template(template_path: Path) -> str:
+    _LOGGER.warning(f"[PerimeterControl] _render_service_template called for: {template_path}")
     """Render a systemd service template with configurable paths."""
     if not template_path.exists():
         raise FileNotFoundError(f"Service template not found: {template_path}")
@@ -397,8 +398,11 @@ class Deployer(BaseDeployer):
 
         for name in sorted(set(selected_dashboard_files)):
             # Use canonical dashboard source location for dashboard files
+            # Always resolve dashboard_web files from local source tree
             if name.startswith("dashboard_web/"):
                 src = DASHBOARD_WEB_DIR / name.split("dashboard_web/")[1]
+            elif name.startswith("remote_services/dashboard_web/"):
+                src = DASHBOARD_WEB_DIR / name.split("remote_services/dashboard_web/")[1]
             else:
                 src = Path(name)
             if src.exists() and src.suffix == ".py":
@@ -408,8 +412,11 @@ class Deployer(BaseDeployer):
         if selected_dashboard_files:
             self._emit("supervisor", "Deploying dashboard web files...", 77)
             for _fname in sorted(set(selected_dashboard_files)):
+                # Always resolve dashboard_web files from local source tree
                 if _fname.startswith("dashboard_web/"):
                     _src = DASHBOARD_WEB_DIR / _fname.split("dashboard_web/")[1]
+                elif _fname.startswith("remote_services/dashboard_web/"):
+                    _src = DASHBOARD_WEB_DIR / _fname.split("remote_services/dashboard_web/")[1]
                 else:
                     _src = Path(_fname)
                 if _src.exists():
