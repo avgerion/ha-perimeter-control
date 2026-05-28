@@ -49,6 +49,7 @@ from .const import (
     get_remote_install_directories,
     SERVICE_REGISTRY,
     DASHBOARD_WEB_DIR,
+    SUPERVISOR_SRC_DIR
 )
 
 from pathlib import Path
@@ -360,7 +361,7 @@ class Deployer(BaseDeployer):
         """Upload a template config file to the remote runtime config directory."""
         template_path = Path(template_rel_path)
         if not template_path.exists():
-            _LOGGER.warning("Template config not found, skipping: %s", template_path)
+            _LOGGER.error("Template config not found, skipping: %s (cwd=%s)", template_path, os.getcwd())
             return
 
         await self._client.async_put_file(template_path, f"{remote_temp_root}/{target_name}")
@@ -375,6 +376,8 @@ class Deployer(BaseDeployer):
         self._emit("supervisor", "Installing supervisor...", 76)
 
         # Guardrail: do not upload dashboard files if local Python sources are invalid.
+        # Use the single source of truth for supervisor source directory
+        supervisor_src = SUPERVISOR_SRC_DIR
         selected_dashboard_files: list[str] = []
         selected_dashboard_packages: set[str] = set()
         selected_dashboard_templates: list[str] = []

@@ -1,3 +1,4 @@
+
 import os
 from pathlib import Path
 
@@ -17,8 +18,11 @@ INTEGRATION_DIR = Path(__file__).parent
 # Paths (resolved once)
 service_prefix = "PerimeterControl"
 
-## Canonical dashboard source directory (relative to integration dir)
-DASHBOARD_WEB_DIR = INTEGRATION_DIR / "dashboard_web"
+# Dashboard and template directories (relative to integration dir)
+DASHBOARD_WEB_DIR = INTEGRATION_DIR / "remote_services" / "dashboard_web"
+TEMPLATES_DIR = INTEGRATION_DIR / "config" / "templates"
+# Local supervisor source directory (single source of truth)
+SUPERVISOR_SRC_DIR = INTEGRATION_DIR / "remote_services" / "supervisor"
 # Unified service registry: all per-service config here
 SERVICE_REGISTRY = {
     os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
@@ -26,14 +30,14 @@ SERVICE_REGISTRY = {
         "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
         "template": "PerimeterControl-dashboard.service.template",
         "web_files": [
-            "dashboard_web/network_isolator_dashboard.py",
-            "dashboard_web/network_isolator_layouts.py",
-            "dashboard_web/network_isolator_callbacks.py"
+            "remote_services/dashboard_web/network_isolator_dashboard.py",
+            "remote_services/dashboard_web/network_isolator_layouts.py",
+            "remote_services/dashboard_web/network_isolator_callbacks.py"
         ],
         "script_files": [
-            "network_isolator/apply-rules.py",
-            "network_isolator/network-topology.py",
-            "network_isolator/topology_config.py"
+            "remote_services/scripts/network_isolator/apply-rules.py",
+            "remote_services/scripts/network_isolator/network-topology.py",
+            "remote_services/scripts/network_isolator/topology_config.py"
         ],
         "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
         "config_template": "config/templates/network_isolator.conf.yaml",
@@ -45,7 +49,7 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-photo-booth-dashboard",
         "port": 8093,
         "template": "PerimeterControl-photo-booth-dashboard.service.template",
-        "web_files": ["photo_booth_dashboard.py"],
+        "web_files": ["remote_services/dashboard_web/photo_booth_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/photo_booth_config.yaml",
@@ -56,7 +60,7 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-gpio-dashboard",
         "port": 8095,
         "template": "PerimeterControl-gpio-dashboard.service.template",
-        "web_files": ["scripts/gpio_control/gpio_control_dashboard.py"],
+        "web_files": ["remote_services/scripts/gpio_control/gpio_control_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/gpio_control_config.yaml",
@@ -67,13 +71,13 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-ble-dashboard",
         "port": 8091,
         "template": "PerimeterControl-ble-dashboard.service.template",
-        "web_files": ["ble_gatt_dashboard.py"],
+        "web_files": ["remote_services/dashboard_web/ble_gatt_repeater_dashboard.py"],
         "script_files": [
-            "ble_gatt_repeater/ble-gatt-mirror.py",
-            "ble_gatt_repeater/ble-proxy-profiler.py",
-            "ble_gatt_repeater/ble-scanner-v2.py",
-            "ble_gatt_repeater/ble-scanner.py",
-            "ble_gatt_repeater/ble-sniffer.py"
+            "remote_services/scripts/ble_gatt_repeater/ble-gatt-mirror.py",
+            "remote_services/scripts/ble_gatt_repeater/ble-proxy-profiler.py",
+            "remote_services/scripts/ble_gatt_repeater/ble-scanner-v2.py",
+            "remote_services/scripts/ble_gatt_repeater/ble-scanner.py",
+            "remote_services/scripts/ble_gatt_repeater/ble-sniffer.py"
         ],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/ble_config.yaml",
@@ -84,7 +88,7 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-esl-dashboard",
         "port": 8092,
         "template": "PerimeterControl-esl-dashboard.service.template",
-        "web_files": ["esl_ap_dashboard.py"],
+        "web_files": ["remote_services/dashboard_web/esl_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/esl_config.yaml",
@@ -95,7 +99,7 @@ SERVICE_REGISTRY = {
         "unit": "PerimeterControl-wildlife-dashboard",
         "port": 8094,
         "template": "PerimeterControl-wildlife-dashboard.service.template",
-        "web_files": ["wildlife_monitor_dashboard.py"],
+        "web_files": ["remote_services/dashboard_web/wildlife_dashboard.py"],
         "script_files": [],
         "pip_packages": ["tornado"],
         "config_template": "config/templates/wildlife_config.yaml",
