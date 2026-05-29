@@ -60,16 +60,8 @@ _LOGGER = logging.getLogger(__name__)
 
 def _validate_python_file_syntax(path: Path) -> None:
     """Raise ValueError if the Python file has invalid syntax."""
-    import asyncio
     try:
-        # If already in an event loop, use await; otherwise, fallback to run
-        try:
-            loop = asyncio.get_running_loop()
-            # In async context, must be called from an async function
-            raise RuntimeError("_validate_python_file_syntax must be called from async context if event loop is running.")
-        except RuntimeError:
-            # No running event loop, safe to use asyncio.run
-            source = asyncio.run(asyncio.to_thread(path.read_text, encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
     except Exception as exc:
         raise ValueError(f"Failed to read {path}: {exc}") from exc
 
