@@ -38,7 +38,7 @@ class BleService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "ble_config.yaml": "config/templates/ble_config.yaml",
+            "ble-gatt-repeater.yaml": "config/templates/ble_gatt_repeater.yaml",
             "mqtt_config.yaml": "config/templates/mqtt_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 3)
@@ -77,7 +77,7 @@ class PhotoBoothService(BaseService):
         
         # Add configuration from template files
         config_templates = {
-            "photo_booth_config.yaml": "config/templates/photo_booth_config.yaml"
+            "photo-booth-config.yaml": "config/templates/photo_booth_config.yaml"
         }
         self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
         

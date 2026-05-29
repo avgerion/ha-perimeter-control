@@ -80,7 +80,7 @@ SERVICE_REGISTRY = {
             "remote_services/scripts/ble_gatt_repeater/ble-sniffer.py"
         ],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/ble_config.yaml",
+        "config_template": "config/templates/ble_gatt_repeater.yaml",
         "config_target": "ble-gatt-repeater.yaml",
         "deploy_api": None,
     },

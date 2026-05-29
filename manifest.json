@@ -8,7 +8,7 @@
     "requirements": [
         "asyncssh==2.21.1"
     ],
-    "version": "0.8.32",
+    "version": "0.8.33",
     "icon": "icon.svg",
     "frontend": true
 }
