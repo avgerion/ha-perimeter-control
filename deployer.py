@@ -166,27 +166,27 @@ class Deployer(BaseDeployer):
 
         try:
             # Phase 0: Stop all managed services before deployment
-            _LOGGER.info("Phase 0: Stop managed services (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 0: Stop managed services (ID: %s)", deployment_id)
             await self._phase_stop_services()
 
             # Phase 1: Service Selection & Validation
-            _LOGGER.info("Phase 1: Service selection and validation (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 1: Service selection and validation (ID: %s)", deployment_id)
             await self._phase_service_selection()
 
             # Phase 2: Service-Specific Deployment
-            _LOGGER.info("Phase 2: Service-specific deployments (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 2: Service-specific deployments (ID: %s)", deployment_id)
             await self._phase_service_deployment()
 
             # Phase 3: Supervisor Installation
-            _LOGGER.info("Phase 3: Install supervisor (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 3: Install supervisor (ID: %s)", deployment_id)
             await self._phase_supervisor()
 
             # Phase 4: Service Restart
-            _LOGGER.info("Phase 4: Restart services (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 4: Restart services (ID: %s)", deployment_id)
             await self._phase_restart()
 
             # Phase 5: Service Verification
-            _LOGGER.info("Phase 5: Verify deployment (ID: %s)", deployment_id)
+            _LOGGER.warning("Phase 5: Verify deployment (ID: %s)", deployment_id)
             await self._phase_verify()
 
             _LOGGER.warning("=== SERVICE-AWARE DEPLOYMENT COMPLETED === (ID: %s)", deployment_id)
