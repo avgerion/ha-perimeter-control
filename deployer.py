@@ -53,33 +53,42 @@ from .const import (
     TEMPLATES_DIR,
 )
 
-from pathlib import Path
+
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _validate_python_file_syntax(path: Path) -> None:
+async def _validate_python_file_syntax(path: Path) -> None:
     """Raise ValueError if the Python file has invalid syntax."""
+
     try:
-        source = path.read_text(encoding="utf-8")
+        # If already in an event loop, use await; otherwise, fallback to run
+        try:
+            loop = asyncio.get_running_loop()
+            # In async context, must be called from an async function
+            raise RuntimeError("_validate_python_file_syntax must be called from async context if event loop is running.")
+        except RuntimeError:
+            # No running event loop, safe to use asyncio.run
+            source = await asyncio.to_thread(path.read_text, encoding="utf-8")
     except Exception as exc:
         raise ValueError(f"Failed to read {path}: {exc}") from exc
 
     try:
-        ast.parse(source, filename=str(path))
+        # ast.parse is CPU-bound, so run in thread as well
+        await asyncio.to_thread(ast.parse, source, str(path))
     except SyntaxError as exc:
         detail = f"{path.name}:{exc.lineno}:{exc.offset} {exc.msg}"
         raise ValueError(f"Dashboard source syntax check failed: {detail}") from exc
 
 
-def _validate_dashboard_sources() -> None:
+async def _validate_dashboard_sources() -> None:
     """Validate all deployable dashboard python sources before remote upload."""
     for service_info in SERVICE_REGISTRY.values():
         for name in service_info.get("web_files", []):
             src = Path(remote_web_dir) / name
             if not src.exists():
                 continue
-            _validate_python_file_syntax(src)
+            await _validate_python_file_syntax(src)
 
 
 async def _render_service_template(template_path: Path) -> str:
@@ -398,7 +407,7 @@ class Deployer(BaseDeployer):
             else:
                 src = Path(name)
             if src.exists() and src.suffix == ".py":
-                _validate_python_file_syntax(src)
+                await _validate_python_file_syntax(src)
 
         # Upload selected dashboard web files.
         if selected_dashboard_files:
