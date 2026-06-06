@@ -27,6 +27,7 @@ from .const import (
     remote_supervisor_dir,
     remote_log_root,
     remote_state_root,
+    get_remote_install_directories,
 )
 from .service_descriptor import ServiceDescriptor
 from .ssh_client import SshClient, SshCommandError
@@ -69,13 +70,8 @@ async def _render_service_template(template_path: Path) -> str:
 
 def _get_install_commands() -> list[str]:
     """Generate installation commands using configurable paths."""
-    dirs = [
-        remote_conf_dir,
-        remote_scripts_dir,
-        remote_supervisor_dir,
-        remote_log_root,
-        remote_state_root,
-    ]
+    # Use the authoritative list from const.py so no directory is missed
+    dirs = get_remote_install_directories()
     commands = [f"sudo mkdir -p {d}" for d in dirs]
     # Add ownership commands for directories that need root ownership
     commands.extend([

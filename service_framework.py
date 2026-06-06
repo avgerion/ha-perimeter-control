@@ -392,15 +392,19 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
         logger = _LOGGER
     
     try:
-        # Run dpkg fixes synchronously before package operations
-        await _fix_dpkg_issues(ssh_client, logger)
+        # Only repair dpkg if it is actually broken, not unconditionally
+        await _ensure_dpkg_ready(ssh_client, logger)
 
-        # Update package list with timeout - this can also trigger dpkg issues
+        # Update package list with timeout.
+        # -o DPkg::Lock::Timeout=120 makes apt-get wait up to 120 s for a held lock
+        # (e.g. unattended-upgrades) instead of failing immediately.
         logger.info("Updating package lists...")
         try:
             await asyncio.wait_for(
-                ssh_client.async_run("sudo apt-get update"),
-                timeout=90.0
+                ssh_client.async_run(
+                    "sudo apt-get -o DPkg::Lock::Timeout=120 update"
+                ),
+                timeout=150.0
             )
         except (Exception, asyncio.TimeoutError) as update_exc:
             logger.warning(f"apt-get update failed/timed out: {update_exc}")
@@ -408,14 +412,17 @@ async def robust_system_package_install(ssh_client: SshClient, packages: List[st
 
         # Install packages with timeout and retry logic
         packages_str = ' '.join(packages)
-        install_cmd = f"sudo apt-get install -y {packages_str}"
+        install_cmd = (
+            f"sudo DEBIAN_FRONTEND=noninteractive "
+            f"apt-get -o DPkg::Lock::Timeout=120 install -y {packages_str}"
+        )
 
         for attempt in range(2):  # Reduced to 2 attempts to speed up startup
             try:
                 logger.info(f"Installing system packages (attempt {attempt + 1}/2): {packages_str}")
                 await asyncio.wait_for(
                     ssh_client.async_run(install_cmd),
-                    timeout=60.0
+                    timeout=180.0  # Extended to accommodate lock-wait time
                 )
                 logger.info(f"✅ Successfully installed system packages: {packages_str}")
                 return True
@@ -477,11 +484,12 @@ async def _fix_dpkg_issues(ssh_client: SshClient, logger: logging.Logger) -> Non
     except Exception as e:
         logger.warning(f"Initial dpkg --configure -a failed: {e}")
     
-    # Additional dpkg recovery commands with timeouts
+    # Additional dpkg recovery commands with timeouts.
+    # Lock timeout ensures we wait for any concurrent apt-get rather than failing.
     additional_fixes = [
-        ("sudo apt-get -f install -y", "Fixing broken dependencies", 60),
+        ("sudo apt-get -o DPkg::Lock::Timeout=120 -f install -y", "Fixing broken dependencies", 180),
         ("sudo apt-get clean", "Cleaning package cache", 30),
-        ("sudo apt-get autoremove --purge -y", "Removing unused packages", 90)
+        ("sudo apt-get -o DPkg::Lock::Timeout=120 autoremove --purge -y", "Removing unused packages", 210)
     ]
     
     for fix_cmd, description, timeout in additional_fixes:
