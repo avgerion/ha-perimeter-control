@@ -27,6 +27,8 @@ from .const import (
     remote_supervisor_dir,
     remote_log_root,
     remote_state_root,
+    remote_state_dir,
+    remote_install_root,
     get_remote_install_directories,
 )
 from .service_descriptor import ServiceDescriptor
@@ -53,7 +55,7 @@ async def _render_service_template(template_path: Path) -> str:
     
     template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
     path_config = {
-        "INSTALL_ROOT": remote_temp_root,
+        "INSTALL_ROOT": remote_install_root,
         "WEB_DIR": remote_web_dir,
         "SCRIPTS_DIR": remote_scripts_dir,
         "SUPERVISOR_DIR": remote_supervisor_dir,
@@ -61,6 +63,8 @@ async def _render_service_template(template_path: Path) -> str:
         "SERVICES_DIR": remote_services_dir,
         "LOG_ROOT": remote_log_root,
         "STATE_ROOT": remote_state_root,
+        "STATE_DIR": remote_state_dir,
+        "VENV": remote_venv_dir,
     }
     try:
         return template_content.format(**path_config)

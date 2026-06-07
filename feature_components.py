@@ -66,10 +66,23 @@ class PythonDependencies(ServiceComponent):
             if not self.packages:
                 return True
 
-            # Use the venv Python for installation
             REMOTE_VENV = "/opt/PerimeterControl/venv"  # Should match deployer
+
+            # Ensure the venv exists (may not yet on first deploy)
+            venv_check = await ssh_client.async_run(
+                f"[ -x {REMOTE_VENV}/bin/python3 ] && echo VENV_OK || echo VENV_MISSING"
+            )
+            if "VENV_MISSING" in venv_check:
+                self.logger.info("Venv not found, creating %s...", REMOTE_VENV)
+                await ssh_client.async_run(
+                    f"sudo mkdir -p $(dirname {REMOTE_VENV}) && "
+                    f"sudo python3 -m venv --system-site-packages {REMOTE_VENV}"
+                )
+                self.logger.info("Venv created at %s", REMOTE_VENV)
+
             packages_str = ' '.join(self.packages)
-            install_cmd = f"{REMOTE_VENV}/bin/python3 -m pip install {packages_str}"
+            # sudo is required: venv is owned by root
+            install_cmd = f"sudo {REMOTE_VENV}/bin/python3 -m pip install {packages_str}"
             await ssh_client.async_run(install_cmd)
             self.installed_packages.update(self.packages)
 
