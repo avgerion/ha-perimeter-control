@@ -54,3 +54,7 @@ def main(config_path):
     except KeyboardInterrupt:
         logger.info("Shutting down BLE GATT dashboard...")
     return 0
+if __name__ == "__main__":
+    import sys
+    config = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/PerimeterControl/conf/ble-gatt-repeater.yaml")
+    sys.exit(main(config))

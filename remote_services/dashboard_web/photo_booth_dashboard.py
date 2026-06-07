@@ -55,3 +55,8 @@ def main(config_path):
     except KeyboardInterrupt:
         logger.info("Shutting down Photo Booth dashboard...")
     return 0
+
+if __name__ == "__main__":
+    import sys
+    config = Path("/mnt/PerimeterControl/conf/photo-booth.yaml")
+    sys.exit(main(config))

@@ -10,7 +10,7 @@ Group=root
 WorkingDirectory={WEB_DIR}
 Environment="PYTHONUNBUFFERED=1"
 # All runtime configuration is now loaded from YAML config files, not environment variables.
-ExecStart={VENV}/bin/python3 {WEB_DIR}/photo_booth_dashboard.py
+ExecStart={VENV}/bin/python3 {WEB_DIR}/photo_booth_dashboard.py {CONF_DIR}/photo-booth.yaml
 Restart=on-failure
 RestartSec=10
 
