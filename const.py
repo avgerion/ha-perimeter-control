@@ -28,7 +28,7 @@ SERVICE_REGISTRY = {
     os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
         "unit": f"{service_prefix}-dashboard",
         "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
-        "template": "PerimeterControl-dashboard.service.template",
+        "template": "PerimeterControl-network-isolator-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/network_isolator_dashboard.py",
             "remote_services/dashboard_web/network_isolator_layouts.py",
