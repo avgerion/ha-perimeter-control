@@ -141,6 +141,9 @@ class Deployer(BaseDeployer):
         self._hass = hass
         # deploy_api URLs collected during Phase 2, fired in Phase 4 after supervisor is up
         self._pending_deploy_apis: list[tuple[str, str]] = []  # (service_id, url)
+        # Auto-entities collected from hardware detection during Phase 2,
+        # keyed by service_id. Injected into service descriptors in Phase 3.
+        self._auto_entities: dict[str, list] = {}
         # Register component types
         register_service_components()
         # Create component-based services using SERVICE_REGISTRY from const.py
@@ -317,11 +320,13 @@ class Deployer(BaseDeployer):
                     self._pending_deploy_apis.append((service_id, deploy_api))
                     _LOGGER.info("Deferred deploy_api call for %s until supervisor is running", service_id)
                 
-                # Get auto-generated entities from hardware interfaces
+                # Get auto-generated entities from hardware interfaces and
+                # store them so deploy_service_descriptors can inject them.
                 try:
                     deployed_services_set = set(self._selected_services)
                     entities = await service.get_hardware_entities(self._client, deployed_services_set)
                     if entities:
+                        self._auto_entities[service_id] = entities
                         _LOGGER.info(f"Service {service_id} generated {len(entities)} auto-entities")
                 except Exception as exc:
                     _LOGGER.warning(f"Failed to get auto-entities for {service_id}: {exc}")
@@ -352,7 +357,7 @@ class Deployer(BaseDeployer):
                 target_name=target_name,
             )
 
-        await self.deploy_service_descriptors([service_id])
+        await self.deploy_service_descriptors([service_id], auto_entities=self._auto_entities)
         
         self._emit("service_deploy", f"Legacy deployment for {service_id} completed", base_progress + 5)
 
@@ -448,7 +453,7 @@ class Deployer(BaseDeployer):
 
         # Always sync selected service descriptors so Supervisor reads current access_profile
         # (mode/port/tls) instead of stale files from previous deployments.
-        await self.deploy_service_descriptors(self._selected_services)
+        await self.deploy_service_descriptors(self._selected_services, auto_entities=self._auto_entities)
         
         # Install supervisor
         sup_install_script = _build_supervisor_install_script()

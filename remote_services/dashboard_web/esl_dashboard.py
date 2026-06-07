@@ -39,9 +39,11 @@ def main(config_path):
         setup_esl_callbacks(doc, data_manager)
         doc.title = "ESL Dashboard"
 
+    port = int(config.get('port', 8092))
+
     handler = FunctionHandler(create_app)
     app = Application(handler)
-    server = Server({'/': app}, port=5006, address='127.0.0.1', allow_websocket_origin=["localhost:5006"])
+    server = Server({'/': app}, port=port, address='0.0.0.0', allow_websocket_origin=["*"])
     server.start()
     server.io_loop.start()
     return 0

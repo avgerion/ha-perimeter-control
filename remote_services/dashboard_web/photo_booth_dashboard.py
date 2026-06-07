@@ -47,7 +47,7 @@ def main(config_path):
         doc.title = f"Photo Booth Dashboard - {instance_name or 'default'}"
     handler = FunctionHandler(create_app)
     app = Application(handler)
-    server = Server({'/': app}, port=port, address="0.0.0.0")
+    server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"])
     logger.info(f"Photo Booth Bokeh dashboard running on port {port} (instance: {instance_name})")
     server.start()
     try:

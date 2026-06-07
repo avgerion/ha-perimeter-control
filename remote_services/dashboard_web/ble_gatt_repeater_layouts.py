@@ -19,7 +19,13 @@ def create_ble_gatt_repeater_dashboard_layout(data_manager):
         TableColumn(field="type", title="Type"),
         TableColumn(field="state", title="State"),
     ]
-    source = ColumnDataSource(entities)
+    # ColumnDataSource requires a dict of lists, not a list of dicts
+    source_data = {
+        "friendly_name": [e.get("friendly_name", "") for e in entities],
+        "type": [e.get("type", "") for e in entities],
+        "state": [e.get("state", "") for e in entities],
+    }
+    source = ColumnDataSource(source_data)
     table = DataTable(source=source, columns=columns, width=600)
     layout = column(header, table)
     widgets = {"entity_table": table, "source": source}

@@ -364,9 +364,10 @@ fi
 
         _LOGGER.info("Package installation completed for %s", service_name)
 
-    async def deploy_service_descriptors(self, service_ids: list[str]) -> None:
+    async def deploy_service_descriptors(self, service_ids: list[str], auto_entities: dict[str, list] | None = None) -> None:
         """Deploy service descriptor files for specified services."""
         self._emit("supervisor", "Deploying service descriptors...", 78)
+        auto_entities = auto_entities or {}
         
         for service_id in service_ids:
             fname = f"{service_id}.service.yaml"
@@ -381,6 +382,14 @@ fi
                     spec = descriptor_data.setdefault("spec", {})
                     config_file = spec.setdefault("config_file", {})
                     config_file["path"] = f"/mnt/PerimeterControl/conf/{config_target}"
+
+                # Inject auto-detected entities (from hardware detection) into the descriptor.
+                # The supervisor reads spec.entities to publish them to Home Assistant.
+                if service_id in auto_entities and auto_entities[service_id]:
+                    spec = descriptor_data.setdefault("spec", {})
+                    spec["entities"] = auto_entities[service_id]
+                    _LOGGER.info("Injected %d auto-entities into descriptor for %s",
+                                 len(auto_entities[service_id]), service_id)
 
                 rendered_text = await asyncio.to_thread(
                     yaml.safe_dump,

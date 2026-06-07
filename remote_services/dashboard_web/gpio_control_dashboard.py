@@ -41,7 +41,7 @@ def main(config_path):
 
     handler = FunctionHandler(create_app)
     app = Application(handler)
-    server = Server({'/': app}, port=port, address="0.0.0.0")
+    server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"])
     logger.info(f"GPIO Control dashboard running on port {port}")
     server.start()
     try:
