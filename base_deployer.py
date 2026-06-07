@@ -417,11 +417,20 @@ fi
                     # The template filename uses PascalCase; normalise to lowercase so
                     # the uploaded filename matches what _build_supervisor_install_script
                     # and all `systemctl` calls expect.
-                    service_name = template_name.replace('.template', '').lower()
+                    pascal_name = template_name.replace('.template', '')
+                    service_name = pascal_name.lower()
                     await self._client.async_put_file(Path(temp_service_file), f"{remote_temp_root}/{service_name}")
                     await self._client.async_run(
                         f"sudo install -o root -g root -m 0644 {remote_temp_root}/{service_name} {remote_systemd_root}/{service_name}"
                     )
+                    # Disable and remove any old PascalCase unit that may still be on the Pi
+                    if pascal_name != service_name:
+                        await self._client.async_run(
+                            f"sudo systemctl disable --now {pascal_name} 2>/dev/null || true"
+                        )
+                        await self._client.async_run(
+                            f"sudo rm -f {remote_systemd_root}/{pascal_name}"
+                        )
                     await self._client.async_run(f"sudo systemctl daemon-reload")
                     await self._client.async_run(f"sudo systemctl enable {service_name}")
                     _LOGGER.info("Service %s installed and enabled", service_name)
