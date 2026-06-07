@@ -81,8 +81,32 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     status_badge = Div(text="<b>Status:</b> checking...", sizing_mode="stretch_width")
     status_details = PreText(text="Waiting for first health check...", height=90, sizing_mode="stretch_width")
 
-    service_log_text = PreText(text="Loading service log...", height=140, sizing_mode="stretch_width")
-    supervisor_log_text = PreText(text="Loading supervisor log...", height=140, sizing_mode="stretch_width")
+    service_log_text = PreText(
+        text="Loading service log...",
+        height=140,
+        sizing_mode="stretch_width",
+        styles={
+            "background-color": "#0f1720",
+            "color": "#ecf0f1",
+            "padding": "8px",
+            "border-radius": "4px",
+            "margin-bottom": "8px",
+            "display": "block",
+        },
+    )
+    supervisor_log_text = PreText(
+        text="Loading supervisor log...",
+        height=140,
+        sizing_mode="stretch_width",
+        styles={
+            "background-color": "#0f1720",
+            "color": "#ecf0f1",
+            "padding": "8px",
+            "border-radius": "4px",
+            "margin-bottom": "8px",
+            "display": "block",
+        },
+    )
 
     ssh_command_select = Select(
         title="Run service command",
@@ -103,9 +127,9 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         header,
         status_badge,
         status_details,
-        Div(text="<b>Service Log</b>"),
+        Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Service Log</b></div>"),
         service_log_text,
-        Div(text="<b>Supervisor Log</b>"),
+        Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Supervisor Log</b></div>"),
         supervisor_log_text,
         ssh_command_select,
         row(ssh_run_button, sizing_mode="stretch_width"),

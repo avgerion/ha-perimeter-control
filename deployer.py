@@ -425,6 +425,22 @@ class Deployer(BaseDeployer):
                 else:
                     _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
 
+        # Additionally, always upload the entire DASHBOARD_WEB_DIR contents so
+        # the Pi receives the latest dashboard sources even if SERVICE_REGISTRY
+        # omits a file. Files are uploaded to remote_temp_root for the install
+        # script to pick up and place into the remote web directory.
+        try:
+            dashboard_root = DASHBOARD_WEB_DIR
+            if dashboard_root.exists():
+                for p in sorted(dashboard_root.rglob("*")):
+                    if p.is_file():
+                        try:
+                            await self._client.async_put_file(p, f"{remote_temp_root}/{p.name}")
+                        except Exception:
+                            _LOGGER.debug("Failed to upload dashboard file (ignored): %s", p)
+        except Exception:
+            _LOGGER.debug("Could not iterate DASHBOARD_WEB_DIR for bulk upload", exc_info=True)
+
         # Upload shared web files (runtime dependencies used by all dashboards)
         _COMPONENT_ROOT = Path(__file__).parent
         for _shared_fname in SHARED_WEB_FILES:
@@ -736,6 +752,11 @@ def _build_install_script() -> str:
             f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
             f"{remote_temp_root}/{base} {dest}/{base} || true"
         )
+    # Also copy any uploaded python dashboard modules to the web directory so
+    # bulk uploads placed in the temp root will be installed even if not
+    # enumerated in SERVICE_REGISTRY. Use install to set correct permissions.
+    lines.append(f"sudo mkdir -p {remote_web_dir} || true")
+    lines.append(f"for f in {remote_temp_root}/*.py; do [ -f \"$f\" ] && sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") || true; done")
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)
 
