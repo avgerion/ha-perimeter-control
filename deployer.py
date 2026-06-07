@@ -146,6 +146,8 @@ class Deployer(BaseDeployer):
         self._selected_services = selected_services
         self._service_descriptors = service_descriptors or {}
         self._hass = hass
+        # deploy_api URLs collected during Phase 2, fired in Phase 4 after supervisor is up
+        self._pending_deploy_apis: list[tuple[str, str]] = []  # (service_id, url)
         # Register component types
         register_service_components()
         # Create component-based services using SERVICE_REGISTRY from const.py
@@ -314,15 +316,13 @@ class Deployer(BaseDeployer):
                         remote_conf_dir,
                         target_name,
                     )
-                # If deploy_api is present, trigger backend deployment
+                # If deploy_api is present, defer the call to Phase 4 when the
+                # supervisor is running.  Calling it here would fail because the
+                # supervisor service was stopped in Phase 0.
                 deploy_api = service_info.get("deploy_api")
                 if deploy_api:
-                    try:
-                        deploy_cmd = f"curl -fsS -X POST {deploy_api} -H 'Content-Type: application/json' -d '{{}}'"
-                        await self._client.async_run(deploy_cmd)
-                        _LOGGER.info(f"Triggered backend deployment via API for {service_id}")
-                    except Exception as exc:
-                        _LOGGER.warning(f"Failed to trigger backend deployment for {service_id}: {exc}")
+                    self._pending_deploy_apis.append((service_id, deploy_api))
+                    _LOGGER.info("Deferred deploy_api call for %s until supervisor is running", service_id)
                 
                 # Get auto-generated entities from hardware interfaces
                 try:
@@ -490,7 +490,16 @@ class Deployer(BaseDeployer):
                 journal.strip(),
             )
             raise RuntimeError("Supervisor failed post-restart health gate")
-        
+
+        # Fire any deferred deploy_api calls now that the supervisor is healthy
+        for service_id, deploy_api in self._pending_deploy_apis:
+            try:
+                deploy_cmd = f"curl -fsS -X POST {deploy_api} -H 'Content-Type: application/json' -d '{{}}'"
+                await self._client.async_run(deploy_cmd)
+                _LOGGER.info("Triggered backend deployment via API for %s", service_id)
+            except Exception as exc:
+                _LOGGER.warning("Failed to trigger backend deployment for %s: %s", service_id, exc)
+
         for service_id in self._selected_services:
             service_info = SERVICE_REGISTRY.get(service_id, {})
             unit = service_info.get("unit")
