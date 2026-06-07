@@ -32,7 +32,8 @@ SERVICE_REGISTRY = {
         "web_files": [
             "remote_services/dashboard_web/network_isolator_dashboard.py",
             "remote_services/dashboard_web/network_isolator_layouts.py",
-            "remote_services/dashboard_web/network_isolator_callbacks.py"
+            "remote_services/dashboard_web/network_isolator_callbacks.py",
+            "system_services/web/data_sources.py",
         ],
         "script_files": [
             "remote_services/scripts/network_isolator/apply-rules.py",
@@ -134,7 +135,7 @@ SERVICE_REGISTRY = {
 # Shared web files deployed to every Pi regardless of which services are selected.
 # These are runtime dependencies imported by all dashboard entry-point scripts.
 SHARED_WEB_FILES = [
-    "system_services/web/data_sources.py",
+    "remote_services/supervisor/data_manager.py",
 ]
 
 # List of all available service IDs (for Home Assistant integration compatibility)

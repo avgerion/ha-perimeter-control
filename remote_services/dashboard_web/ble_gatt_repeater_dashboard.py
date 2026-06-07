@@ -16,7 +16,7 @@ from bokeh.application.handlers.function import FunctionHandler
 from tornado.ioloop import IOLoop
 from ble_gatt_repeater_layouts import create_ble_gatt_repeater_dashboard_layout
 from ble_gatt_repeater_callbacks import setup_ble_gatt_repeater_callbacks
-from data_sources import DataManager
+from data_manager import DataManager
 from pathlib import Path
 
 def main(config_path):

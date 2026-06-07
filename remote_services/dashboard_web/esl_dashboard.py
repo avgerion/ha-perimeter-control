@@ -12,7 +12,7 @@ def main(config_path):
     # Import service-specific modules
     from esl_layouts import create_esl_dashboard_layout
     from esl_callbacks import setup_esl_callbacks
-    from data_sources import DataManager
+    from data_manager import DataManager
     from bokeh.application import Application
     from bokeh.application.handlers.function import FunctionHandler
     from bokeh.server.server import Server

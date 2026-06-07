@@ -15,7 +15,7 @@ from bokeh.application.handlers.function import FunctionHandler
 from tornado.ioloop import IOLoop
 from photo_booth_layouts import create_photo_booth_dashboard_layout
 from photo_booth_callbacks import setup_photo_booth_callbacks
-from data_sources import DataManager
+from data_manager import DataManager
 from pathlib import Path
 import yaml
 
