@@ -39,6 +39,10 @@ def main(config_path):
     )
     logger = logging.getLogger(logger_name)
     data_manager = DataManager(config_path)
+    supervisor_api_url = instance_config.get('supervisor_api_url') or config.get('supervisor_api_url')
+    final_supervisor_api_url = supervisor_api_url or data_manager.supervisor_api_url
+    if not supervisor_api_url:
+        logging.info(f"supervisor_api_url not set in config; using fallback {final_supervisor_api_url}")
     unit_name = "perimetercontrol-ble-dashboard"
     service_log_path = f"{log_root}/ble_gatt_dashboard.log"
     supervisor_log_path = f"{log_root}/supervisor.log"
@@ -54,6 +58,7 @@ def main(config_path):
         doc.add_root(full_layout)
         for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
+        doc.supervisor_api_url = final_supervisor_api_url
         setup_common_dashboard_callbacks(
             doc,
             service_name="ble_gatt_repeater",

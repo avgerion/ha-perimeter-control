@@ -119,7 +119,12 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         sizing_mode="stretch_width",
     )
     ssh_run_button = Button(label="Run Command", button_type="primary", sizing_mode="stretch_width")
-    ssh_command_output = PreText(text="Command output will appear here.", height=140, sizing_mode="stretch_width")
+    ssh_command_output = PreText(
+        text="Command output will appear here.",
+        height=140,
+        sizing_mode="stretch_width",
+        css_classes=["pc-command-output"],
+    )
 
     layout = column(
         style_div,
@@ -133,7 +138,6 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         supervisor_log_text,
         ssh_command_select,
         row(ssh_run_button, sizing_mode="stretch_width"),
-        Div(text="<div class='pc-command-output' id='pc-cmd-out'></div>"),
         ssh_command_output,
         sizing_mode="stretch_width",
     )

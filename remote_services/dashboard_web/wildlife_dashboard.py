@@ -34,6 +34,10 @@ def main(config_path):
     # TODO: Implement network binding logic if needed
     data_manager = DataManager(config_path)
     log_dir = config.get('log_root', '/var/log/PerimeterControl')
+    supervisor_api_url = config.get('supervisor_api_url')
+    final_supervisor_api_url = supervisor_api_url or data_manager.supervisor_api_url
+    if not supervisor_api_url:
+        logger.info(f"supervisor_api_url not set in config; using fallback {final_supervisor_api_url}")
 
     def create_app(doc):
         layout, widgets = create_wildlife_dashboard_layout(data_manager)
@@ -45,6 +49,7 @@ def main(config_path):
         doc.add_root(full_layout)
         for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
+        doc.supervisor_api_url = final_supervisor_api_url
         setup_wildlife_callbacks(doc, data_manager)
         doc.title = "Wildlife Dashboard"
 

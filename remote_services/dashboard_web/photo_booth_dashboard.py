@@ -29,8 +29,6 @@ def main(config_path):
     instance_name, instance_config = next(iter(booth_instances.items())) if booth_instances else (None, {})
     log_root = instance_config.get('log_root') or config.get('log_root', '/var/log/PerimeterControl')
     supervisor_api_url = config.get('supervisor_api_url')
-    if not supervisor_api_url:
-        logging.warning("supervisor_api_url not set in config! Supervisor API calls will fail.")
     port = int(instance_config.get('port', 8093))
     logger_name = 'perimetercontrol.photo_booth_dashboard'
     logging.basicConfig(
@@ -40,6 +38,11 @@ def main(config_path):
     )
     logger = logging.getLogger(logger_name)
     data_manager = DataManager(config_path)
+    # Ensure a usable supervisor API URL is always available for dashboards.
+    # Prefer explicit config value, otherwise fall back to what DataManager computes.
+    final_supervisor_api_url = supervisor_api_url or data_manager.supervisor_api_url
+    if not supervisor_api_url:
+        logging.info(f"supervisor_api_url not set in config; using fallback {final_supervisor_api_url}")
     unit_name = "perimetercontrol-photo-booth-dashboard"
     service_log_path = f"{log_root}/photo_booth_dashboard.log"
     supervisor_log_path = f"{log_root}/supervisor.log"
@@ -55,7 +58,7 @@ def main(config_path):
         doc.add_root(full_layout)
         for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
-        doc.supervisor_api_url = supervisor_api_url
+        doc.supervisor_api_url = final_supervisor_api_url
         setup_common_dashboard_callbacks(
             doc,
             service_name="photo_booth",
