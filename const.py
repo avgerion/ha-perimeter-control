@@ -130,6 +130,13 @@ SERVICE_REGISTRY = {
 # Supervisor deployment is handled as a special case in deployment logic and is NOT included as a service in SERVICE_REGISTRY.
 # This avoids confusion and keeps SERVICE_REGISTRY focused on dashboard/capability services only.
 # See deployer.py for supervisor deployment logic.
+
+# Shared web files deployed to every Pi regardless of which services are selected.
+# These are runtime dependencies imported by all dashboard entry-point scripts.
+SHARED_WEB_FILES = [
+    "system_services/web/data_sources.py",
+]
+
 # List of all available service IDs (for Home Assistant integration compatibility)
 AVAILABLE_SERVICES = list(SERVICE_REGISTRY.keys())
 

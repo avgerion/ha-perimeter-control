@@ -50,6 +50,7 @@ from .const import (
     SERVICE_REGISTRY,
     DASHBOARD_WEB_DIR,
     SUPERVISOR_SRC_DIR,
+    SHARED_WEB_FILES,
     TEMPLATES_DIR,
 )
 
@@ -418,6 +419,15 @@ class Deployer(BaseDeployer):
                     await self._client.async_put_file(_src, f"{remote_temp_root}/{_src.name}")
                 else:
                     _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
+
+        # Upload shared web files (runtime dependencies used by all dashboards)
+        _COMPONENT_ROOT = Path(__file__).parent
+        for _shared_fname in SHARED_WEB_FILES:
+            _shared_src = _COMPONENT_ROOT / _shared_fname
+            if _shared_src.exists():
+                await self._client.async_put_file(_shared_src, f"{remote_temp_root}/{_shared_src.name}")
+            else:
+                _LOGGER.warning("Shared web file not found, skipping: %s", _shared_src)
         await self.phase_install()
 
         # Install Python packages required by selected dashboard services.
