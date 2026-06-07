@@ -1,5 +1,54 @@
 # PerimeterControl Configuration
 
+## Configuration Architecture
+
+PerimeterControl has three distinct configuration layers. Each has a clear owner and purpose. Do not mix concerns across layers.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Layer 1: Deployment Constants  (const.py)                          │
+│  Owner: Developer / integration code                                 │
+│  Set at: Code time                                                   │
+│  Contains: Remote paths, service registry (file lists, pip packages, │
+│            unit names), default port fallbacks for the deployer,     │
+│            shared web file lists                                     │
+│  NOT for: User-overridable settings, runtime service behavior        │
+├─────────────────────────────────────────────────────────────────────┤
+│  Layer 2: Runtime Capability Config  (config/templates/*.yaml)       │
+│  Owner: User / operator                                              │
+│  Set at: Deploy time — edited by user, deployed to Pi by HA          │
+│  Contains: GPIO pins, device lists, network topology, dashboard      │
+│            port, log paths, service-specific feature flags           │
+│  THIS is the right place for port numbers, because users can         │
+│  override them without touching Python code                          │
+├─────────────────────────────────────────────────────────────────────┤
+│  Layer 3: Service Descriptors  (service_descriptors/*.yaml)          │
+│  Owner: Developer — deployed to Pi by HA, read by Supervisor         │
+│  Set at: Deploy time — rendered from SERVICE_REGISTRY at deploy      │
+│  Contains: Entity definitions, access profile (port must match       │
+│            Layer 2), resource limits, systemd unit name,             │
+│            capability entrypoint                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Port Number Authority
+
+**The YAML config template (`config/templates/<service>.yaml`) is the authoritative source for dashboard port numbers.**
+
+This means:
+- The user edits the YAML config to change a port (e.g. `dashboard.server.port: 8095`)
+- The deployer reads this value and renders it into the service descriptor's `access_profile.port`
+- `const.py` `SERVICE_REGISTRY` carries a `port` value only as a **fallback default** used when the YAML config is absent or the key is missing. It must not be treated as the runtime value.
+- The service descriptor's `access_profile.port` must always match the config YAML port. The deployer is responsible for keeping them in sync at deploy time.
+
+**Current state:** The deployer reads the port from the YAML config template at deploy time and uses it for the service health check probe. The service descriptor's `access_profile.port` is set to match by the supervisor on the Pi when the service starts.
+
+## Supervisor API URL
+
+The supervisor API URL (`supervisor_api_url` in runtime config) must be rendered at deploy time from the HA config entry (the Pi's host/port). It must **not** be hardcoded in any config template file. Template files that need this value should use the placeholder `{SUPERVISOR_API_URL}` which the deployer resolves from `entry.data[CONF_HOST]` and `entry.data[CONF_SUPERVISOR_PORT]`.
+
+---
+
 ## Legacy Environment Variables for Path Configuration
 
 PerimeterControl currently supports configurable installation paths via environment variables for backward compatibility. That compatibility layer still exists, but it should be treated as a boundary input, not as a pattern to extend across Python code.

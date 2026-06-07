@@ -27,7 +27,6 @@ SUPERVISOR_SRC_DIR = INTEGRATION_DIR / "remote_services" / "supervisor"
 SERVICE_REGISTRY = {
     os.environ.get("PERIMETERCONTROL_NETWORK_ISOLATOR_SERVICE", "network_isolator"): {
         "unit": "perimetercontrol-network-isolator-dashboard",
-        "port": int(os.environ.get("PERIMETERCONTROL_DASHBOARD_PORT", 5006) or 5006),
         "template": "PerimeterControl-network-isolator-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/network_isolator_dashboard.py",
@@ -48,7 +47,6 @@ SERVICE_REGISTRY = {
     },
     os.environ.get("PERIMETERCONTROL_PHOTO_BOOTH_SERVICE", "photo_booth"): {
         "unit": "perimetercontrol-photo-booth-dashboard",
-        "port": 8093,
         "template": "PerimeterControl-photo-booth-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/photo_booth_dashboard.py",
@@ -63,7 +61,6 @@ SERVICE_REGISTRY = {
     },
     os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
         "unit": "perimetercontrol-gpio-dashboard",
-        "port": 8095,
         "template": "PerimeterControl-gpio-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/gpio_control_dashboard.py",
@@ -77,7 +74,6 @@ SERVICE_REGISTRY = {
     },
     os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
         "unit": "perimetercontrol-ble-dashboard",
-        "port": 8091,
         "template": "PerimeterControl-ble-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/ble_gatt_repeater_dashboard.py",
@@ -98,7 +94,6 @@ SERVICE_REGISTRY = {
     },
     os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
         "unit": "perimetercontrol-esl-dashboard",
-        "port": 8092,
         "template": "PerimeterControl-esl-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/esl_dashboard.py",
@@ -113,7 +108,6 @@ SERVICE_REGISTRY = {
     },
     os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
         "unit": "perimetercontrol-wildlife-dashboard",
-        "port": 8094,
         "template": "PerimeterControl-wildlife-dashboard.service.template",
         "web_files": [
             "remote_services/dashboard_web/wildlife_dashboard.py",

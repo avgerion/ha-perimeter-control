@@ -930,14 +930,28 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Last-resort fallback: publish a main dashboard URL on default dashboard port.
         # This ensures at least one clickable URL entity when API-provided links are not available yet.
         if not normalized_urls and (not selected_ids or "network_isolator" in selected_ids):
-            from .const import SERVICE_REGISTRY
+            from .const import SERVICE_REGISTRY, TEMPLATES_DIR
+            from pathlib import Path
+            import yaml as _yaml
             # Find the default dashboard service for fallback
             default_dashboard_id = None
             dashboard_port = None
             for sid, sinfo in SERVICE_REGISTRY.items():
                 if sinfo.get("is_default_dashboard"):
                     default_dashboard_id = sid
-                    dashboard_port = sinfo.get("port")
+                    # Read port from YAML config template (single source of truth)
+                    config_template_rel = sinfo.get("config_template")
+                    if config_template_rel:
+                        try:
+                            tmpl_path = TEMPLATES_DIR / Path(config_template_rel).name
+                            if tmpl_path.exists():
+                                tmpl = _yaml.safe_load(tmpl_path.read_text()) or {}
+                                dashboard_port = (
+                                    tmpl.get("dashboard", {}).get("server", {}).get("port")
+                                    or tmpl.get("port")
+                                )
+                        except Exception:
+                            pass
                     break
             if default_dashboard_id and dashboard_port:
                 normalized_urls[default_dashboard_id] = f"http://{host}:{dashboard_port}/"

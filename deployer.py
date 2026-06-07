@@ -512,9 +512,25 @@ class Deployer(BaseDeployer):
         for service_id in self._selected_services:
             service_info = SERVICE_REGISTRY.get(service_id, {})
             unit = service_info.get("unit")
-            port = service_info.get("port")
-            if not unit or not port:
+            if not unit:
                 continue
+
+            # Read dashboard port from the YAML config template (single source of truth).
+            port = None
+            config_template_rel = service_info.get("config_template")
+            if config_template_rel:
+                try:
+                    import yaml as _yaml
+                    template_path = TEMPLATES_DIR / Path(config_template_rel).name
+                    if template_path.exists():
+                        tmpl = _yaml.safe_load(template_path.read_text(encoding="utf-8")) or {}
+                        port = (
+                            tmpl.get("dashboard", {}).get("server", {}).get("port")
+                            or tmpl.get("port")
+                        )
+                except Exception as _exc:
+                    _LOGGER.debug("Could not read port from config template for %s: %s", service_id, _exc)
+
             try:
                 await self._client.async_run(
                     f"sudo systemctl reset-failed {unit} 2>/dev/null || true"

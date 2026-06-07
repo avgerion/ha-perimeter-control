@@ -1,4 +1,8 @@
 # Network Isolator Configuration
+dashboard:
+  server:
+    port: 5006
+
 interfaces:
   - name: eth0
     monitor: true
