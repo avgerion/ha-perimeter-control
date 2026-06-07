@@ -130,6 +130,7 @@ SERVICE_REGISTRY = {
 # These are runtime dependencies imported by all dashboard entry-point scripts.
 SHARED_WEB_FILES = [
     "remote_services/supervisor/data_manager.py",
+    "remote_services/dashboard_web/dashboard_common.py",
 ]
 
 # List of all available service IDs (for Home Assistant integration compatibility)

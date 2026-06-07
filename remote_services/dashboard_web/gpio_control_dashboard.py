@@ -13,6 +13,8 @@ from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from gpio_control_layouts import create_gpio_control_dashboard_layout
 from data_manager import DataManager
+from dashboard_common import create_service_status_panel, create_log_tail_panel
+from bokeh.layouts import column as bk_column
 from pathlib import Path
 
 
@@ -34,8 +36,15 @@ def main(config_path):
 
     def create_app(doc):
         layout, widgets = create_gpio_control_dashboard_layout(data_manager)
-        doc.add_root(layout)
-        for key, value in widgets.items():
+        status_layout, status_widgets = create_service_status_panel(
+            "gpio_control", log_dir=log_root
+        )
+        log_layout, log_widgets = create_log_tail_panel(
+            f"{log_root}/gpio_dashboard.log", title="GPIO Log"
+        )
+        full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
+        doc.add_root(full_layout)
+        for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
         doc.title = f"GPIO Control Dashboard - {instance_name or 'default'}"
 

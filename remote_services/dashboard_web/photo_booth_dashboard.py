@@ -16,6 +16,8 @@ from tornado.ioloop import IOLoop
 from photo_booth_layouts import create_photo_booth_dashboard_layout
 from photo_booth_callbacks import setup_photo_booth_callbacks
 from data_manager import DataManager
+from dashboard_common import create_service_status_panel, create_log_tail_panel
+from bokeh.layouts import column as bk_column
 from pathlib import Path
 import yaml
 
@@ -39,8 +41,15 @@ def main(config_path):
     data_manager = DataManager(config_path)
     def create_app(doc):
         layout, widgets = create_photo_booth_dashboard_layout(data_manager)
-        doc.add_root(layout)
-        for key, value in widgets.items():
+        status_layout, status_widgets = create_service_status_panel(
+            "photo_booth", log_dir=log_root
+        )
+        log_layout, log_widgets = create_log_tail_panel(
+            f"{log_root}/photo_booth_dashboard.log", title="Photo Booth Log"
+        )
+        full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
+        doc.add_root(full_layout)
+        for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
         doc.supervisor_api_url = supervisor_api_url
         setup_photo_booth_callbacks(doc, data_manager)

@@ -17,6 +17,8 @@ from tornado.ioloop import IOLoop
 from ble_gatt_repeater_layouts import create_ble_gatt_repeater_dashboard_layout
 from ble_gatt_repeater_callbacks import setup_ble_gatt_repeater_callbacks
 from data_manager import DataManager
+from dashboard_common import create_service_status_panel, create_log_tail_panel
+from bokeh.layouts import column as bk_column
 from pathlib import Path
 
 def main(config_path):
@@ -39,8 +41,15 @@ def main(config_path):
     data_manager = DataManager(config_path)
     def create_app(doc):
         layout, widgets = create_ble_gatt_repeater_dashboard_layout(data_manager)
-        doc.add_root(layout)
-        for key, value in widgets.items():
+        status_layout, status_widgets = create_service_status_panel(
+            "ble_gatt_repeater", log_dir=log_root
+        )
+        log_layout, log_widgets = create_log_tail_panel(
+            f"{log_root}/ble_gatt_dashboard.log", title="BLE Log"
+        )
+        full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
+        doc.add_root(full_layout)
+        for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
         setup_ble_gatt_repeater_callbacks(doc, data_manager)
         doc.title = f"BLE GATT Repeater Dashboard - {instance_name or 'default'}"

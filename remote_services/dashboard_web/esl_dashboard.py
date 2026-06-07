@@ -13,6 +13,8 @@ def main(config_path):
     from esl_layouts import create_esl_dashboard_layout
     from esl_callbacks import setup_esl_callbacks
     from data_manager import DataManager
+    from dashboard_common import create_service_status_panel, create_log_tail_panel
+    from bokeh.layouts import column as bk_column
     from bokeh.application import Application
     from bokeh.application.handlers.function import FunctionHandler
     from bokeh.server.server import Server
@@ -31,10 +33,17 @@ def main(config_path):
 
     # TODO: Implement network binding logic if needed
     data_manager = DataManager(config_path)
+    log_dir = config.get('log_root', '/var/log/PerimeterControl')
 
     def create_app(doc):
         layout, widgets = create_esl_dashboard_layout(data_manager)
-        for key, value in widgets.items():
+        status_layout, status_widgets = create_service_status_panel("esl_ap", log_dir=log_dir)
+        log_layout, log_widgets = create_log_tail_panel(
+            f"{log_dir}/esl_dashboard.log", title="ESL Log"
+        )
+        full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
+        doc.add_root(full_layout)
+        for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
         setup_esl_callbacks(doc, data_manager)
         doc.title = "ESL Dashboard"
