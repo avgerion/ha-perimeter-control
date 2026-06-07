@@ -413,7 +413,11 @@ fi
                     await asyncio.to_thread(lambda: os.write(temp_fd, service_content.encode()))
                     await asyncio.to_thread(os.close, temp_fd)
                     
-                    service_name = template_name.replace('.template', '')
+                    # systemd unit names are case-sensitive and conventionally lowercase.
+                    # The template filename uses PascalCase; normalise to lowercase so
+                    # the uploaded filename matches what _build_supervisor_install_script
+                    # and all `systemctl` calls expect.
+                    service_name = template_name.replace('.template', '').lower()
                     await self._client.async_put_file(Path(temp_service_file), f"{remote_temp_root}/{service_name}")
                     await self._client.async_run(
                         f"sudo install -o root -g root -m 0644 {remote_temp_root}/{service_name} {remote_systemd_root}/{service_name}"
