@@ -421,7 +421,9 @@ class Deployer(BaseDeployer):
                 else:
                     _src = Path(_fname)
                 if _src.exists():
-                    await self._client.async_put_file(_src, f"{remote_temp_root}/{_fname}")
+                    # Upload to a flat path under remote_temp_root so phase_install's
+                    # `cp /tmp/*.py` glob picks it up regardless of local path structure.
+                    await self._client.async_put_file(_src, f"{remote_temp_root}/{_src.name}")
                 else:
                     _LOGGER.warning("Dashboard web file not found, skipping: %s", _src)
         await self.phase_install()
