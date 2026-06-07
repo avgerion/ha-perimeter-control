@@ -522,8 +522,9 @@ class Deployer(BaseDeployer):
                 try:
                     import yaml as _yaml
                     template_path = TEMPLATES_DIR / Path(config_template_rel).name
-                    if template_path.exists():
-                        tmpl = _yaml.safe_load(template_path.read_text(encoding="utf-8")) or {}
+                    if await asyncio.to_thread(template_path.exists):
+                        template_text = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
+                        tmpl = await asyncio.to_thread(_yaml.safe_load, template_text) or {}
                         port = (
                             tmpl.get("dashboard", {}).get("server", {}).get("port")
                             or tmpl.get("port")

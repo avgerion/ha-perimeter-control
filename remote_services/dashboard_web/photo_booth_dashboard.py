@@ -27,6 +27,7 @@ def main(config_path):
         config = yaml.safe_load(f)
     booth_instances = config.get('services', {}).get('photo_booth', {})
     instance_name, instance_config = next(iter(booth_instances.items())) if booth_instances else (None, {})
+    log_root = instance_config.get('log_root') or config.get('log_root', '/var/log/PerimeterControl')
     supervisor_api_url = config.get('supervisor_api_url')
     if not supervisor_api_url:
         logging.warning("supervisor_api_url not set in config! Supervisor API calls will fail.")
