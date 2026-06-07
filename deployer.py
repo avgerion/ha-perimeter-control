@@ -432,12 +432,18 @@ class Deployer(BaseDeployer):
         try:
             dashboard_root = DASHBOARD_WEB_DIR
             if dashboard_root.exists():
-                for p in sorted(dashboard_root.rglob("*")):
-                    if p.is_file():
-                        try:
-                            await self._client.async_put_file(p, f"{remote_temp_root}/{p.name}")
-                        except Exception:
-                            _LOGGER.debug("Failed to upload dashboard file (ignored): %s", p)
+                # Perform filesystem traversal in a thread to avoid blocking the
+                # Home Assistant event loop (scandir/glob are blocking).
+                try:
+                    files = await asyncio.to_thread(lambda: [p for p in dashboard_root.rglob("*") if p.is_file()])
+                except Exception:
+                    files = []
+
+                for p in sorted(files):
+                    try:
+                        await self._client.async_put_file(p, f"{remote_temp_root}/{p.name}")
+                    except Exception:
+                        _LOGGER.debug("Failed to upload dashboard file (ignored): %s", p)
         except Exception:
             _LOGGER.debug("Could not iterate DASHBOARD_WEB_DIR for bulk upload", exc_info=True)
 

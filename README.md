@@ -105,36 +105,27 @@ services:
 - Home Assistant and Pi code both use the same schema and config structure.
 
 ---
-## 🚀 **Dual Deployment System**
+## 🚀 **Canonical Deployment**
 
-This integration provides **two deployment methods** for setting up fresh Pi nodes:
+Use the integration's built-in deployer (recommended) or the supported CLI deploy script to copy, install, and verify services on a Pi target. The deployer implements validation, staging, atomic apply with rollback, and health verification so deployments are safe and repeatable.
 
-### Method 1: GUI Deployment (Recommended for Users)
-Deploy directly from Home Assistant interface:
+### Recommended: Deploy from Home Assistant (GUI)
 1. **Add Integration** via Settings > Devices & Services
-2. **Enter Pi Target Details** (IP address like `192.168.50.47`, SSH key, username)  
+2. **Enter Pi Target Details** (IP, SSH key, username)
 3. **Select Services** to install (photo booth, BLE repeater, etc.)
-4. **Deploy** - Home Assistant pushes code to Pi via SSH and starts services automatically
+4. **Click Deploy** — the integration's `Deployer` will upload sources, install packages, enable systemd units, and run health checks
 
-### Method 2: Command Line Deployment (Power Users)  
-Deploy via HA shell commands or automation:
-```yaml
-shell_command:
-  deploy_pi: >
-    python3 /config/ha-integration/scripts/deploy.py
-    --host 192.168.50.47 --user pi --ssh-key /config/ssh_key
+### CLI: Supported Command-Line Deploy
+For automation or power users, use the provided Python CLI deploy wrapper located under `ha-integration/scripts/deploy.py`:
+
+```bash
+python3 ha-integration/scripts/deploy.py --host 192.168.50.47 --user pi --ssh-key /path/to/key
 ```
 
-> **Note**: The `--host` parameter specifies the **target Pi device** IP address, not the Home Assistant server IP.
+This script invokes the same deployment logic as the GUI deployer and is suitable for CI/CD or scripted workflows.
 
-### Fresh Pi Bootstrap Capability
-Both methods can set up a **fresh Pi target device with just Pi OS + SSH**:
-- ✅ Home Assistant SSH deploys to Pi target (e.g., `192.168.50.47`)
-- ✅ Install system dependencies (GStreamer, I2C tools, etc.) on Pi
-- ✅ Set up supervisor service and API on port 8080 on Pi
-- ✅ Deploy service configurations and descriptors to Pi
-- ✅ Start all systemd services automatically on Pi
-- ✅ Handle rollback on deployment failures
+### Fresh Pi Bootstrap
+Both GUI and CLI deploy paths support bootstrapping a fresh Pi (Pi OS + SSH) by installing dependencies, deploying the supervisor package, and registering service descriptors.
 
 ## 📦 Installation
 
@@ -264,9 +255,9 @@ Real-time events for:
 
 ### Deployment Boundary (Important)
 
-- Home Assistant entity/platform bugs must be fixed through the Home Assistant custom integration deployment/reload flow.
-- Do not use `scripts/deploy-dashboard-web.ps1` for HA entity or platform issues.
-- `scripts/deploy-dashboard-web.ps1` is for Pi-side dashboard/supervisor/service deployment.
+- Home Assistant entity/platform bugs must be addressed via the integration's deploy/reload flow so that the supervisor and dashboard code remain consistent with the integration metadata.
+- Use the integration `Deployer` (GUI) or the supported CLI `ha-integration/scripts/deploy.py` to deploy code to Pi targets. These paths are the canonical, repeatable deployment mechanisms and perform validation and health checks.
+- Do not perform ad-hoc manual copies of files or use one-off scripts that bypass the deployer; these can leave the Pi and Home Assistant out of sync and create hard-to-debug 404s or stale behavior.
 
 ### Common Issues
 

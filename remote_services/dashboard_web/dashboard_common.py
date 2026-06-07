@@ -81,32 +81,30 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     status_badge = Div(text="<b>Status:</b> checking...", sizing_mode="stretch_width")
     status_details = PreText(text="Waiting for first health check...", height=90, sizing_mode="stretch_width")
 
+    # Use PreText widgets for log content and style them via CSS classes so
+    # they behave consistently and avoid overlapping other Divs.
     service_log_text = PreText(
         text="Loading service log...",
         height=140,
         sizing_mode="stretch_width",
-        styles={
-            "background-color": "#0f1720",
-            "color": "#ecf0f1",
-            "padding": "8px",
-            "border-radius": "4px",
-            "margin-bottom": "8px",
-            "display": "block",
-        },
+        css_classes=["pc-log"],
     )
     supervisor_log_text = PreText(
         text="Loading supervisor log...",
         height=140,
         sizing_mode="stretch_width",
-        styles={
-            "background-color": "#0f1720",
-            "color": "#ecf0f1",
-            "padding": "8px",
-            "border-radius": "4px",
-            "margin-bottom": "8px",
-            "display": "block",
-        },
+        css_classes=["pc-log"],
     )
+
+    # Inject minimal CSS for the dashboard log areas and command output so they
+    # have explicit background, padding, and overflow handling.
+    style_div = Div(text=(
+        "<style>"
+        ".pc-log { background-color:#0f1720; color:#ecf0f1; padding:8px; border-radius:4px; margin-bottom:8px; overflow:auto; height:140px; font-family:monospace; font-size:11px; white-space:pre-wrap; }"
+        ".pc-command-output { background-color:#fafafa; color:#111; padding:8px; border-radius:4px; margin-top:8px; overflow:auto; height:140px; font-family:monospace; font-size:12px; }"
+        ".pc-status-badge { margin-bottom:6px; }"
+        "</style>"
+    ), sizing_mode="stretch_width")
 
     ssh_command_select = Select(
         title="Run service command",
@@ -124,7 +122,9 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     ssh_command_output = PreText(text="Command output will appear here.", height=140, sizing_mode="stretch_width")
 
     layout = column(
+        style_div,
         header,
+        Div(text="", css_classes=["pc-status-badge"]),
         status_badge,
         status_details,
         Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Service Log</b></div>"),
@@ -133,6 +133,7 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         supervisor_log_text,
         ssh_command_select,
         row(ssh_run_button, sizing_mode="stretch_width"),
+        Div(text="<div class='pc-command-output' id='pc-cmd-out'></div>"),
         ssh_command_output,
         sizing_mode="stretch_width",
     )
@@ -167,32 +168,24 @@ def create_log_tail_panel(log_path: str = "/var/log/PerimeterControl/supervisor.
                 pass
         doc.add_periodic_callback(update_log, 5000)
     """
-    header = Div(
-        text=f"<h4 style='margin:0 0 6px 0;color:#ecf0f1;'>📋 {title}</h4>"
-             f"<p style='margin:0 0 6px 0;font-size:11px;color:#95a5a6;'>{log_path}</p>",
+    header_html = (
+        f"<div style='background:#2c3e50;padding:10px;border-radius:6px;'>"
+        f"<h4 style='margin:0 0 6px 0;color:#ecf0f1;'>📋 {title}</h4>"
+        f"<p style='margin:0 0 6px 0;font-size:11px;color:#95a5a6;'>{log_path}</p>"
+        f"</div>"
     )
+
+    header = Div(text=header_html, sizing_mode="stretch_width")
 
     log_text = PreText(
         text="Loading log…",
         height=height,
         sizing_mode="stretch_width",
-        styles={
-            "background-color": "#1a252f",
-            "color": "#ecf0f1",
-            "font-family": "monospace",
-            "font-size": "11px",
-            "padding": "8px",
-            "border-radius": "4px",
-            "overflow-y": "auto",
-        },
     )
 
-    layout = column(
-        Div(text="<div style='background:#2c3e50;padding:10px;border-radius:6px;'>",
-            sizing_mode="stretch_width"),
-        column(header, log_text, sizing_mode="stretch_width"),
-        sizing_mode="stretch_width",
-    )
+    # Wrap header and log text in a container so layout HTML remains well-formed
+    container = column(header, log_text, sizing_mode="stretch_width")
+    layout = column(container, sizing_mode="stretch_width")
     widgets = {"log_tail_text": log_text}
     return layout, widgets
 
