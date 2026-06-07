@@ -99,16 +99,8 @@ async def _render_service_template(template_path: Path) -> str:
     
     # Use asyncio.to_thread to read file without blocking event loop
     template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
-    path_config = {
-        "CONF_DIR": remote_conf_dir,
-        "SCRIPTS_DIR": remote_scripts_dir,
-        "SUPERVISOR_DIR": remote_supervisor_dir,
-        "LOG_ROOT": remote_log_root,
-        "STATE_ROOT": remote_state_root,
-        "STATE_DIR": remote_state_dir,
-        "VENV": remote_venv_dir,
-        "INSTALL_ROOT": remote_install_root,
-    }
+    from .const import get_remote_path_config
+    path_config = get_remote_path_config()
     _LOGGER.warning(f"[PerimeterControl] Template path_config for {template_path}: {path_config}")
     try:
         return template_content.format(**path_config)

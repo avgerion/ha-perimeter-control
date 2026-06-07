@@ -108,9 +108,9 @@ SERVICE_REGISTRY = {
     },
 }
 
-    # Supervisor deployment is handled as a special case in deployment logic and is NOT included as a service in SERVICE_REGISTRY.
-    # This avoids confusion and keeps SERVICE_REGISTRY focused on dashboard/capability services only.
-    # See deployer.py for supervisor deployment logic.
+# Supervisor deployment is handled as a special case in deployment logic and is NOT included as a service in SERVICE_REGISTRY.
+# This avoids confusion and keeps SERVICE_REGISTRY focused on dashboard/capability services only.
+# See deployer.py for supervisor deployment logic.
 # List of all available service IDs (for Home Assistant integration compatibility)
 AVAILABLE_SERVICES = list(SERVICE_REGISTRY.keys())
 
@@ -188,6 +188,7 @@ def get_remote_path_config() -> dict[str, str]:
         "SYSTEMD_ROOT": remote_systemd_root,
         "VENV": remote_venv_dir,
         "SERVICE_PREFIX": service_prefix,
+        "SUPERVISOR_SERVICE": "perimetercontrol-supervisor",
     }.items() if v is not None}
 
 

@@ -54,18 +54,8 @@ async def _render_service_template(template_path: Path) -> str:
         raise FileNotFoundError(f"Service template not found: {template_path}")
     
     template_content = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
-    path_config = {
-        "INSTALL_ROOT": remote_install_root,
-        "WEB_DIR": remote_web_dir,
-        "SCRIPTS_DIR": remote_scripts_dir,
-        "SUPERVISOR_DIR": remote_supervisor_dir,
-        "CONF_DIR": remote_conf_dir,
-        "SERVICES_DIR": remote_services_dir,
-        "LOG_ROOT": remote_log_root,
-        "STATE_ROOT": remote_state_root,
-        "STATE_DIR": remote_state_dir,
-        "VENV": remote_venv_dir,
-    }
+    from .const import get_remote_path_config
+    path_config = get_remote_path_config()
     try:
         return template_content.format(**path_config)
     except KeyError as e:
