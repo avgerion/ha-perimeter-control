@@ -1,7 +1,22 @@
-(from .gpio_control_callbacks import get_gpio_entities)
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bokeh.layouts import column
 from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
+
+def get_gpio_entities(config):
+    """Return GPIO entities from config. Stub until gpio_control_callbacks is implemented."""
+    services = config.get("services", {})
+    gpio_cfg = services.get("gpio_control", {})
+    entities = []
+    for pin_id, pin_info in gpio_cfg.get("pins", {}).items():
+        entities.append({
+            "id": str(pin_id),
+            "friendly_name": pin_info.get("name", str(pin_id)),
+            "state": pin_info.get("default_state", "unknown"),
+        })
+    return entities
 
 def create_gpio_control_dashboard_layout(data_manager):
 	entities = get_gpio_entities(data_manager.config)
