@@ -65,6 +65,7 @@ SERVICE_REGISTRY = {
         "web_files": [
             "remote_services/dashboard_web/gpio_control_dashboard.py",
             "remote_services/dashboard_web/gpio_control_layouts.py",
+            "remote_services/dashboard_web/gpio_control_callbacks.py",
         ],
         "script_files": [],
         "pip_packages": ["tornado"],

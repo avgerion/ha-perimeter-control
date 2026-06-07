@@ -450,8 +450,16 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
     @property
     def available(self) -> bool:
         """Return True if camera is available."""
+        if not super().available:
+            return False
+
         current_state = self._get_current_state()
         attrs = current_state.get("attributes", {})
+
+        # If state data has not arrived yet, keep entity available as long as
+        # schema + supervisor health gates pass.
+        if not current_state:
+            return True
 
         # Prefer explicit connectivity flags from API attributes when present.
         for key in ("connected", "is_connected", "online"):

@@ -19,13 +19,8 @@ def get_gpio_entities(config):
     return entities
 
 def create_gpio_control_dashboard_layout(data_manager):
-    entities = get_gpio_entities(data_manager.config)
-    # ColumnDataSource expects a dict of lists, not a list of dicts
-    source_data = {
-        "friendly_name": [e["friendly_name"] for e in entities],
-        "id": [e["id"] for e in entities],
-        "state": [e["state"] for e in entities],
-    }
+    # Runtime entity rows are populated by periodic callbacks from supervisor API.
+    source_data = {"friendly_name": [], "id": [], "state": []}
     columns = [
         TableColumn(field="friendly_name", title="Name"),
         TableColumn(field="id", title="ID"),

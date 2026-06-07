@@ -16,7 +16,7 @@ from tornado.ioloop import IOLoop
 from photo_booth_layouts import create_photo_booth_dashboard_layout
 from photo_booth_callbacks import setup_photo_booth_callbacks
 from data_manager import DataManager
-from dashboard_common import create_service_status_panel, create_log_tail_panel
+from dashboard_common import create_service_status_panel, create_log_tail_panel, setup_common_dashboard_callbacks
 from bokeh.layouts import column as bk_column
 from pathlib import Path
 import yaml
@@ -40,19 +40,29 @@ def main(config_path):
     )
     logger = logging.getLogger(logger_name)
     data_manager = DataManager(config_path)
+    unit_name = "perimetercontrol-photo-booth-dashboard"
+    service_log_path = f"{log_root}/photo_booth_dashboard.log"
+    supervisor_log_path = f"{log_root}/supervisor.log"
     def create_app(doc):
         layout, widgets = create_photo_booth_dashboard_layout(data_manager)
         status_layout, status_widgets = create_service_status_panel(
-            "photo_booth", log_dir=log_root
+            "photo_booth", log_dir=log_root, unit_name=unit_name
         )
         log_layout, log_widgets = create_log_tail_panel(
-            f"{log_root}/photo_booth_dashboard.log", title="Photo Booth Log"
+            service_log_path, title="Photo Booth Log"
         )
         full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
         doc.add_root(full_layout)
         for key, value in {**widgets, **status_widgets, **log_widgets}.items():
             setattr(doc, key, value)
         doc.supervisor_api_url = supervisor_api_url
+        setup_common_dashboard_callbacks(
+            doc,
+            service_name="photo_booth",
+            unit_name=unit_name,
+            service_log_path=service_log_path,
+            supervisor_log_path=supervisor_log_path,
+        )
         setup_photo_booth_callbacks(doc, data_manager)
         doc.title = f"Photo Booth Dashboard - {instance_name or 'default'}"
     handler = FunctionHandler(create_app)
