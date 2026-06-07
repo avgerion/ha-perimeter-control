@@ -2,11 +2,16 @@
 Wildlife service-specific dashboard entry point.
 All logic previously in dashboard.py for wildlife should be moved here.
 """
+import os
+import sys
+# Ensure the directory containing this file is on sys.path so that
+# sibling modules are importable when this script is executed directly by systemd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def main(config_path):
     # Import service-specific modules
-    from .wildlife_layouts import create_wildlife_dashboard_layout
-    from .wildlife_callbacks import setup_wildlife_callbacks
+    from wildlife_layouts import create_wildlife_dashboard_layout
+    from wildlife_callbacks import setup_wildlife_callbacks
     from data_sources import DataManager
     from bokeh.application import Application
     from bokeh.application.handlers.function import FunctionHandler

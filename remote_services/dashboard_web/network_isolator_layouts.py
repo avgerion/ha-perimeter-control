@@ -1,4 +1,4 @@
-from .network_isolator_callbacks import get_network_topology
+from network_isolator_callbacks import get_network_topology
 #!/usr/bin/env python3
 """
 Network Isolator service-specific layouts.

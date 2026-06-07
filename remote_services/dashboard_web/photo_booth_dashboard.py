@@ -3,13 +3,18 @@ Photo Booth service-specific dashboard entry point.
 Migrated from photo_booth_bokeh_dashboard.py.
 """
 import os
+import sys
 import logging
+# Ensure the directory containing this file is on sys.path so that
+# sibling modules (photo_booth_layouts, etc.) are importable when
+# this script is executed directly by systemd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bokeh.server.server import Server
 from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from tornado.ioloop import IOLoop
-from .photo_booth_layouts import create_photo_booth_dashboard_layout
-from .photo_booth_callbacks import setup_photo_booth_callbacks
+from photo_booth_layouts import create_photo_booth_dashboard_layout
+from photo_booth_callbacks import setup_photo_booth_callbacks
 from data_sources import DataManager
 from pathlib import Path
 import yaml

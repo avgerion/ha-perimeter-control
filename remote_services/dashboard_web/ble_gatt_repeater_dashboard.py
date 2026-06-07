@@ -4,14 +4,18 @@ Migrated from ble_gatt_bokeh_dashboard.py.
 """
 
 import os
+import sys
 import yaml
 import logging
+# Ensure the directory containing this file is on sys.path so that
+# sibling modules are importable when this script is executed directly by systemd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bokeh.server.server import Server
 from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from tornado.ioloop import IOLoop
-from .ble_gatt_repeater_layouts import create_ble_gatt_repeater_dashboard_layout
-from .ble_gatt_repeater_callbacks import setup_ble_gatt_repeater_callbacks
+from ble_gatt_repeater_layouts import create_ble_gatt_repeater_dashboard_layout
+from ble_gatt_repeater_callbacks import setup_ble_gatt_repeater_callbacks
 from data_sources import DataManager
 from pathlib import Path
 

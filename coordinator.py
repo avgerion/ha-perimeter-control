@@ -71,6 +71,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._warned_empty_entities = False
         self._warned_fetch_fallback = False
         self._warned_zero_entity_services: set[str] = set()
+        self._warned_inactive_services: set[str] = set()  # debounce inactive-status warnings
         # Service descriptors will be loaded in create() method
         self._service_descriptors: dict[str, ServiceDescriptor] = {}
 
@@ -988,12 +989,17 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
             if service.get("status") not in (None, "active"):
-                _LOGGER.warning(
-                    "Dashboard entity %s is published while service status is %s; URL=%s",
-                    service_id,
-                    service.get("status", "unknown"),
-                    dashboard_url,
-                )
+                if service_id not in self._warned_inactive_services:
+                    self._warned_inactive_services.add(service_id)
+                    _LOGGER.warning(
+                        "Dashboard entity %s is published while service status is %s; URL=%s",
+                        service_id,
+                        service.get("status", "unknown"),
+                        dashboard_url,
+                    )
+            else:
+                # Clear the debounce flag when service recovers to active
+                self._warned_inactive_services.discard(service_id)
             
             dashboard_entities.append(entity)
             

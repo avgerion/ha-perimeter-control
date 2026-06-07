@@ -6,7 +6,7 @@ Move all logic from layouts.py that is specific to ble_gatt_repeater here.
 
 from bokeh.layouts import column
 from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
-from .ble_gatt_repeater_callbacks import get_ble_gatt_entities
+from ble_gatt_repeater_callbacks import get_ble_gatt_entities
 
 def create_ble_gatt_repeater_dashboard_layout(data_manager):
     """
