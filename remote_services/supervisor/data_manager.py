@@ -48,7 +48,8 @@ class DataManager:
 
         host = self.config.get("supervisor_host") or "127.0.0.1"
         port = int(self.config.get("supervisor_port", 8080))
-        return f"http://{host}:{port}"
+        # Coordinator and other components expect the API root under /api/v1
+        return f"http://{host}:{port}/api/v1"
 
     def _request_json(self, endpoint: str, method: str = "GET", payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """Call supervisor API and return parsed JSON payload."""

@@ -16,7 +16,8 @@ def create_photo_booth_dashboard_layout(data_manager):
     photo_source = ColumnDataSource(data=dict(url=["/static/placeholder.jpg"], x=[0], y=[0], w=[400], h=[300]))
     # ImageURL is the correct glyph for displaying images from URLs in modern Bokeh
     from bokeh.models import ImageURL
-    plot = figure(width=400, height=300, toolbar_location=None)
+    # Use responsive sizing to avoid fixed-width overlaps when embedding in narrow containers
+    plot = figure(sizing_mode="stretch_width", height=300, toolbar_location=None)
     plot.image_url(url="url", x="x", y="y", w="w", h="h", source=photo_source)
 
     camera_source = ColumnDataSource(data={"friendly_name": [], "state": [], "image_url": []})
