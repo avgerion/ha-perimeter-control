@@ -750,6 +750,18 @@ def _build_install_script() -> str:
                 mode = "0755"
             file_entries.append((fname, remote_scripts_dir, mode))
 
+    # Also include shared web assets (e.g. static CSS/JS) so files uploaded
+    # via SHARED_WEB_FILES are installed into the web directory with
+    # preserved subpaths (static/css/...)
+    try:
+        from .const import SHARED_WEB_FILES as _SHARED
+        for shared in _SHARED:
+            # shared entries are repository-relative paths (e.g. remote_services/dashboard_web/static/css/pc-dashboard.css)
+            file_entries.append((shared, remote_web_dir, "0644"))
+    except Exception:
+        # If const can't be read for some reason, continue without shared entries
+        pass
+
     # Use the configurable install commands
     lines = ["set -e"] + _get_install_commands()
     for fname, dest, mode in file_entries:
