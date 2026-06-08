@@ -69,10 +69,10 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
 
     header = Div(
         text=(
-            "<div style='background:#2c3e50;color:#ecf0f1;padding:10px;border-radius:6px;'>"
-            f"<h3 style='margin:0 0 6px 0;'>Service Status - {service_name}</h3>"
-            f"<p style='margin:0 0 4px 0;font-size:12px;'>Unit: <code>{unit_name}.service</code></p>"
-            f"<p style='margin:0;font-size:12px;'>Service log: <code>{service_log}</code><br>"
+            "<div class='pc-header'>"
+            f"<h3>Service Status - {service_name}</h3>"
+            f"<p>Unit: <code>{unit_name}.service</code></p>"
+            f"<p>Service log: <code>{service_log}</code><br>"
             f"Supervisor log: <code>{supervisor_log}</code></p>"
             "</div>"
         ),
@@ -96,15 +96,9 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         css_classes=["pc-log"],
     )
 
-    # Inject minimal CSS for the dashboard log areas and command output so they
-    # have explicit background, padding, and overflow handling.
-    style_div = Div(text=(
-        "<style>"
-        ".pc-log { background-color:#0f1720; color:#ecf0f1; padding:8px; border-radius:4px; margin-bottom:8px; overflow:auto; height:140px; font-family:monospace; font-size:11px; white-space:pre-wrap; }"
-        ".pc-command-output { background-color:#fafafa; color:#111; padding:8px; border-radius:4px; margin-top:8px; overflow:auto; height:140px; font-family:monospace; font-size:12px; }"
-        ".pc-status-badge { margin-bottom:6px; }"
-        "</style>"
-    ), sizing_mode="stretch_width")
+    # Provide a simple link to the shared static CSS file. Widgets that need
+    # per-dashboard overrides can still inject small inline style blocks.
+    style_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
 
     ssh_command_select = Select(
         title="Run service command",
@@ -130,10 +124,10 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     # layout engine stacks them reliably instead of attempting absolute
     # positioning that can overlap dynamic preformatted text.
     status_section = column(status_badge, status_details, sizing_mode="stretch_width")
-    service_log_section = column(Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Service Log</b></div>"),
+    service_log_section = column(Div(text="<div class='pc-section-title'><b>Service Log</b></div>"),
                                  service_log_text,
                                  sizing_mode="stretch_width")
-    supervisor_log_section = column(Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Supervisor Log</b></div>"),
+    supervisor_log_section = column(Div(text="<div class='pc-section-title'><b>Supervisor Log</b></div>"),
                                     supervisor_log_text,
                                     sizing_mode="stretch_width")
 

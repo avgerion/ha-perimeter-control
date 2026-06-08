@@ -16,6 +16,7 @@ from tornado.ioloop import IOLoop
 from network_isolator_layouts import create_dashboard_layout
 from network_isolator_callbacks import setup_callbacks
 from data_sources import DataManager
+from bokeh.models import Div
 
 def _load_config(path: Path) -> Dict[str, Any]:
     try:
@@ -51,6 +52,9 @@ def main(config_path: Path):
     supervisor_api_url = data_manager.supervisor_api_url
     def create_app(doc):
         layout, widgets = create_dashboard_layout(data_manager)
+        # Ensure shared dashboard stylesheet is available
+        css_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+        doc.add_root(css_div)
         doc.supervisor_api_url = supervisor_api_url
         for key, value in widgets.items():
             setattr(doc, key, value)
