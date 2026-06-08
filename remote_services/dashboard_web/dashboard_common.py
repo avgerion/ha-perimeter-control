@@ -67,9 +67,11 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     service_log = f"{log_dir}/{service_name}_dashboard.log"
     supervisor_log = f"{log_dir}/supervisor.log"
 
+    # Add a small inline style to ensure the header occupies normal flow
+    # even if external CSS hasn't loaded yet (defensive fallback).
     header = Div(
         text=(
-            "<div class='pc-header'>"
+            "<div class='pc-header' style='position:relative; z-index:2; margin-bottom:12px;'>"
             f"<h3>Service Status - {service_name}</h3>"
             f"<p>Unit: <code>{unit_name}.service</code></p>"
             f"<p>Service log: <code>{service_log}</code><br>"
@@ -124,12 +126,17 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     # layout engine stacks them reliably instead of attempting absolute
     # positioning that can overlap dynamic preformatted text.
     status_section = column(status_badge, status_details, sizing_mode="stretch_width")
-    service_log_section = column(Div(text="<div class='pc-section-title'><b>Service Log</b></div>"),
-                                 service_log_text,
-                                 sizing_mode="stretch_width")
-    supervisor_log_section = column(Div(text="<div class='pc-section-title'><b>Supervisor Log</b></div>"),
-                                    supervisor_log_text,
-                                    sizing_mode="stretch_width")
+    # Ensure section titles provide spacing even without external CSS
+    service_log_section = column(
+        Div(text="<div class='pc-section-title' style='margin-top:12px; margin-bottom:6px;'><b>Service Log</b></div>"),
+        service_log_text,
+        sizing_mode="stretch_width",
+    )
+    supervisor_log_section = column(
+        Div(text="<div class='pc-section-title' style='margin-top:12px; margin-bottom:6px;'><b>Supervisor Log</b></div>"),
+        supervisor_log_text,
+        sizing_mode="stretch_width",
+    )
 
     layout = column(
         style_div,
@@ -228,6 +235,30 @@ def setup_common_dashboard_callbacks(
         cmd = doc.ssh_command_select.value
         doc.ssh_command_output.text = _run_shell(cmd, timeout=10)
 
-    doc.ssh_run_button.on_click(_run_selected_command)
+    # Run commands in a background thread to avoid blocking the Bokeh IOLoop.
+    # Use add_next_tick_callback to safely update document models from the
+    # IOLoop thread after the background work completes.
+    def _on_ssh_run_click():
+        cmd = doc.ssh_command_select.value
+
+        def _worker():
+            out = _run_shell(cmd, timeout=10)
+
+            def _update_output():
+                doc.ssh_command_output.text = out
+
+            try:
+                doc.add_next_tick_callback(_update_output)
+            except Exception:
+                # Fallback: set directly if scheduling fails
+                try:
+                    doc.ssh_command_output.text = out
+                except Exception:
+                    pass
+
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()
+
+    doc.ssh_run_button.on_click(_on_ssh_run_click)
     doc.add_periodic_callback(_update_status_and_logs, refresh_ms)
     _update_status_and_logs()
