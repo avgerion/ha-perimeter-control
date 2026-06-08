@@ -754,10 +754,26 @@ def _build_install_script() -> str:
     lines = ["set -e"] + _get_install_commands()
     for fname, dest, mode in file_entries:
         base = fname.split("/")[-1]
-        lines.append(
-            f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
-            f"{remote_temp_root}/{base} {dest}/{base} || true"
-        )
+        # Compute a relative destination path for dashboard_web files so that
+        # directory structure (e.g. static/css/) is preserved under remote_web_dir.
+        rel = None
+        if "dashboard_web/" in fname:
+            rel = fname.split("dashboard_web/")[-1]
+        elif "remote_services/dashboard_web/" in fname:
+            rel = fname.split("remote_services/dashboard_web/")[-1]
+        # If we have a relative path, ensure the destination directory exists
+        if rel and "/" in rel:
+            rel_dir = "/".join(rel.split("/")[:-1])
+            lines.append(f"sudo mkdir -p {dest}/{rel_dir} || true")
+            lines.append(
+                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
+                f"{remote_temp_root}/{base} {dest}/{rel_dir}/{base} || true"
+            )
+        else:
+            lines.append(
+                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
+                f"{remote_temp_root}/{base} {dest}/{base} || true"
+            )
     # Also copy any uploaded python dashboard modules to the web directory so
     # bulk uploads placed in the temp root will be installed even if not
     # enumerated in SERVICE_REGISTRY. Use install to set correct permissions.
