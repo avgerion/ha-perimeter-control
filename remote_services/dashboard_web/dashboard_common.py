@@ -15,7 +15,10 @@ Usage in a dashboard layout:
 from bokeh.layouts import column, row
 from bokeh.models import Div, PreText, Button, Select, ColumnDataSource, DataTable, TableColumn
 import subprocess
+import logging
 from pathlib import Path
+
+_DC_LOGGER = logging.getLogger("perimetercontrol.dashboard_common")
 
 
 def _tail_file(path: str, lines: int = 40) -> str:
@@ -240,6 +243,13 @@ def setup_common_dashboard_callbacks(
     # IOLoop thread after the background work completes.
     def _on_ssh_run_click():
         cmd = doc.ssh_command_select.value
+        _DC_LOGGER.info("Run Command clicked: %s", cmd)
+
+        # Immediate feedback in UI
+        try:
+            doc.ssh_command_output.text = f"Running: {cmd}"
+        except Exception:
+            pass
 
         def _worker():
             out = _run_shell(cmd, timeout=10)
