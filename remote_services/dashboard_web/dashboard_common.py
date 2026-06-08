@@ -126,16 +126,23 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         css_classes=["pc-command-output"],
     )
 
+    # Group status and logs into explicit vertical sections so Bokeh's
+    # layout engine stacks them reliably instead of attempting absolute
+    # positioning that can overlap dynamic preformatted text.
+    status_section = column(status_badge, status_details, sizing_mode="stretch_width")
+    service_log_section = column(Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Service Log</b></div>"),
+                                 service_log_text,
+                                 sizing_mode="stretch_width")
+    supervisor_log_section = column(Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Supervisor Log</b></div>"),
+                                    supervisor_log_text,
+                                    sizing_mode="stretch_width")
+
     layout = column(
         style_div,
         header,
-        Div(text="", css_classes=["pc-status-badge"]),
-        status_badge,
-        status_details,
-        Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Service Log</b></div>"),
-        service_log_text,
-        Div(text="<div style='margin-top:8px;margin-bottom:4px;'><b>Supervisor Log</b></div>"),
-        supervisor_log_text,
+        status_section,
+        service_log_section,
+        supervisor_log_section,
         ssh_command_select,
         row(ssh_run_button, sizing_mode="stretch_width"),
         ssh_command_output,
