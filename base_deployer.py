@@ -109,24 +109,39 @@ def _build_install_script() -> str:
             rel = fname.split("dashboard_web/")[-1]
         elif "remote_services/dashboard_web/" in fname:
             rel = fname.split("remote_services/dashboard_web/")[-1]
+        # Preserve directory structure when present
         if rel and "/" in rel:
             rel_dir = "/".join(rel.split("/")[:-1])
+            dst_path = f"{dest}/{rel_dir}/{base}"
             lines.append(f"sudo mkdir -p {dest}/{rel_dir} || true")
             lines.append(
-                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
-                f"{remote_temp_root}/{base} {dest}/{rel_dir}/{base} || true"
+                f"if [ -f {remote_temp_root}/{base} ]; then echo INSTALL_DEBUG: found {remote_temp_root}/{base}; "
+                f"echo INSTALL_DEBUG: installing to {dst_path}; "
+                f"sudo install -o root -g root -m {mode} {remote_temp_root}/{base} {dst_path} && echo INSTALL_OK: {dst_path} || echo INSTALL_FAIL: {dst_path}; "
+                f"else echo INSTALL_MISSING: {remote_temp_root}/{base}; fi"
             )
         else:
+            dst_path = f"{dest}/{base}"
             lines.append(
-                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
-                f"{remote_temp_root}/{base} {dest}/{base} || true"
+                f"if [ -f {remote_temp_root}/{base} ]; then echo INSTALL_DEBUG: found {remote_temp_root}/{base}; "
+                f"echo INSTALL_DEBUG: installing to {dst_path}; "
+                f"sudo install -o root -g root -m {mode} {remote_temp_root}/{base} {dst_path} && echo INSTALL_OK: {dst_path} || echo INSTALL_FAIL: {dst_path}; "
+                f"else echo INSTALL_MISSING: {remote_temp_root}/{base}; fi"
             )
 
-    # Keep legacy behavior for bulk python/script copies as a fallback
+    # Keep legacy behavior for bulk python/script copies as a fallback, but emit diagnostics
     lines.append(f"sudo mkdir -p {remote_web_dir} || true")
-    lines.append(f"for f in {remote_temp_root}/*.py; do [ -f \"$f\" ] && sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") || true; done")
-    lines.append(f"sudo cp {remote_temp_root}/*.sh {remote_scripts_dir}/ 2>/dev/null || true")
-    lines.append(f"sudo chmod +x {remote_scripts_dir}/*.sh 2>/dev/null || true")
+    lines.append(
+        f"for f in {remote_temp_root}/*.py; do if [ -f \"$f\" ]; then echo INSTALL_DEBUG: installing $f to {remote_web_dir}/$(basename \"$f\"); "
+        f"sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") && echo INSTALL_OK: $f || echo INSTALL_FAIL: $f; fi; done"
+    )
+    lines.append(
+        f"for s in {remote_temp_root}/*.sh; do if [ -f \"$s\" ]; then echo INSTALL_DEBUG: copying $s to {remote_scripts_dir}/; "
+        f"sudo cp \"$s\" {remote_scripts_dir}/ && echo INSTALL_OK: $s || echo INSTALL_FAIL: $s; fi; done"
+    )
+    lines.append(
+        f"for s in {remote_scripts_dir}/*.sh; do [ -f \"$s\" ] && sudo chmod +x \"$s\" && echo INSTALL_CHMOD_OK: $s || true; done"
+    )
 
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)
@@ -357,6 +372,7 @@ fi
         """Install uploaded files into active directories."""
         self._emit("install", "Installing files into active directories...", 45)
         install_script = _build_install_script()
+        _LOGGER.warning("Executing install script via async_run_b64 (install phase). This script will emit INSTALL_DEBUG/INSTALL_OK/INSTALL_FAIL lines.")
         await self._client.async_run_b64(install_script)
         self._emit("install", "Files installed", 55)
 

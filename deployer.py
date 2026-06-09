@@ -719,10 +719,10 @@ class Deployer(BaseDeployer):
     ) -> tuple[bool, str]:
         """Wait for local HTTP endpoint to return success on the remote host."""
         last_probe = ""
-        for _ in range(attempts):
-            last_probe = await self._client.async_run(
-                f"curl -fsS --max-time 3 http://127.0.0.1:{port}/ >/dev/null 2>&1 && echo HTTP_OK || echo HTTP_FAIL"
-            )
+        for attempt in range(attempts):
+            curl_cmd = f"curl -fsS --max-time 3 http://127.0.0.1:{port}/ >/dev/null 2>&1 && echo HTTP_OK || echo HTTP_FAIL"
+            _LOGGER.warning("HTTP probe (attempt %s/%s): %s", attempt + 1, attempts, curl_cmd)
+            last_probe = await self._client.async_run(curl_cmd)
             if "HTTP_OK" in last_probe:
                 return True, last_probe
             await asyncio.sleep(delay_seconds)
@@ -776,21 +776,30 @@ def _build_install_script() -> str:
         # If we have a relative path, ensure the destination directory exists
         if rel and "/" in rel:
             rel_dir = "/".join(rel.split("/")[:-1])
+            dst_path = f"{dest}/{rel_dir}/{base}"
             lines.append(f"sudo mkdir -p {dest}/{rel_dir} || true")
             lines.append(
-                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
-                f"{remote_temp_root}/{base} {dest}/{rel_dir}/{base} || true"
+                f"if [ -f {remote_temp_root}/{base} ]; then echo INSTALL_DEBUG: found {remote_temp_root}/{base}; "
+                f"echo INSTALL_DEBUG: installing to {dst_path}; "
+                f"sudo install -o root -g root -m {mode} {remote_temp_root}/{base} {dst_path} && echo INSTALL_OK: {dst_path} || echo INSTALL_FAIL: {dst_path}; "
+                f"else echo INSTALL_MISSING: {remote_temp_root}/{base}; fi"
             )
         else:
+            dst_path = f"{dest}/{base}"
             lines.append(
-                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
-                f"{remote_temp_root}/{base} {dest}/{base} || true"
+                f"if [ -f {remote_temp_root}/{base} ]; then echo INSTALL_DEBUG: found {remote_temp_root}/{base}; "
+                f"echo INSTALL_DEBUG: installing to {dst_path}; "
+                f"sudo install -o root -g root -m {mode} {remote_temp_root}/{base} {dst_path} && echo INSTALL_OK: {dst_path} || echo INSTALL_FAIL: {dst_path}; "
+                f"else echo INSTALL_MISSING: {remote_temp_root}/{base}; fi"
             )
     # Also copy any uploaded python dashboard modules to the web directory so
     # bulk uploads placed in the temp root will be installed even if not
     # enumerated in SERVICE_REGISTRY. Use install to set correct permissions.
     lines.append(f"sudo mkdir -p {remote_web_dir} || true")
-    lines.append(f"for f in {remote_temp_root}/*.py; do [ -f \"$f\" ] && sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") || true; done")
+    lines.append(
+        f"for f in {remote_temp_root}/*.py; do if [ -f \"$f\" ]; then echo INSTALL_DEBUG: installing $f to {remote_web_dir}/$(basename \"$f\"); "
+        f"sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") && echo INSTALL_OK: $f || echo INSTALL_FAIL: $f; fi; done"
+    )
     lines.append("echo INSTALL_OK")
     return "\n".join(lines)
 
