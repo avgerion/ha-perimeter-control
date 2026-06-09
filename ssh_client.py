@@ -267,7 +267,9 @@ class SshClient:
         conn = await self._connect()
         if sudo:
             script = f"sudo bash -c {shlex.quote(script)}"
-        _LOGGER.debug("Executing SSH command: %s", script[:100] + ("..." if len(script) > 100 else ""))
+        # WARNING-level logging requested: always print the full command to be executed
+        _LOGGER.warning("SSH COMMAND: %s", script)
+        _LOGGER.debug("Executing SSH command (truncated): %s", script[:100] + ("..." if len(script) > 100 else ""))
         # Try once, and if the SSH connection was closed mid-run, attempt
         # to reconnect and retry a single time to mitigate transient drops.
         last_exc = None
@@ -293,8 +295,10 @@ class SshClient:
                 continue
         if last_exc is not None:
             raise SshCommandError(script[:80], 1, str(last_exc)) from last_exc
-        _LOGGER.debug("SSH command completed")
+        # Log result at WARNING level for visibility of every step
+        _LOGGER.warning("SSH RESULT: exit=%s stdout=%s stderr=%s", exit_status, (stdout or "").strip(), (stderr or "").strip())
         if exit_status != 0:
+            _LOGGER.error("SSH COMMAND FAILED: %s (exit %s). stderr=%s", script, exit_status, (stderr or "").strip())
             raise SshCommandError(script[:80], exit_status, stderr or "")
         return stdout or ""
 
@@ -308,14 +312,20 @@ class SshClient:
             script.replace("\r\n", "\n").encode()
         ).decode()
         conn = await self._connect()
+        # Log that we're executing a base64-encoded script and show a short preview
         try:
+            preview = script.replace('\r\n', '\n')[:1000]
+            _LOGGER.warning("SSH B64 SCRIPT EXECUTE (preview): %s", preview)
             proc = await conn.create_process(f"echo '{encoded}' | base64 -d | bash")
             stdout, stderr = await proc.communicate()
             exit_status = proc.exit_status
         except Exception as exc:
             _LOGGER.warning("SSH base64 script execution failed: %r", exc)
             raise SshCommandError("<b64 script>", 1, str(exc)) from exc
+        # Always log the result for auditability
+        _LOGGER.warning("SSH B64 RESULT: exit=%s stdout=%s stderr=%s", exit_status, (stdout or "").strip(), (stderr or "").strip())
         if exit_status != 0:
+            _LOGGER.error("SSH B64 SCRIPT FAILED (exit %s). stderr=%s", exit_status, (stderr or "").strip())
             raise SshCommandError("<b64 script>", exit_status, stderr or "")
         return stdout or ""
 
@@ -326,28 +336,38 @@ class SshClient:
     async def async_put_file(self, local_path: str | Path, remote_path: str) -> None:
         """Upload a single file via SFTP."""
         conn = await self._connect()
+        # Log upload intent and file sizes
+        local_path = Path(local_path)
+        try:
+            file_size = await asyncio.to_thread(local_path.stat)
+            _LOGGER.warning("SSH UPLOAD: %s -> %s (size=%s bytes)", str(local_path), remote_path, file_size.st_size)
+        except Exception:
+            _LOGGER.warning("SSH UPLOAD: %s -> %s (size=unknown)", str(local_path), remote_path)
         try:
             async with conn.start_sftp_client() as sftp:
-                # Create a BytesIO buffer from file content
-                local_path = Path(local_path)
                 file_data = await asyncio.to_thread(local_path.read_bytes)
-                
-                # Write to remote using SFTP write operations
                 async with sftp.open(remote_path, 'wb') as remote_file:
                     await remote_file.write(file_data)
         except asyncssh.Error as exc:
+            _LOGGER.error("SSH UPLOAD FAILED: %s -> %s: %s", str(local_path), remote_path, exc)
             raise SshCommandError(f"put {local_path}", 1, str(exc)) from exc
+        _LOGGER.warning("SSH UPLOAD OK: %s -> %s", str(local_path), remote_path)
 
     async def async_put_bytes(self, data: bytes, remote_path: str) -> None:
         """Upload bytes as a file (useful for in-memory content)."""
         conn = await self._connect()
         try:
+            _LOGGER.warning("SSH PUT BYTES: -> %s (size=%s bytes)", remote_path, len(data))
+        except Exception:
+            _LOGGER.warning("SSH PUT BYTES: -> %s (size=unknown)", remote_path)
+        try:
             async with conn.start_sftp_client() as sftp:
-                # Write bytes directly to remote file
                 async with sftp.open(remote_path, 'wb') as remote_file:
                     await remote_file.write(data)
         except asyncssh.Error as exc:
+            _LOGGER.error("SSH PUT BYTES FAILED: %s: %s", remote_path, exc)
             raise SshCommandError(f"put bytes to {remote_path}", 1, str(exc)) from exc
+        _LOGGER.warning("SSH PUT BYTES OK: -> %s", remote_path)
 
     async def upload_file_content(self, content: str, remote_path: str) -> None:
         """Upload string content as a file (convenience method for text content)."""
