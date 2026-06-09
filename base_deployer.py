@@ -78,16 +78,58 @@ def _get_install_commands() -> list[str]:
 
 def _build_install_script() -> str:
     """Build complete install script for atomic deployment."""
-    commands = _get_install_commands()
-    
-    # Add file installation commands
-    commands.extend([
-        f"sudo cp {remote_temp_root}/*.py {remote_web_dir}/ 2>/dev/null || true",
-        f"sudo cp {remote_temp_root}/*.sh {remote_scripts_dir}/ 2>/dev/null || true",
-        f"sudo chmod +x {remote_scripts_dir}/*.sh 2>/dev/null || true",
-    ])
-    
-    return "; ".join(commands)
+    lines: list[str] = ["set -e"] + _get_install_commands()
+
+    # Collect web and script file entries from SERVICE_REGISTRY
+    file_entries: list[tuple[str, str, str]] = []  # (fname, dest, mode)
+    for service_info in SERVICE_REGISTRY.values():
+        for fname in service_info.get("web_files", []):
+            file_entries.append((fname, remote_web_dir, "0644"))
+        for fname in service_info.get("script_files", []):
+            if fname.endswith(".py"):
+                mode = "0755"
+            elif fname.endswith(('.yaml', '.yml', '.conf')):
+                mode = "0644"
+            else:
+                mode = "0755"
+            file_entries.append((fname, remote_scripts_dir, mode))
+
+    # Include shared web files so uploaded shared assets are installed
+    try:
+        from .const import SHARED_WEB_FILES as _SHARED
+        for shared in _SHARED:
+            file_entries.append((shared, remote_web_dir, "0644"))
+    except Exception:
+        pass
+
+    for fname, dest, mode in file_entries:
+        base = fname.split("/")[-1]
+        rel = None
+        if "dashboard_web/" in fname:
+            rel = fname.split("dashboard_web/")[-1]
+        elif "remote_services/dashboard_web/" in fname:
+            rel = fname.split("remote_services/dashboard_web/")[-1]
+        if rel and "/" in rel:
+            rel_dir = "/".join(rel.split("/")[:-1])
+            lines.append(f"sudo mkdir -p {dest}/{rel_dir} || true")
+            lines.append(
+                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
+                f"{remote_temp_root}/{base} {dest}/{rel_dir}/{base} || true"
+            )
+        else:
+            lines.append(
+                f"[ -f {remote_temp_root}/{base} ] && sudo install -o root -g root -m {mode} "
+                f"{remote_temp_root}/{base} {dest}/{base} || true"
+            )
+
+    # Keep legacy behavior for bulk python/script copies as a fallback
+    lines.append(f"sudo mkdir -p {remote_web_dir} || true")
+    lines.append(f"for f in {remote_temp_root}/*.py; do [ -f \"$f\" ] && sudo install -o root -g root -m 0644 \"$f\" {remote_web_dir}/$(basename \"$f\") || true; done")
+    lines.append(f"sudo cp {remote_temp_root}/*.sh {remote_scripts_dir}/ 2>/dev/null || true")
+    lines.append(f"sudo chmod +x {remote_scripts_dir}/*.sh 2>/dev/null || true")
+
+    lines.append("echo INSTALL_OK")
+    return "\n".join(lines)
 
 
 @dataclass
