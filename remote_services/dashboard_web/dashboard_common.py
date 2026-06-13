@@ -14,6 +14,7 @@ Usage in a dashboard layout:
 """
 from bokeh.layouts import column, row
 from bokeh.models import Div, PreText, Button, Select, ColumnDataSource, DataTable, TableColumn
+from bokeh.io import curdoc
 import subprocess
 import logging
 from pathlib import Path
@@ -101,9 +102,41 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         css_classes=["pc-log"],
     )
 
-    # Provide a simple link to the shared static CSS file. Widgets that need
-    # per-dashboard overrides can still inject small inline style blocks.
-    style_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+    def _get_style_div() -> Div:
+        """Return a Div with inlined CSS or a fallback link tag.
+
+        This runs on the Pi (remote host) where `const.py` from the HA host
+        is not available. Prefer a CSS file packaged with the dashboard
+        sources, then check the deployed web directory under
+        `PERIMETER_REMOTE_INSTALL_ROOT` (default /opt/PerimeterControl).
+        """
+        css_text = ""
+        try:
+            # Packaged static CSS next to the dashboard sources
+            local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
+            if local_css.exists():
+                css_text = local_css.read_text(encoding="utf-8")
+            else:
+                # Probe common deployed install locations on the Pi (no env vars)
+                candidates = [
+                    Path("/opt/PerimeterControl"),
+                    Path("/usr/local/PerimeterControl"),
+                    Path("/home/pi/PerimeterControl"),
+                ]
+                for root in candidates:
+                    deployed_css = root / "web" / "static" / "css" / "pc-dashboard.css"
+                    if deployed_css.exists():
+                        css_text = deployed_css.read_text(encoding="utf-8")
+                        break
+        except Exception:
+            css_text = ""
+
+        if css_text:
+            return Div(text=f"<style>{css_text}</style>", sizing_mode="stretch_width")
+        # Fallback to the conventional /static URL (may 404 if static handler not mounted)
+        return Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+
+    style_div = _get_style_div()
 
     ssh_command_select = Select(
         title="Run service command",
@@ -124,6 +157,43 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         sizing_mode="stretch_width",
         css_classes=["pc-command-output"],
     )
+
+    # Attach a local click handler so the button works even if external
+    # wiring isn't performed. Uses curdoc().add_next_tick_callback to
+    # update the UI from a background thread safely.
+    def _local_on_ssh_run_click():
+        cmd = ssh_command_select.value
+        _DC_LOGGER.info("Local Run Command clicked: %s", cmd)
+        try:
+            ssh_command_output.text = f"Running: {cmd}"
+        except Exception:
+            pass
+
+        def _worker():
+            out = _run_shell(cmd, timeout=10)
+
+            def _update_output():
+                try:
+                    ssh_command_output.text = out
+                except Exception:
+                    pass
+
+            try:
+                curdoc().add_next_tick_callback(_update_output)
+            except Exception:
+                # Last-resort: set directly
+                try:
+                    ssh_command_output.text = out
+                except Exception:
+                    pass
+
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()
+
+    try:
+        ssh_run_button.on_click(_local_on_ssh_run_click)
+    except Exception:
+        _DC_LOGGER.exception("Failed to bind local Run Command handler")
 
     # Group status and logs into explicit vertical sections so Bokeh's
     # layout engine stacks them reliably instead of attempting absolute

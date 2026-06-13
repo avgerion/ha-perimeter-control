@@ -52,9 +52,14 @@ def main(config_path: Path):
     supervisor_api_url = data_manager.supervisor_api_url
     def create_app(doc):
         layout, widgets = create_dashboard_layout(data_manager)
-        # Ensure shared dashboard stylesheet is available
-        css_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
-        doc.add_root(css_div)
+        # Ensure shared dashboard stylesheet is available via common helper
+        try:
+            from remote_services.dashboard_web.dashboard_common import _get_style_div
+            doc.add_root(_get_style_div())
+        except Exception:
+            # Fallback to link tag if helper import fails
+            css_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+            doc.add_root(css_div)
         doc.supervisor_api_url = supervisor_api_url
         for key, value in widgets.items():
             setattr(doc, key, value)
