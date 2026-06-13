@@ -71,7 +71,10 @@ SERVICE_REGISTRY = {
         "pip_packages": ["tornado"],
         "config_template": "config/templates/gpio_control.yaml",
         "config_target": "gpio-control.yaml",
-        "deploy_api": "http://127.0.0.1:8080/api/v1/capabilities/gpio_control/deploy",
+        # Use explicit placeholder for host so deployers can substitute the
+        # actual node host when executing remote commands via SSH.
+        # Replace `<host_ip>` with the node IP or hostname at runtime.
+        "deploy_api": "http://<host_ip>:8080/api/v1/capabilities/gpio_control/deploy",
     },
     os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
         "unit": "perimetercontrol-ble-dashboard",

@@ -53,6 +53,7 @@ from .const import (
     SHARED_WEB_FILES,
     TEMPLATES_DIR,
 )
+from urllib.parse import urlparse, urlunparse
 
 
 
@@ -525,7 +526,36 @@ class Deployer(BaseDeployer):
         # Fire any deferred deploy_api calls now that the supervisor is healthy
         for service_id, deploy_api in self._pending_deploy_apis:
             try:
-                deploy_cmd = f"curl -fsS -X POST {deploy_api} -H 'Content-Type: application/json' -d '{{}}'"
+                # Allow explicit placeholder substitution in deploy_api URLs.
+                # Common tokens supported: <host_ip>, [substitute_host_address], {host}, {node_host}
+                url_to_call = deploy_api
+                try:
+                    if isinstance(deploy_api, str):
+                        node_host = getattr(self._client, "_host", None) or ""
+                        # First, replace any explicit placeholder tokens provided
+                        # in SERVICE_REGISTRY (maintains backward compatibility).
+                        for token in ("<host_ip>", "[substitute_host_address]", "{host}", "{node_host}"):
+                            if token in url_to_call and node_host:
+                                url_to_call = url_to_call.replace(token, node_host)
+                                break
+
+                        # If no placeholder was present, fall back to rewriting
+                        # loopback hostnames (127.0.0.1 / localhost) to the node
+                        # host so the remote `curl` targets the correct IP.
+                        if url_to_call.startswith(("http://", "https://")):
+                            parsed = urlparse(url_to_call)
+                            host = (parsed.hostname or "").lower()
+                            if host in ("127.0.0.1", "localhost") and node_host:
+                                netloc = node_host
+                                if parsed.port:
+                                    netloc = f"{node_host}:{parsed.port}"
+                                parsed = parsed._replace(netloc=netloc)
+                                url_to_call = urlunparse(parsed)
+                except Exception:
+                    # Fall back to original deploy_api on any parse error
+                    url_to_call = deploy_api
+
+                deploy_cmd = f"curl -fsS -X POST {url_to_call} -H 'Content-Type: application/json' -d '{{}}'"
                 await self._client.async_run(deploy_cmd)
                 _LOGGER.info("Triggered backend deployment via API for %s", service_id)
             except Exception as exc:
@@ -720,7 +750,32 @@ class Deployer(BaseDeployer):
         """Wait for local HTTP endpoint to return success on the remote host."""
         last_probe = ""
         for attempt in range(attempts):
-            curl_cmd = f"curl -fsS --max-time 3 http://127.0.0.1:{port}/ >/dev/null 2>&1 && echo HTTP_OK || echo HTTP_FAIL"
+            # Construct probe URL; allow explicit placeholder substitution
+            probe_url = f"http://127.0.0.1:{port}/"
+            try:
+                node_host = getattr(self._client, "_host", None) or ""
+                # Replace explicit placeholder tokens if present
+                for token in ("<host_ip>", "[substitute_host_address]", "{host}", "{node_host}"):
+                    if token in probe_url and node_host:
+                        probe_url = probe_url.replace(token, node_host)
+                        break
+
+                # If probe_url still targets loopback, rewrite to node_host to
+                # ensure the remote curl targets an IP the supervisor may be
+                # bound to (backwards-compatible fallback).
+                if probe_url.startswith(("http://", "https://")) and node_host:
+                    parsed = urlparse(probe_url)
+                    host = (parsed.hostname or "").lower()
+                    if host in ("127.0.0.1", "localhost"):
+                        netloc = node_host
+                        if parsed.port:
+                            netloc = f"{node_host}:{parsed.port}"
+                        parsed = parsed._replace(netloc=netloc)
+                        probe_url = urlunparse(parsed)
+            except Exception:
+                probe_url = f"http://127.0.0.1:{port}/"
+
+            curl_cmd = f"curl -fsS --max-time 3 {probe_url} >/dev/null 2>&1 && echo HTTP_OK || echo HTTP_FAIL"
             _LOGGER.warning("HTTP probe (attempt %s/%s): %s", attempt + 1, attempts, curl_cmd)
             last_probe = await self._client.async_run(curl_cmd)
             if "HTTP_OK" in last_probe:
