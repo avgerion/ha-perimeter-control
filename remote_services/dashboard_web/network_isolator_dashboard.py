@@ -54,7 +54,7 @@ def main(config_path: Path):
         layout, widgets = create_dashboard_layout(data_manager)
         # Ensure shared dashboard stylesheet is available via common helper
         try:
-            from remote_services.dashboard_web.dashboard_common import _get_style_div, get_loader_div
+            from dashboard_common import _get_style_div, get_loader_div
             doc.add_root(_get_style_div())
             # Add loader script to ensure jQuery/jQuery UI are available
             doc.add_root(get_loader_div())
@@ -69,7 +69,7 @@ def main(config_path: Path):
         doc.title = "Network Isolator Quick View"
     handler = FunctionHandler(create_app)
     app = Application(handler)
-    from remote_services.dashboard_web.dashboard_common import get_extra_static_patterns
+    from dashboard_common import get_extra_static_patterns
     extra_patterns = get_extra_static_patterns()
     server = Server(
         {'/': app},

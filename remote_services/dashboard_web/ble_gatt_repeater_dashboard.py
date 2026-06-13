@@ -58,7 +58,7 @@ def main(config_path):
         doc.add_root(full_layout)
         # Ensure jQuery/jQuery UI loader is present for DataTable features
         try:
-            from remote_services.dashboard_web.dashboard_common import get_loader_div
+            from dashboard_common import get_loader_div
             doc.add_root(get_loader_div())
         except Exception:
             pass
@@ -76,7 +76,7 @@ def main(config_path):
         doc.title = f"BLE GATT Repeater Dashboard - {instance_name or 'default'}"
     handler = FunctionHandler(create_app)
     app = Application(handler)
-    from remote_services.dashboard_web.dashboard_common import get_extra_static_patterns
+    from dashboard_common import get_extra_static_patterns
     extra_patterns = get_extra_static_patterns()
     server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], extra_patterns=extra_patterns)
     logger.info(f"BLE GATT Bokeh dashboard running on port {port} (instance: {instance_name})")
