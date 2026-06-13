@@ -592,11 +592,6 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self._client_initialized or not self._client:
             return False, "SSH client not initialized"
 
-        cmd = (
-            # Probe the supervisor API from the remote host. Support explicit
-            # placeholder tokens and fall back to rewriting loopback to the
-            # node host so the remote probe reaches the correct interface.
-            )
         probe_url = "http://127.0.0.1:8080/api/v1/health"
         try:
             node_host = getattr(self._client, "_host", None) or self._entry.data.get(CONF_HOST, "")
@@ -617,7 +612,6 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             probe_url = "http://127.0.0.1:8080/api/v1/health"
 
         cmd = f"curl -fsS --max-time 3 {probe_url} >/dev/null 2>&1 && echo LOCAL_HEALTH_OK || echo LOCAL_HEALTH_FAIL"
-        )
         try:
             result = await self._client.async_run(cmd)
             ok = "LOCAL_HEALTH_OK" in result
