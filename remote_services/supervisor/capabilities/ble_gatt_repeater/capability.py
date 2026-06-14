@@ -85,6 +85,7 @@ class BleGattRepeaterCapability(CapabilityModule):
         self._scan_task: Optional[asyncio.Task] = None
         self._connected_devices: Dict[str, BleakClient] = {}
         self._discovered_devices: Dict[str, Dict[str, Any]] = {}
+        self._bluetooth_unavailable_logged = False
         
     # ------------------------------------------------------------------
     # Lifecycle
@@ -223,6 +224,9 @@ class BleGattRepeaterCapability(CapabilityModule):
         """Perform BLE device scan and update entities."""
         try:
             devices = await BleakScanner.discover()
+            if self._bluetooth_unavailable_logged:
+                logger.info("[%s] BLE adapter became available again; resuming scans", self.cap_id)
+                self._bluetooth_unavailable_logged = False
             
             for device in devices:
                 device_id = self._get_device_id(device)
@@ -240,6 +244,16 @@ class BleGattRepeaterCapability(CapabilityModule):
                 await self._update_device_entities(device_id, device)
                 
         except Exception as e:
+            message = str(e).lower()
+            if "no powered bluetooth adapters found" in message:
+                if not self._bluetooth_unavailable_logged:
+                    logger.warning(
+                        "[%s] BLE adapter is powered off; scan paused until Bluetooth is enabled",
+                        self.cap_id,
+                    )
+                    self._bluetooth_unavailable_logged = True
+                return
+
             logger.error("[%s] BLE scan failed: %s", self.cap_id, e)
 
     async def _trigger_discovery_scan(self) -> None:

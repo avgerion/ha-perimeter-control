@@ -12,6 +12,7 @@ marked 'degraded' so the reconciliation loop can decide to restart or alert.
 """
 
 import asyncio
+import inspect
 import logging
 import time
 from typing import Dict, Optional, Tuple
@@ -51,6 +52,8 @@ class HealthProbeEvaluator:
                 result, output = await self._check_exec(probe_config)
             elif probe_type == "http":
                 result, output = await self._check_http(probe_config)
+            elif probe_type == "custom":
+                result, output = await self._check_custom(probe_config)
             else:
                 logger.warning("Unknown probe type '%s' for %s; skipping", probe_type, cap_id)
                 result = "ok"
@@ -67,7 +70,7 @@ class HealthProbeEvaluator:
         self.db.record_health_probe(
             cap_id,
             probe_type,
-            probe_config.get("target", probe_config.get("unit", "")),
+            self._resolve_probe_target(probe_config),
             result,
             output,
             duration_ms,
@@ -172,3 +175,36 @@ class HealthProbeEvaluator:
                     return "failed", f"HTTP {resp.status} (expected {expected_status})"
         except aiohttp.ClientError as exc:
             return "failed", str(exc)
+
+    async def _check_custom(self, config: Dict) -> Tuple[str, str]:
+        """Run a custom callable health check and evaluate truthiness."""
+        check = config.get("check")
+        if not callable(check):
+            raise ValueError("custom health probe requires a callable 'check'")
+
+        timeout = config.get("timeout_sec", 5)
+        check_result = check()
+
+        if inspect.isawaitable(check_result):
+            check_result = await asyncio.wait_for(check_result, timeout=timeout)
+
+        if bool(check_result):
+            return "ok", "Custom check passed"
+        return "failed", "Custom check returned false"
+
+    def _resolve_probe_target(self, config: Dict) -> str:
+        """Derive a stable probe target label for DB records."""
+        target = config.get("target")
+        if target:
+            return target
+
+        unit = config.get("unit")
+        if unit:
+            return unit
+
+        if config.get("type") == "custom":
+            check = config.get("check")
+            if callable(check):
+                return getattr(check, "__name__", "custom_check")
+
+        return ""
