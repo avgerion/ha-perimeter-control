@@ -137,41 +137,7 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         # Fallback to the conventional /static URL (may 404 if static handler not mounted)
         return Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
 
-
-def get_loader_div() -> Div:
-    """Return a Div containing a small loader script that ensures jQuery/UI exist.
-
-    This is separated from the CSS helper so the loader can be added once
-    at application startup and the CSS helper can focus solely on styling.
-    """
-    loader_script = (
-        "<script>(function(){"
-        "function loadScript(src, onload){var s=document.createElement('script');s.src=src;s.onload=onload;document.head.appendChild(s);}"
-        "function loadCSS(href){var l=document.createElement('link');l.rel='stylesheet';l.href=href;document.head.appendChild(l);}"
-        "function ensurejQuery(cb){if(window.jQuery) return cb(); loadScript('https://code.jquery.com/jquery-3.6.0.min.js', cb);}"
-        "ensurejQuery(function(){if(typeof jQuery.ui!=='undefined'&&jQuery.ui) return; loadCSS('https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css'); loadScript('https://code.jquery.com/ui/1.13.2/jquery-ui.min.js', function(){console.log('jQuery UI loaded');});});"
-        "})();</script>"
-    )
-    return Div(text=loader_script, sizing_mode="stretch_width")
-
-
-def get_extra_static_patterns():
-    """Return Tornado extra_patterns to serve /static from a discovered dir or None.
-
-    Probes common install locations and the packaged `static` directory next
-    to the dashboard sources. Returns a list suitable for passing to
-    `bokeh.server.server.Server(..., extra_patterns=...)` or `None`.
-    """
-    candidates = [
-        Path(__file__).parent / "static",
-        Path('/opt/PerimeterControl') / 'web' / 'static',
-        Path('/usr/local/PerimeterControl') / 'web' / 'static',
-    ]
-    for p in candidates:
-        if p.exists():
-            return [(r"/static/(.*)", StaticFileHandler, {"path": str(p)})]
-    return None
-
+    # Style + controls belong to the service panel; build them here.
     style_div = _get_style_div()
 
     ssh_command_select = Select(
@@ -268,6 +234,42 @@ def get_extra_static_patterns():
         "ssh_command_output": ssh_command_output,
     }
     return layout, widgets
+
+
+def get_loader_div() -> Div:
+    """Return a Div containing a small loader script that ensures jQuery/UI exist.
+
+    This is separated from the CSS helper so the loader can be added once
+    at application startup and the CSS helper can focus solely on styling.
+    """
+    loader_script = (
+        "<script>(function(){"
+        "function loadScript(src, onload){var s=document.createElement('script');s.src=src;s.onload=onload;document.head.appendChild(s);}"
+        "function loadCSS(href){var l=document.createElement('link');l.rel='stylesheet';l.href=href;document.head.appendChild(l);}"
+        "function ensurejQuery(cb){if(window.jQuery) return cb(); loadScript('https://code.jquery.com/jquery-3.6.0.min.js', cb);}"
+        "ensurejQuery(function(){if(typeof jQuery.ui!=='undefined'&&jQuery.ui) return; loadCSS('https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css'); loadScript('https://code.jquery.com/ui/1.13.2/jquery-ui.min.js', function(){console.log('jQuery UI loaded');});});"
+        "})();</script>"
+    )
+    return Div(text=loader_script, sizing_mode="stretch_width")
+
+
+def get_extra_static_patterns():
+    """Return Tornado extra_patterns to serve /static from a discovered dir or None.
+
+    Probes common install locations and the packaged `static` directory next
+    to the dashboard sources. Returns a list suitable for passing to
+    `bokeh.server.server.Server(..., extra_patterns=...)` or `None`.
+    """
+    candidates = [
+        Path(__file__).parent / "static",
+        Path('/opt/PerimeterControl') / 'web' / 'static',
+        Path('/usr/local/PerimeterControl') / 'web' / 'static',
+    ]
+    for p in candidates:
+        if p.exists():
+            return [(r"/static/(.*)", StaticFileHandler, {"path": str(p)})]
+    return None
+ 
 
 
 def create_log_tail_panel(log_path: str = "/var/log/PerimeterControl/supervisor.log",
