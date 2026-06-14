@@ -27,10 +27,11 @@ def main(config_path):
     port = int(instance_config.get('port', 8095))
     log_root = instance_config.get('log_root', '/var/log/PerimeterControl')
     os.makedirs(log_root, exist_ok=True)
+    log_file = os.path.join(log_root, 'gpio_dashboard.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        handlers=[logging.StreamHandler()]
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
     )
     logger = logging.getLogger('perimetercontrol.gpio_dashboard')
     data_manager = DataManager(config_path)

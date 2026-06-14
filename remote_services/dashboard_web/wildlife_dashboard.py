@@ -38,6 +38,14 @@ def main(config_path):
     final_supervisor_api_url = supervisor_api_url or data_manager.supervisor_api_url
     if not supervisor_api_url:
         logger.info(f"supervisor_api_url not set in config; using fallback {final_supervisor_api_url}")
+    # Ensure log directory exists and enable file-based logging for dashboards
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, 'wildlife_dashboard.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
+    )
 
     def create_app(doc):
         layout, widgets = create_wildlife_dashboard_layout(data_manager)

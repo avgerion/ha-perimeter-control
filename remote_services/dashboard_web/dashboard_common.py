@@ -336,6 +336,36 @@ def setup_common_dashboard_callbacks(
 
         service_tail = _tail_file(service_log_path, lines=60)
         supervisor_tail = _tail_file(supervisor_log_path, lines=60)
+
+        # If files are missing or unreadable, fall back to reading the
+        # systemd journal for the relevant unit. This covers services
+        # that log only to the journal (common on modern systems).
+        if (service_tail.startswith("Log not found:") or service_tail.startswith("Failed to read log") or service_tail.startswith("Log is empty:")):
+            try:
+                j = subprocess.run(
+                    ["journalctl", "-u", unit_name, "-n", "60", "--no-pager"],
+                    capture_output=True,
+                    text=True,
+                    timeout=6,
+                )
+                service_tail = j.stdout.strip() or f"<no journal entries for {unit_name}>"
+            except Exception as exc:  # pragma: no cover - defensive
+                service_tail = f"Failed to read journal for {unit_name}: {exc}"
+
+        if (supervisor_tail.startswith("Log not found:") or supervisor_tail.startswith("Failed to read log") or supervisor_tail.startswith("Log is empty:")):
+            # Supervisor logs may be provided by a dedicated unit; try
+            # the conventional perimetercontrol-supervisor unit as a
+            # best-effort fallback.
+            try:
+                j2 = subprocess.run(
+                    ["journalctl", "-u", "perimetercontrol-supervisor", "-n", "60", "--no-pager"],
+                    capture_output=True,
+                    text=True,
+                    timeout=6,
+                )
+                supervisor_tail = j2.stdout.strip() or f"<no journal entries for perimetercontrol-supervisor>"
+            except Exception as exc:  # pragma: no cover - defensive
+                supervisor_tail = f"Failed to read journal for perimetercontrol-supervisor: {exc}"
         doc.service_log_text.text = service_tail
         doc.supervisor_log_text.text = supervisor_tail
 
