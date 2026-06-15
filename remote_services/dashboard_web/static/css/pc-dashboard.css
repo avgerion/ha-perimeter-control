@@ -1,31 +1,141 @@
 /* PerimeterControl dashboard common styles */
 
-.pc-header { background:#2c3e50; color:#ecf0f1; padding:10px; border-radius:6px; }
-.pc-header h3 { margin:0 0 6px 0; }
-.pc-header p { margin:0 0 4px 0; font-size:12px; }
+.pc-header {
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 10px;
+    border-radius: 6px;
+}
 
-.pc-section-title { margin-top:8px; margin-bottom:4px; font-weight:bold; }
-.pc-muted { color:#7f8c8d; font-size:12px; }
-.pc-h4-no-margin { margin-top:0; color:#ecf0f1; }
-.pc-section-h3 { margin-top:20px; }
+.pc-header h3 {
+    margin: 0 0 6px 0;
+}
+
+.pc-header p {
+    margin: 0 0 4px 0;
+    font-size: 12px;
+}
+
+.pc-section-title {
+    margin-top: 8px;
+    margin-bottom: 4px;
+    font-weight: bold;
+}
+
+.pc-muted {
+    color: #7f8c8d;
+    font-size: 12px;
+}
+
+.pc-h4-no-margin {
+    margin-top: 0;
+    color: #ecf0f1;
+}
+
+.pc-section-h3 {
+    margin-top: 20px;
+}
 
 /* Preformatted dumps and hex views */
-.pc-pre { color:#ce9178; margin:4px 0 10px 0; font-size:11px; line-height:1.4; white-space:pre-wrap; font-family:monospace; }
+.pc-pre {
+    color: #ce9178;
+    margin: 4px 0 10px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    font-family: monospace;
+}
 
 /* Tables */
-.pc-table { border-collapse:collapse; width:100%; }
-.pc-table th { color:#4ec9b0; text-align:left; padding:3px 10px; }
-.pc-table td { padding:3px 10px; }
-.pc-row-bordered { border-bottom:1px solid #333; }
+.pc-table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.pc-table th {
+    color: #4ec9b0;
+    text-align: left;
+    padding: 3px 10px;
+}
+
+.pc-table td {
+    padding: 3px 10px;
+}
+
+.pc-row-bordered {
+    border-bottom: 1px solid #333;
+}
 
 /* Log and command output styling */
-.pc-log { background-color:#0f1720; color:#ecf0f1; padding:8px; border-radius:4px; margin-bottom:8px; overflow:auto; height:140px; font-family:monospace; font-size:11px; white-space:pre-wrap; display:block; box-sizing:border-box; width:100%; }
-.pc-command-output { background-color:#fafafa; color:#111; padding:8px; border-radius:4px; margin-top:8px; overflow:auto; height:140px; font-family:monospace; font-size:12px; display:block; box-sizing:border-box; width:100%; }
-.pc-status-badge { margin-bottom:6px; }
+.pc-log {
+    background-color: #0f1720;
+    color: #ecf0f1;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    overflow: auto;
+    height: 140px;
+    font-family: monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.pc-command-output {
+    background-color: #fafafa;
+    color: #111;
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+    overflow: auto;
+    height: 140px;
+    font-family: monospace;
+    font-size: 12px;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.pc-status-badge {
+    margin-bottom: 6px;
+}
 
 /* Force Bokeh layout containers and PreText hosts to use static positioning so absolute top offsets are not applied */
-.bk-Column, .bk-Row, .bk-LayoutDOM, .bk-Root, .bk-Column > div, .bk-Row > div { position: static !important; top: auto !important; left: auto !important; }
-.bk-PreText, .bk-PreText.pc-log { position: static !important; top: auto !important; display:block !important; width:100% !important; box-sizing:border-box !important; }
+.bk-Column,
+.bk-Row,
+.bk-LayoutDOM,
+.bk-Root,
+.bk-Column>div,
+.bk-Row>div {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+}
+
+.bk-PreText,
+.bk-PreText.pc-log {
+    position: static !important;
+    top: auto !important;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.bk-Spacer {
+    display: block !important;
+    position: static !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    /* or a fixed width if horizontal spacing */
+    height: 20px !important;
+    /* adjust to the space you want */
+    margin: 0;
+    padding: 0;
+}
 
 /* Misc */
-.pc-warning { color:#e67e22; }
+.pc-warning {
+    color: #e67e22;
+}
