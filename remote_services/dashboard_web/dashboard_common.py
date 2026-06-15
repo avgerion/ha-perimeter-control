@@ -134,8 +134,17 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
 
         if css_text:
             return Div(text=f"<style>{css_text}</style>", sizing_mode="stretch_width")
-        # Fallback to the conventional /static URL (may 404 if static handler not mounted)
-        return Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+
+        # Minimal fallback styles to ensure layout stability when packaged CSS
+        # isn't available (prevents overlapping sections and ensures scrolling).
+        default_css = '''
+        .pc-header { box-sizing:border-box; padding:8px 0; }
+        .pc-section-title { font-weight:700; margin:8px 0 6px; display:block; }
+        .pc-log { white-space:pre-wrap; overflow:auto; max-height:220px; border:1px solid #ddd; padding:8px; background:#fff; }
+        .pc-command-output { white-space:pre-wrap; overflow:auto; max-height:220px; border:1px solid #ddd; padding:8px; background:#fafafa; }
+        .pc-header h3 { margin:0 0 6px 0; }
+        '''
+        return Div(text=f"<style>{default_css}</style>", sizing_mode="stretch_width")
 
     # Style + controls belong to the service panel; build them here.
     style_div = _get_style_div()
