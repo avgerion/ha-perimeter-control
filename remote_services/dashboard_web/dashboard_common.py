@@ -12,7 +12,7 @@ Usage in a dashboard layout:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from dashboard_common import create_service_status_panel, create_log_tail_panel
 """
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, Spacer
 from bokeh.models import Div, PreText, Button, Select, ColumnDataSource, DataTable, TableColumn
 from bokeh.io import curdoc
 import subprocess
@@ -213,14 +213,21 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         sizing_mode="stretch_width",
     )
 
+    # Add explicit spacers between major sections to avoid overlapping
     layout = column(
         style_div,
         header,
+        Spacer(height=8),
         status_section,
+        Spacer(height=8),
         service_log_section,
+        Spacer(height=8),
         supervisor_log_section,
+        Spacer(height=8),
         ssh_command_select,
+        Spacer(height=6),
         row(ssh_run_button, sizing_mode="stretch_width"),
+        Spacer(height=6),
         ssh_command_output,
         sizing_mode="stretch_width",
     )
