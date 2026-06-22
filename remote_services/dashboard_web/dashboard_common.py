@@ -244,31 +244,43 @@ def get_loader_div() -> Div:
 
 
 def get_extra_static_patterns():
-    """Return Tornado extra_patterns to serve /static from the hardcoded path.
+    """Return Tornado extra_patterns to serve CSS directly.
 
-    Uses the explicit static directory:
-    - Local dev: remote_services/dashboard_web/static
-    - Remote Pi: /opt/PerimeterControl/web/static
-
-    Returns a list suitable for passing to
-    `bokeh.server.server.Server(..., extra_patterns=...)` or `None`.
+    Tries to serve pc-dashboard.css from:
+    - Local dev: remote_services/dashboard_web/static/css/pc-dashboard.css
+    - Remote Pi: /opt/PerimeterControl/web/static/css/pc-dashboard.css
     """
-    # Try packaged static directory first (local dev or during deployment)
-    static_path = Path(__file__).parent / "static"
-    if static_path.exists():
-        _DC_LOGGER.info("[STATIC] Serving /static from: %s", static_path)
-        _DC_LOGGER.debug("[STATIC] CSS files in directory: %s", list(static_path.glob("**/*.css")))
-        return [(r"/static/(.*)", StaticFileHandler, {"path": str(static_path)})]
+    from tornado.web import RequestHandler
     
-    # Fall back to deployed path on remote Pi (explicit, not environment-derived)
-    deployed_static = Path("/opt/PerimeterControl/web/static")
-    if deployed_static.exists():
-        _DC_LOGGER.info("[STATIC] Serving /static from deployed location: %s", deployed_static)
-        _DC_LOGGER.debug("[STATIC] CSS files in directory: %s", list(deployed_static.glob("**/*.css")))
-        return [(r"/static/(.*)", StaticFileHandler, {"path": str(deployed_static)})]
+    class CSSHandler(RequestHandler):
+        """Simple handler for serving the CSS file directly."""
+        def get(self):
+            css_path = None
+            # Try local first
+            local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
+            if local_css.exists():
+                css_path = local_css
+            else:
+                # Try deployed path
+                deployed_css = Path("/opt/PerimeterControl/web/static/css/pc-dashboard.css")
+                if deployed_css.exists():
+                    css_path = deployed_css
+            
+            if not css_path:
+                _DC_LOGGER.error("[CSS_HANDLER] CSS file not found at any location")
+                self.set_status(404)
+                return
+            
+            try:
+                css_content = css_path.read_text(encoding="utf-8")
+                _DC_LOGGER.debug("[CSS_HANDLER] Serving CSS from: %s (size: %d bytes)", css_path, len(css_content))
+                self.set_header("Content-Type", "text/css")
+                self.write(css_content)
+            except Exception as e:
+                _DC_LOGGER.error("[CSS_HANDLER] Error reading CSS file %s: %s", css_path, e)
+                self.set_status(500)
     
-    _DC_LOGGER.warning("[STATIC] No static directory found at packaged or deployed locations")
-    return None
+    return [(r"/static/css/pc-dashboard\.css", CSSHandler, {})]
  
 
 

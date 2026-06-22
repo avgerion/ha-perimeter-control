@@ -1,19 +1,24 @@
 # GPIO Control Service Configuration
-pins:
-  - id: relay1
-    gpio_pin: 17
-    type: switch
-    friendly_name: Relay 1
-    active_high: true
-    initial_state: off
+services:
+  gpio_control:
+    relays:
+      pins:
+        - id: relay1
+          gpio_pin: 17
+          type: switch
+          friendly_name: Relay 1
+          active_high: true
+          initial_state: off
 
-  - id: led1
-    gpio_pin: 18
-    type: light
-    friendly_name: Status LED
-    active_high: true
-    initial_state: on
-    initial_brightness: 255
+    lights:
+      pins:
+        - id: led1
+          gpio_pin: 18
+          type: light
+          friendly_name: Status LED
+          active_high: true
+          initial_state: on
+          initial_brightness: 255
 
 dashboard:
   server:

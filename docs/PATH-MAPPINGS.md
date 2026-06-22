@@ -166,14 +166,14 @@ GET /static/css/pc-dashboard.css HTTP/1.1 200 OK
 
 ## Configuration File Format
 
-GPIO configuration is stored in YAML list format in the remote config file:
+GPIO configuration uses a nested service-based architecture in the remote config file:
 
 **File**: `/mnt/PerimeterControl/conf/gpio-control.yaml`
 
 ```yaml
 services:
   gpio_control:
-    default:
+    relays:
       pins:
         - id: relay1
           gpio_pin: 17
@@ -181,6 +181,9 @@ services:
           friendly_name: Relay 1
           active_high: true
           initial_state: off
+
+    lights:
+      pins:
         - id: led1
           gpio_pin: 18
           type: light
@@ -188,12 +191,24 @@ services:
           active_high: true
           initial_state: on
           initial_brightness: 255
-      dashboard:
-        server:
-          host: "0.0.0.0"
-          port: 8095
-          type: "bokeh"
+
+dashboard:
+  server:
+    host: "0.0.0.0"
+    port: 8095
+    type: "bokeh"
+  features:
+    pin_status: true
+    relay_control: true
+    led_control: true
+  data_refresh_interval: 10
 ```
+
+**Format notes**:
+- Multiple GPIO instances (e.g., `relays`, `lights`, `inputs`) can coexist under `services.gpio_control`
+- Each instance has its own `pins` list
+- Supports future multi-Pi deployments with per-Pi config files
+- Dashboard configuration is at the root level (shared across all instances)
 
 ## Deployment Flow
 

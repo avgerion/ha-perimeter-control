@@ -9,9 +9,9 @@ from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
 _GPIO_LOGGER = logging.getLogger("perimetercontrol.gpio_layouts")
 
 def get_gpio_entities_from_config(config):
-    """Extract GPIO entities from YAML config (list-based format).
+    """Extract GPIO entities from YAML config.
     
-    Expected format:
+    Expected format (nested service architecture):
     services:
       gpio_control:
         <instance_name>:
@@ -19,6 +19,7 @@ def get_gpio_entities_from_config(config):
             - id: relay1
               gpio_pin: 17
               friendly_name: Relay 1
+              type: switch
               initial_state: off
     """
     entities = []
@@ -26,18 +27,21 @@ def get_gpio_entities_from_config(config):
         services = config.get("services", {})
         gpio_cfg_dict = services.get("gpio_control", {})
         
-        # Handle both direct config and instance-wrapped config
-        pins_data = gpio_cfg_dict.get("pins", [])
-        if not pins_data:
-            # Try instance-wrapped format
-            for instance_name, instance_cfg in gpio_cfg_dict.items():
-                if isinstance(instance_cfg, dict):
-                    pins_data = instance_cfg.get("pins", [])
-                    if pins_data:
-                        break
+        if not isinstance(gpio_cfg_dict, dict):
+            _GPIO_LOGGER.error("[GPIO] Config error: services.gpio_control must be a dict")
+            return entities
         
-        # Parse pins (should be a list)
-        if isinstance(pins_data, list):
+        # Iterate over GPIO instances (e.g., "relays", "lights")
+        for instance_name, instance_cfg in gpio_cfg_dict.items():
+            if not isinstance(instance_cfg, dict):
+                _GPIO_LOGGER.warning("[GPIO] Skipping instance '%s': not a dict", instance_name)
+                continue
+            
+            pins_data = instance_cfg.get("pins", [])
+            if not isinstance(pins_data, list):
+                _GPIO_LOGGER.warning("[GPIO] Instance '%s' has no 'pins' list", instance_name)
+                continue
+            
             for pin_info in pins_data:
                 if isinstance(pin_info, dict):
                     entities.append({
@@ -48,9 +52,9 @@ def get_gpio_entities_from_config(config):
                         "type": pin_info.get("type", "switch"),
                     })
         
-        _GPIO_LOGGER.debug("[GPIO] Loaded %d GPIO entities from config", len(entities))
+        _GPIO_LOGGER.info("[GPIO] Loaded %d GPIO entities from config", len(entities))
         if entities:
-            _GPIO_LOGGER.debug("[GPIO] GPIO pins: %s", [e["id"] for e in entities])
+            _GPIO_LOGGER.info("[GPIO] Parsed GPIO pins: %s", [f"{e['id']} (GPIO{e['gpio_pin']})" for e in entities])
     except Exception as e:
         _GPIO_LOGGER.error("[GPIO] Failed to parse GPIO config: %s", e)
     
