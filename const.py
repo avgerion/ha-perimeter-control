@@ -158,16 +158,17 @@ DEFAULT_USER = "pi"
 # Paths (resolved once)
 
 
-# Default config template paths (can be overridden by env/config)
-DEFAULT_CONF_TEMPLATE = os.environ.get('PERIMETERCONTROL_CONF_TEMPLATE', 'config/templates/perimetercontrol_network_service.conf.yaml')
-DEFAULT_FIREWALL_RULES_TEMPLATE = os.environ.get('PERIMETERCONTROL_FIREWALL_RULES_TEMPLATE', 'config/templates/firewall_rules.yaml')
+# Default config template paths
+DEFAULT_CONF_TEMPLATE = 'config/templates/perimetercontrol_network_service.conf.yaml'
+DEFAULT_FIREWALL_RULES_TEMPLATE = 'config/templates/firewall_rules.yaml'
 
 
-remote_install_root = os.environ.get("PERIMETER_REMOTE_INSTALL_ROOT", "/opt/PerimeterControl")
-remote_state_root = os.environ.get("PERIMETER_REMOTE_STATE_ROOT", "/mnt/PerimeterControl")
-remote_log_root = os.environ.get("PERIMETER_REMOTE_LOG_ROOT", "/var/log/PerimeterControl")
-remote_temp_root = os.environ.get("PERIMETER_REMOTE_TEMP_ROOT", "/tmp")
-remote_systemd_root = os.environ.get("PERIMETER_REMOTE_SYSTEMD_ROOT", "/etc/systemd/system")
+# Explicit remote paths (hardcoded, not environment-derived)
+remote_install_root = "/opt/PerimeterControl"
+remote_state_root = "/mnt/PerimeterControl"
+remote_log_root = "/var/log/PerimeterControl"
+remote_temp_root = "/tmp"
+remote_systemd_root = "/etc/systemd/system"
 remote_web_dir = f"{remote_install_root}/web"
 remote_scripts_dir = f"{remote_install_root}/scripts"
 remote_supervisor_dir = f"{remote_install_root}/supervisor"

@@ -34,6 +34,10 @@ def main(config_path):
         handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
     )
     logger = logging.getLogger('perimetercontrol.gpio_dashboard')
+    logger.info("[GPIO_DASH] Starting GPIO Control dashboard")
+    logger.info("[GPIO_DASH] Config path: %s", config_path)
+    logger.info("[GPIO_DASH] Log file: %s", log_file)
+    logger.debug("[GPIO_DASH] Config loaded successfully")
     data_manager = DataManager(config_path)
     supervisor_api_url = instance_config.get('supervisor_api_url') or config.get('supervisor_api_url')
     final_supervisor_api_url = supervisor_api_url or data_manager.supervisor_api_url
@@ -78,6 +82,9 @@ def main(config_path):
     extra_patterns = get_extra_static_patterns()
     server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], extra_patterns=extra_patterns)
     logger.info(f"GPIO Control dashboard running on port {port}")
+    logger.info("[GPIO_DASH] CSS will be loaded from /static/css/pc-dashboard.css via HTTP")
+    logger.info("[GPIO_DASH] Check server logs for GET /static/css/pc-dashboard.css requests")
+    logger.debug("[GPIO_DASH] Extra static patterns: %s", extra_patterns)
     server.start()
     try:
         server.io_loop.start()

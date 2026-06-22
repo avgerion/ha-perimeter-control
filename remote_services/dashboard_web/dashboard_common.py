@@ -104,47 +104,21 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     )
 
     def _get_style_div() -> Div:
-        """Return a Div with inlined CSS or a fallback link tag.
+        """Return a Div with a <link> tag to load CSS via HTTP request.
 
-        This runs on the Pi (remote host) where `const.py` from the HA host
-        is not available. Prefer a CSS file packaged with the dashboard
-        sources, then check the deployed web directory under
-        `PERIMETER_REMOTE_INSTALL_ROOT` (default /opt/PerimeterControl).
+        This allows CSS to be served as /static/css/pc-dashboard.css so it
+        appears in tornado server logs for debugging. Falls back to inlined
+        minimal CSS if static files cannot be served.
         """
-        css_text = ""
-        try:
-            # Packaged static CSS next to the dashboard sources
-            local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
-            if local_css.exists():
-                css_text = local_css.read_text(encoding="utf-8")
-            else:
-                # Probe common deployed install locations on the Pi (no env vars)
-                candidates = [
-                    Path("/opt/PerimeterControl"),
-                    Path("/usr/local/PerimeterControl"),
-                    Path("/home/pi/PerimeterControl"),
-                ]
-                for root in candidates:
-                    deployed_css = root / "web" / "static" / "css" / "pc-dashboard.css"
-                    if deployed_css.exists():
-                        css_text = deployed_css.read_text(encoding="utf-8")
-                        break
-        except Exception:
-            css_text = ""
-
-        if css_text:
-            return Div(text=f"<style>{css_text}</style>", sizing_mode="stretch_width")
-
-        # Minimal fallback styles to ensure layout stability when packaged CSS
-        # isn't available (prevents overlapping sections and ensures scrolling).
-        default_css = '''
-        .pc-header { box-sizing:border-box; padding:8px 0; }
-        .pc-section-title { font-weight:700; margin:8px 0 6px; display:block; }
-        .pc-log { white-space:pre-wrap; overflow:auto; max-height:220px; border:1px solid #ddd; padding:8px; background:#fff; }
-        .pc-command-output { white-space:pre-wrap; overflow:auto; max-height:220px; border:1px solid #ddd; padding:8px; background:#fafafa; }
-        .pc-header h3 { margin:0 0 6px 0; }
-        '''
-        return Div(text=f"<style>{default_css}</style>", sizing_mode="stretch_width")
+        _DC_LOGGER.debug("[CSS] Preparing style div for client-side CSS loading")
+        
+        # Prefer external CSS link so request appears in server logs
+        css_link_html = (
+            "<link rel='stylesheet' href='/static/css/pc-dashboard.css' "
+            "onerror=\"console.error('CSS failed to load'); this.remove();\">"
+        )
+        _DC_LOGGER.debug("[CSS] Returning external CSS link tag: /static/css/pc-dashboard.css")
+        return Div(text=css_link_html, sizing_mode="stretch_width")
 
     # Style + controls belong to the service panel; build them here.
     style_div = _get_style_div()
@@ -270,20 +244,30 @@ def get_loader_div() -> Div:
 
 
 def get_extra_static_patterns():
-    """Return Tornado extra_patterns to serve /static from a discovered dir or None.
+    """Return Tornado extra_patterns to serve /static from the hardcoded path.
 
-    Probes common install locations and the packaged `static` directory next
-    to the dashboard sources. Returns a list suitable for passing to
+    Uses the explicit static directory:
+    - Local dev: remote_services/dashboard_web/static
+    - Remote Pi: /opt/PerimeterControl/web/static
+
+    Returns a list suitable for passing to
     `bokeh.server.server.Server(..., extra_patterns=...)` or `None`.
     """
-    candidates = [
-        Path(__file__).parent / "static",
-        Path('/opt/PerimeterControl') / 'web' / 'static',
-        Path('/usr/local/PerimeterControl') / 'web' / 'static',
-    ]
-    for p in candidates:
-        if p.exists():
-            return [(r"/static/(.*)", StaticFileHandler, {"path": str(p)})]
+    # Try packaged static directory first (local dev or during deployment)
+    static_path = Path(__file__).parent / "static"
+    if static_path.exists():
+        _DC_LOGGER.info("[STATIC] Serving /static from: %s", static_path)
+        _DC_LOGGER.debug("[STATIC] CSS files in directory: %s", list(static_path.glob("**/*.css")))
+        return [(r"/static/(.*)", StaticFileHandler, {"path": str(static_path)})]
+    
+    # Fall back to deployed path on remote Pi (explicit, not environment-derived)
+    deployed_static = Path("/opt/PerimeterControl/web/static")
+    if deployed_static.exists():
+        _DC_LOGGER.info("[STATIC] Serving /static from deployed location: %s", deployed_static)
+        _DC_LOGGER.debug("[STATIC] CSS files in directory: %s", list(deployed_static.glob("**/*.css")))
+        return [(r"/static/(.*)", StaticFileHandler, {"path": str(deployed_static)})]
+    
+    _DC_LOGGER.warning("[STATIC] No static directory found at packaged or deployed locations")
     return None
  
 
