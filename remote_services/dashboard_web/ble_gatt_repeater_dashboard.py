@@ -58,7 +58,8 @@ def main(config_path):
         doc.add_root(full_layout)
         # Ensure jQuery/jQuery UI loader is present for DataTable features
         try:
-            from dashboard_common import get_loader_div
+            from dashboard_common import _get_style_div, get_loader_div
+            doc.add_root(_get_style_div())
             doc.add_root(get_loader_div())
         except Exception:
             pass

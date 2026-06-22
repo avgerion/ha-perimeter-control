@@ -103,6 +103,10 @@
 }
 
 /* Force Bokeh layout containers and PreText hosts to use static positioning so absolute top offsets are not applied */
+.bk {
+    flex-wrap: wrap !important;
+}
+
 .bk-Column {
     display: block !important;
     position: static !important;

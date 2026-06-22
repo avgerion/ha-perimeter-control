@@ -243,14 +243,33 @@ class BaseService:
             if isinstance(component, HardwareInterface) and component.config.enabled:
                 try:
                     component_entities = await component.get_auto_entities(ssh_client)
+                    self.logger.debug("Component %s detected %d device entities", component.name, len(component_entities))
                     entities.extend(component_entities)
                 except Exception as exc:
                     self.logger.warning(f"Failed to get entities from {component.name}: {exc}")
-        
+
+        # Log raw detected entities before assignment for diagnostics
+        if not entities:
+            self.logger.info("No hardware-detected entities for service %s", self.service_id)
+        else:
+            self.logger.info("Service %s: detected %d raw hardware entities", self.service_id, len(entities))
+            # Log a short summary of hardware types found
+            try:
+                types = {e.get('hardware_type') for e in entities if e.get('hardware_type')}
+                self.logger.debug("Detected hardware types for %s: %s", self.service_id, types)
+            except Exception:
+                pass
+
         # Assign capability IDs based on hardware type registration and deployed services
-        entities = hardware_registry.assign_capability_ids(entities, deployed_services)
-        
-        return entities
+        assigned = hardware_registry.assign_capability_ids(entities, deployed_services)
+        # Log assignment results
+        if assigned:
+            for ent in assigned:
+                self.logger.debug("Assigned entity: id=%s -> capability=%s", ent.get('id'), ent.get('capability_id'))
+        else:
+            self.logger.debug("No entities assigned for service %s", self.service_id)
+
+        return assigned
 
 
 class HardwareRegistry:
