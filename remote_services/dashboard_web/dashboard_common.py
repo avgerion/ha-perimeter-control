@@ -18,7 +18,6 @@ from bokeh.io import curdoc
 import subprocess
 import logging
 from pathlib import Path
-from tornado.web import StaticFileHandler
 
 _DC_LOGGER = logging.getLogger("perimetercontrol.dashboard_common")
 
@@ -106,18 +105,17 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     def _get_style_div() -> Div:
         """Return a Div with a <link> tag to load CSS via HTTP request.
 
-        This allows CSS to be served as /static/css/pc-dashboard.css so it
-        appears in tornado server logs for debugging. Falls back to inlined
-        minimal CSS if static files cannot be served.
+        Uses /css/ path instead of /static/ to avoid Bokeh's default static handler.
+        This allows CSS to be served with a custom handler that we control.
         """
         _DC_LOGGER.debug("[CSS] Preparing style div for client-side CSS loading")
         
-        # Prefer external CSS link so request appears in server logs
+        # Use /css/ path instead of /static/css/ to avoid Bokeh's default handler
         css_link_html = (
-            "<link rel='stylesheet' href='/static/css/pc-dashboard.css' "
+            "<link rel='stylesheet' href='/css/pc-dashboard.css' "
             "onerror=\"console.error('CSS failed to load'); this.remove();\">"
         )
-        _DC_LOGGER.debug("[CSS] Returning external CSS link tag: /static/css/pc-dashboard.css")
+        _DC_LOGGER.debug("[CSS] Returning external CSS link tag: /css/pc-dashboard.css")
         return Div(text=css_link_html, sizing_mode="stretch_width")
 
     # Style + controls belong to the service panel; build them here.
@@ -245,6 +243,9 @@ def get_loader_div() -> Div:
 
 def get_extra_static_patterns():
     """Return Tornado extra_patterns to serve CSS directly.
+    
+    Uses /css/ path instead of /static/css/ to avoid Bokeh's built-in
+    static handler which was intercepting requests and returning 404.
 
     Tries to serve pc-dashboard.css from:
     - Local dev: remote_services/dashboard_web/static/css/pc-dashboard.css
@@ -252,35 +253,43 @@ def get_extra_static_patterns():
     """
     from tornado.web import RequestHandler
     
+    # Determine where CSS file is located at startup
+    local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
+    deployed_css = Path("/opt/PerimeterControl/web/static/css/pc-dashboard.css")
+    
+    css_location = None
+    if local_css.exists():
+        css_location = local_css
+        _DC_LOGGER.info("[CSS_SETUP] Found CSS at local dev path: %s", local_css)
+    elif deployed_css.exists():
+        css_location = deployed_css
+        _DC_LOGGER.info("[CSS_SETUP] Found CSS at deployed path: %s", deployed_css)
+    else:
+        _DC_LOGGER.error("[CSS_SETUP] CSS not found at local (%s) or deployed (%s) paths", local_css, deployed_css)
+    
     class CSSHandler(RequestHandler):
         """Simple handler for serving the CSS file directly."""
         def get(self):
-            css_path = None
-            # Try local first
-            local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
-            if local_css.exists():
-                css_path = local_css
-            else:
-                # Try deployed path
-                deployed_css = Path("/opt/PerimeterControl/web/static/css/pc-dashboard.css")
-                if deployed_css.exists():
-                    css_path = deployed_css
-            
-            if not css_path:
-                _DC_LOGGER.error("[CSS_HANDLER] CSS file not found at any location")
+            if css_location is None:
+                _DC_LOGGER.error("[CSS_HANDLER] CSS file not found at startup - returning 404")
                 self.set_status(404)
                 return
             
             try:
-                css_content = css_path.read_text(encoding="utf-8")
-                _DC_LOGGER.debug("[CSS_HANDLER] Serving CSS from: %s (size: %d bytes)", css_path, len(css_content))
+                css_content = css_location.read_text(encoding="utf-8")
+                _DC_LOGGER.info("[CSS_HANDLER] Request for /css/pc-dashboard.css - serving %d bytes from %s", len(css_content), css_location)
                 self.set_header("Content-Type", "text/css")
                 self.write(css_content)
             except Exception as e:
-                _DC_LOGGER.error("[CSS_HANDLER] Error reading CSS file %s: %s", css_path, e)
+                _DC_LOGGER.error("[CSS_HANDLER] Error reading CSS file %s: %s", css_location, e)
                 self.set_status(500)
     
-    return [(r"/static/css/pc-dashboard\.css", CSSHandler, {})]
+    if css_location:
+        _DC_LOGGER.info("[CSS_SETUP] Registering CSS handler for /css/pc-dashboard.css (NOT /static/)")
+        return [(r"/css/pc-dashboard\.css", CSSHandler, {})]
+    else:
+        _DC_LOGGER.error("[CSS_SETUP] CSS handler NOT registered - file not found")
+        return None
  
 
 

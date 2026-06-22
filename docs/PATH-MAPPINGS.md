@@ -45,7 +45,7 @@ NetworkIsolator/
 ├── ble_gatt_repeater_dashboard.py
 └── static/
     └── css/
-        └── pc-dashboard.css            ← Served via HTTP as /static/css/pc-dashboard.css
+        └── pc-dashboard.css            ← Served via HTTP as /css/pc-dashboard.css (custom route)
 ```
 
 ### Configuration Files
@@ -156,12 +156,12 @@ The CSS file is served via HTTP from Tornado:
 
 - **Workspace source**: `remote_services/dashboard_web/static/css/pc-dashboard.css`
 - **Deployed location**: `/opt/PerimeterControl/web/static/css/pc-dashboard.css`
-- **HTTP URL**: `http://<pi-ip>:8095/static/css/pc-dashboard.css` (GPIO dashboard)
-- **URL pattern**: `/static/css/pc-dashboard.css` (generic)
+- **HTTP URL**: `http://<pi-ip>:8095/css/pc-dashboard.css` (GPIO dashboard) - Note: `/css/` is a custom route, not Bokeh's `/static/`
+- **URL pattern**: `/css/pc-dashboard.css` (custom handler, not Bokeh's /static/)
 
 When you see this in the server log, CSS is being served correctly:
 ```
-GET /static/css/pc-dashboard.css HTTP/1.1 200 OK
+GET /css/pc-dashboard.css HTTP/1.1 200 OK
 ```
 
 ## Configuration File Format
@@ -256,5 +256,5 @@ ssh pi@<pi-ip> "journalctl -u perimetercontrol-gpio-dashboard -n 50 --no-pager"
 Look for lines like:
 ```
 [STATIC] Serving /static from: /opt/PerimeterControl/web/static
-[GPIO_DASH] CSS will be loaded from /static/css/pc-dashboard.css via HTTP
+[GPIO_DASH] CSS will be loaded from /css/pc-dashboard.css via HTTP
 ```

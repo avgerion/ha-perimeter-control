@@ -62,6 +62,7 @@ class PhotoBoothService(BaseService):
         
         # Add dependencies
         self.add_component(SystemDependencies([
+            "fswebcam",  # Camera availability checks
             "v4l-utils",
             "ffmpeg", 
             "python3-opencv"
@@ -140,6 +141,7 @@ class WildlifeService(BaseService):
         # Add dependencies
         self.add_component(SystemDependencies([
             "i2c-tools",
+            "fswebcam",  # Camera availability checks
             "python3-smbus2",
             "ffmpeg"
         ]), 2)

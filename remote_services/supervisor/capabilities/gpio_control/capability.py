@@ -68,7 +68,7 @@ class GpioControlCapability(CapabilityModule):
         self._pins = self._load_pin_configs(self.config)
 
         if not self._pins:
-            logger.warning("[%s] No GPIO pins configured", self.cap_id)
+            logger.warning("[%s] No GPIO pins configured (checked nested format services.gpio_control.<instance>.pins and flat format pins)", self.cap_id)
             return
 
         for entity_id, pin in self._pins.items():
@@ -82,6 +82,8 @@ class GpioControlCapability(CapabilityModule):
 
             self._setup_pin(pin, initial_on)
             self._publish_pin_entity(pin)
+            logger.info("[%s] Registered GPIO entity: %s (pin=%d, type=%s, state=%s)", 
+                       self.cap_id, pin.friendly_name, pin.gpio_pin, pin.entity_type, pin.initial_state)
 
         logger.info("[%s] GPIO control started with %d entities using %s", self.cap_id, len(self._pins), self._driver)
 
@@ -149,14 +151,32 @@ class GpioControlCapability(CapabilityModule):
     @staticmethod
     def validate_config(config: Dict[str, Any]) -> List[str]:
         errors: List[str] = []
-        pins = config.get("pins", [])
-        if not isinstance(pins, list):
-            return ["pins must be a list"]
+        
+        # Extract pins from nested format (new standard) or flat format (legacy)
+        pins_list = []
+        
+        # Try nested format first
+        services = config.get("services", {})
+        gpio_control_cfg = services.get("gpio_control", {})
+        if isinstance(gpio_control_cfg, dict):
+            for instance_name, instance_cfg in gpio_control_cfg.items():
+                if isinstance(instance_cfg, dict):
+                    instance_pins = instance_cfg.get("pins", [])
+                    if isinstance(instance_pins, list):
+                        pins_list.extend(instance_pins)
+        
+        # Fall back to flat format
+        if not pins_list:
+            pins = config.get("pins", [])
+            if isinstance(pins, list):
+                pins_list = pins
+            else:
+                return ["pins must be a list or services.gpio_control.<instance>.pins must be a list"]
 
         seen_ids: set[str] = set()
         seen_gpio: set[int] = set()
 
-        for idx, item in enumerate(pins):
+        for idx, item in enumerate(pins_list):
             if not isinstance(item, dict):
                 errors.append(f"pins[{idx}] must be a mapping")
                 continue
@@ -192,7 +212,33 @@ class GpioControlCapability(CapabilityModule):
 
     def _load_pin_configs(self, config: Dict[str, Any]) -> Dict[str, PinConfig]:
         out: Dict[str, PinConfig] = {}
-        for item in config.get("pins", []):
+        
+        # Extract pins from nested format (new standard):
+        # services:
+        #   gpio_control:
+        #     relays:
+        #       pins: [...]
+        #     lights:
+        #       pins: [...]
+        pins_list = []
+        
+        # Try nested format first
+        services = config.get("services", {})
+        gpio_control_cfg = services.get("gpio_control", {})
+        if isinstance(gpio_control_cfg, dict):
+            # Iterate over instances (relays, lights, inputs, etc.)
+            for instance_name, instance_cfg in gpio_control_cfg.items():
+                if isinstance(instance_cfg, dict):
+                    instance_pins = instance_cfg.get("pins", [])
+                    if isinstance(instance_pins, list):
+                        pins_list.extend(instance_pins)
+        
+        # Fall back to flat format (old):
+        # pins: [...]
+        if not pins_list:
+            pins_list = config.get("pins", [])
+        
+        for item in pins_list:
             if not isinstance(item, dict):
                 continue
 

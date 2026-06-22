@@ -1,15 +1,27 @@
 # Photo Booth Configuration
-camera:
-  device: 0
-  resolution: [1920, 1080]
-  fps: 30
-motion:
-  sensitivity: 0.6
-  min_area: 500
-storage:
-  path: "/var/lib/photo_booth"
-  max_photos: 1000
+# Camera device and capture settings
+camera_device: "/dev/video0"
+resolution: "1920x1080"
+quality: 85
 
+# Photo storage
+photo_directory: "/opt/PerimeterControl/state/photos"
+max_storage_mb: 1000
+
+# Streaming configuration
+streaming:
+  enabled: true          # Enable gstreamer MJPEG streaming
+  stream_port: 8100     # HTTP MJPEG stream port
+
+# Motion detection
+motion_detection: true
+
+# Timelapse configuration
+timelapse:
+  enabled: false        # Enable automatic timelapse captures
+  interval_seconds: 300 # Capture every 5 minutes
+
+# Dashboard settings
 dashboard:
   server:
     host: "0.0.0.0"

@@ -39,4 +39,6 @@ spec:
   system_deps:
     apt:
       - gstreamer # audio/video pipeline (camera capture, RTSP stream, I2S mic)
+      - fswebcam # webcam capture utility (photo_booth camera availability check)
+      - v4l-utils # V4L2 diagnostic and control tools (camera debugging)
       - i2c # optional: I2C sensors (lighting control, env sensors)

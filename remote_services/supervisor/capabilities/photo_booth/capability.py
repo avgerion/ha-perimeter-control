@@ -61,6 +61,12 @@ class PhotoBoothCapability(CapabilityModule):
         self._timelapse_active = False
         self._motion_detection = config.get("motion_detection", False)
         self._last_capture_time: Optional[datetime] = None
+        
+        # Streaming state
+        self._stream_process: Optional[asyncio.subprocess.Process] = None
+        self._stream_active = False
+        self._stream_port = config.get("stream_port", 8100)
+        self._stream_url = f"http://localhost:{self._stream_port}/stream"
 
     def _latest_photo_path(self) -> Path:
         """Return path to the canonical latest camera image."""
@@ -87,6 +93,10 @@ class PhotoBoothCapability(CapabilityModule):
         # Create initial entities
         await self._create_camera_entities()
         
+        # Start gstreamer stream if enabled
+        if self.config.get("streaming", {}).get("enabled", True) and self._camera_available:
+            await self._start_gstreamer_stream()
+        
         # Start timelapse if configured
         if self.config.get("timelapse", {}).get("enabled", False):
             await self._start_timelapse_internal()
@@ -96,6 +106,9 @@ class PhotoBoothCapability(CapabilityModule):
     async def stop(self) -> None:
         """Stop photo booth capability."""
         logger.info("[%s] Stopping Photo Booth", self.cap_id)
+        
+        # Stop gstreamer stream
+        await self._stop_gstreamer_stream()
         
         # Stop timelapse
         await self._stop_timelapse_internal()
@@ -180,24 +193,49 @@ class PhotoBoothCapability(CapabilityModule):
     # ------------------------------------------------------------------
 
     async def _check_camera_availability(self) -> None:
-        """Check if camera device is available."""
+        """Check if camera device is available and working."""
         try:
             # Check if camera device exists
             camera_exists = os.path.exists(self.camera_device)
             
-            if camera_exists:
-                # Try to capture a test image to verify camera works
-                test_result = await self._run_camera_command([
-                    "fswebcam", "-d", self.camera_device, 
-                    "--no-banner", "-r", "640x480", "/tmp/test_capture.jpg"
-                ])
-                self._camera_available = (test_result.returncode == 0)
-                
-                # Clean up test file
-                if os.path.exists("/tmp/test_capture.jpg"):
-                    os.remove("/tmp/test_capture.jpg")
-            else:
+            if not camera_exists:
+                logger.warning("[%s] Camera device not found: %s", self.cap_id, self.camera_device)
                 self._camera_available = False
+                return
+            
+            # Try to capture a test image to verify camera works
+            test_file = "/tmp/test_capture.jpg"
+            
+            # Remove old test file if it exists
+            if os.path.exists(test_file):
+                try:
+                    os.remove(test_file)
+                except:
+                    pass
+            
+            test_result = await self._run_camera_command([
+                "fswebcam", "-d", self.camera_device, 
+                "--no-banner", "-r", "640x480", test_file
+            ])
+            
+            # Check if output file was actually created (fswebcam may exit 0 but fail to capture)
+            file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
+            self._camera_available = file_created
+            
+            if file_created:
+                logger.info("[%s] Camera test capture successful (%s)", self.cap_id, self.camera_device)
+            else:
+                logger.warning("[%s] Camera test capture failed: fswebcam didn't create output file", self.cap_id)
+                if test_result.stderr:
+                    stderr_msg = test_result.stderr.decode('utf-8', errors='replace') if isinstance(test_result.stderr, bytes) else str(test_result.stderr)
+                    logger.warning("[%s] fswebcam stderr: %s", self.cap_id, stderr_msg)
+            
+            # Clean up test file
+            if os.path.exists(test_file):
+                try:
+                    os.remove(test_file)
+                except:
+                    pass
                 
         except Exception as e:
             logger.warning("[%s] Camera availability check failed: %s", self.cap_id, e)
@@ -218,6 +256,102 @@ class PhotoBoothCapability(CapabilityModule):
             stdout=stdout,
             stderr=stderr
         )
+
+    async def _start_gstreamer_stream(self) -> None:
+        """Start gstreamer MJPEG stream from camera."""
+        if self._stream_process is not None:
+            logger.warning("[%s] Stream already running", self.cap_id)
+            return
+        
+        try:
+            # GStreamer pipeline: v4l2src → video/x-raw → jpegenc → multipartmux → tcpserversink
+            # Outputs MJPEG over TCP on the configured port
+            pipeline = (
+                f"v4l2src device={self.camera_device} ! "
+                f"video/x-raw,width={self.resolution.split('x')[0]},height={self.resolution.split('x')[1]} ! "
+                f"videoconvert ! jpegenc quality={self.quality} ! "
+                f"multipartmux ! "
+                f"tcpserversink host=0.0.0.0 port={self._stream_port}"
+            )
+            
+            logger.info("[%s] Starting gstreamer MJPEG stream: %s", self.cap_id, self._stream_url)
+            
+            # Start gstreamer process
+            cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ! ")
+            
+            self._stream_process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            self._stream_active = True
+            
+            # Monitor process for errors
+            asyncio.create_task(self._monitor_stream_process())
+            
+            logger.info("[%s] GStreamer MJPEG stream started on port %d", self.cap_id, self._stream_port)
+            
+            # Update entity with stream URL
+            await self._update_camera_stream_entity()
+            
+        except FileNotFoundError:
+            logger.error("[%s] gstreamer-1.0 not found. Streaming disabled. Install with: apt-get install gstreamer1.0-tools", self.cap_id)
+            self._stream_active = False
+        except Exception as e:
+            logger.error("[%s] Failed to start gstreamer stream: %s", self.cap_id, e)
+            self._stream_active = False
+            self._stream_process = None
+
+    async def _stop_gstreamer_stream(self) -> None:
+        """Stop gstreamer stream."""
+        if self._stream_process is None:
+            return
+        
+        try:
+            logger.info("[%s] Stopping gstreamer MJPEG stream", self.cap_id)
+            
+            if self._stream_process.returncode is None:
+                self._stream_process.terminate()
+                try:
+                    await asyncio.wait_for(self._stream_process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning("[%s] gstreamer stream did not stop gracefully, killing", self.cap_id)
+                    self._stream_process.kill()
+                    await self._stream_process.wait()
+            
+            self._stream_active = False
+            self._stream_process = None
+            logger.info("[%s] GStreamer MJPEG stream stopped", self.cap_id)
+            
+        except Exception as e:
+            logger.error("[%s] Error stopping stream: %s", self.cap_id, e)
+            self._stream_process = None
+            self._stream_active = False
+
+    async def _monitor_stream_process(self) -> None:
+        """Monitor gstreamer stream process and restart on failure."""
+        if self._stream_process is None:
+            return
+        
+        try:
+            await self._stream_process.wait()
+            returncode = self._stream_process.returncode
+            
+            if returncode != 0:
+                stderr = await self._stream_process.stderr.read()
+                error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
+                logger.warning("[%s] GStreamer stream exited with code %d: %s", self.cap_id, returncode, error_msg)
+            else:
+                logger.info("[%s] GStreamer stream stopped normally", self.cap_id)
+            
+            self._stream_active = False
+            self._stream_process = None
+            
+        except Exception as e:
+            logger.error("[%s] Error monitoring stream: %s", self.cap_id, e)
+            self._stream_active = False
+            self._stream_process = None
 
     async def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
         """Capture a single photo."""
@@ -295,6 +429,9 @@ class PhotoBoothCapability(CapabilityModule):
         attrs["image_url"] = self._camera_image_url()
         attrs["resolution"] = self.resolution
         attrs["quality"] = self.quality
+        attrs["stream_url"] = self._stream_url if self._stream_active else None
+        attrs["stream_active"] = self._stream_active
+        attrs["stream_port"] = self._stream_port
 
         entity["attributes"] = attrs
         self._publish_entity(entity)
@@ -435,7 +572,7 @@ class PhotoBoothCapability(CapabilityModule):
     async def _create_camera_entities(self) -> None:
         """Create all camera-related entities."""
         
-        # Main camera entity (placeholder for now - real MJPEG streaming would need more setup)
+        # Main camera entity (with live MJPEG streaming via gstreamer)
         latest_path = self._latest_photo_path()
         camera_entity = {
             "id": "photo_booth:camera:stream",
@@ -449,6 +586,10 @@ class PhotoBoothCapability(CapabilityModule):
                 "quality": self.quality,
                 "last_image": str(latest_path) if latest_path.exists() else None,
                 "image_url": self._camera_image_url(),
+                "stream_url": self._stream_url if self._stream_active else None,
+                "stream_active": self._stream_active,
+                "stream_port": self._stream_port,
+                "stream_type": "mjpeg",
             }
         }
         self._publish_entity(camera_entity)
@@ -464,6 +605,22 @@ class PhotoBoothCapability(CapabilityModule):
             "icon": "mdi:camera",
         }
         self._publish_entity(available_entity)
+
+        # Stream status binary sensor
+        stream_entity = {
+            "id": "photo_booth:camera:stream_status",
+            "type": "binary_sensor",
+            "friendly_name": "Camera Stream Active",
+            "capability": self.cap_id,
+            "state": "on" if self._stream_active else "off",
+            "device_class": "connectivity",
+            "icon": "mdi:video-wireless",
+            "attributes": {
+                "stream_url": self._stream_url if self._stream_active else None,
+                "stream_port": self._stream_port,
+            }
+        }
+        self._publish_entity(stream_entity)
 
         # Update capture and storage entities
         await self._update_capture_entities()

@@ -82,8 +82,8 @@ def main(config_path):
     extra_patterns = get_extra_static_patterns()
     server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], extra_patterns=extra_patterns)
     logger.info(f"GPIO Control dashboard running on port {port}")
-    logger.info("[GPIO_DASH] CSS will be loaded from /static/css/pc-dashboard.css via HTTP")
-    logger.info("[GPIO_DASH] Check server logs for GET /static/css/pc-dashboard.css requests")
+    logger.info("[GPIO_DASH] CSS will be loaded from /css/pc-dashboard.css via HTTP (custom handler, not Bokeh /static/)")
+    logger.info("[GPIO_DASH] Check server logs for GET /css/pc-dashboard.css requests")
     logger.debug("[GPIO_DASH] Extra static patterns: %s", extra_patterns)
     server.start()
     try:

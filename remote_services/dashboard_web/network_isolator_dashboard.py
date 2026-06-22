@@ -60,7 +60,7 @@ def main(config_path: Path):
             doc.add_root(get_loader_div())
         except Exception:
             # Fallback to link tag if helper import fails
-            css_div = Div(text="<link rel='stylesheet' href='/static/css/pc-dashboard.css'>", sizing_mode="stretch_width")
+            css_div = Div(text="<link rel='stylesheet' href='/css/pc-dashboard.css'>", sizing_mode="stretch_width")
             doc.add_root(css_div)
         doc.supervisor_api_url = supervisor_api_url
         for key, value in widgets.items():
