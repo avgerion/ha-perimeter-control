@@ -80,7 +80,15 @@ class DataManager:
     def get_entities(self, capability_id: str | None = None, entity_type: str | None = None) -> list[Dict[str, Any]]:
         """Fetch entity schemas from supervisor and optionally filter by capability/type."""
         result = self._request_json("/entities")
-        entities = result.get("entities", []) if isinstance(result, dict) else []
+        
+        # Handle both list response and dict response
+        if isinstance(result, list):
+            entities = result
+        elif isinstance(result, dict):
+            entities = result.get("entities", [])
+        else:
+            return []
+            
         if not isinstance(entities, list):
             return []
 
@@ -89,11 +97,19 @@ class DataManager:
             if not isinstance(entity, dict):
                 continue
 
+            # Handle both 'id' and 'entity_id' field names from different API versions
+            entity_id = entity.get("id") or entity.get("entity_id")
             capability = entity.get("capability_id") or entity.get("capability")
+            
             if capability_id and capability != capability_id:
                 continue
             if entity_type and entity.get("type") != entity_type:
                 continue
+            
+            # Normalize to 'id' for consistency
+            if not entity.get("id") and entity_id:
+                entity["id"] = entity_id
+                
             filtered.append(entity)
         return filtered
 
@@ -102,30 +118,45 @@ class DataManager:
         if not entity_ids:
             return {}
 
-        result = self._request_json("/entities/states/query", method="POST", payload={"entity_ids": entity_ids})
-        states = result.get("states", {}) if isinstance(result, dict) else {}
-        return states if isinstance(states, dict) else {}
+        states = {}
+        for entity_id in entity_ids:
+            result = self._request_json(f"/entities/{entity_id}")
+            if isinstance(result, dict):
+                states[entity_id] = result
+        return states
 
     def get_entities_with_state(self, capability_id: str, entity_type: str | None = None) -> list[Dict[str, Any]]:
         """Return entity schema rows enriched with their current state payload."""
         entities = self.get_entities(capability_id=capability_id, entity_type=entity_type)
-        ids = [str(entity.get("id")) for entity in entities if entity.get("id")]
+        ids = [str(entity.get("id") or entity.get("entity_id", "")) for entity in entities if entity.get("id") or entity.get("entity_id")]
+        
+        # If no IDs found, return entities as-is (they may already have state)
+        if not ids:
+            return entities
+            
         states = self.get_entity_states(ids)
 
         rows: list[Dict[str, Any]] = []
         for entity in entities:
-            entity_id = str(entity.get("id", ""))
-            state_payload = states.get(entity_id, {}) if isinstance(states, dict) else {}
-            if isinstance(state_payload, dict) and isinstance(state_payload.get("state"), dict):
-                state_payload = state_payload.get("state")
-            attrs = state_payload.get("attributes", {}) if isinstance(state_payload, dict) else {}
+            entity_id = str(entity.get("id") or entity.get("entity_id", ""))
+            state_payload = states.get(entity_id, entity)  # Fall back to entity itself if no state fetched
+            
+            # Extract state and attributes - handle both nested and flat formats
+            state_value = state_payload.get("state")
+            if isinstance(state_value, dict):
+                state_value = state_value.get("state")
+            
+            attrs = state_payload.get("attributes", {})
+            if isinstance(attrs, dict) is False:
+                attrs = {}
+                
             rows.append({
                 "id": entity_id,
                 "friendly_name": entity.get("friendly_name") or entity_id,
                 "type": entity.get("type", ""),
                 "capability": entity.get("capability") or entity.get("capability_id", ""),
-                "state": state_payload.get("state") if isinstance(state_payload, dict) else None,
-                "attributes": attrs if isinstance(attrs, dict) else {},
+                "state": state_value,
+                "attributes": attrs,
             })
         return rows
 
