@@ -65,10 +65,9 @@ SERVICE_REGISTRY = {
         ],
         "script_files": [],
         "pip_packages": ["tornado"],
-        # Use explicit placeholder for host so deployers can substitute the
-        # actual node host when executing remote commands via SSH.
-        # Replace `<host_ip>` with the node IP or hostname at runtime.
-        "deploy_api": "http://<host_ip>:8080/api/v1/capabilities/gpio_control/deploy",
+        # Supervisor auto-deploys gpio_control from perimeterControl.conf.yaml at startup.
+        # No explicit deploy_api call needed; auto-deploy preserves instance config.
+        "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
         "unit": "perimetercontrol-ble-dashboard",

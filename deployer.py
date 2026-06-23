@@ -51,6 +51,7 @@ from .const import (
     DASHBOARD_WEB_DIR,
     SUPERVISOR_SRC_DIR,
     SHARED_WEB_FILES,
+    INTEGRATION_DIR,
 )
 from urllib.parse import urlparse, urlunparse
 
@@ -542,12 +543,16 @@ class Deployer(BaseDeployer):
             try:
                 import yaml as _yaml
                 descriptor_path = INTEGRATION_DIR / "config" / "services" / f"{service_id}.service.yaml"
-                if await asyncio.to_thread(descriptor_path.exists):
-                    descriptor_text = await asyncio.to_thread(descriptor_path.read_text, encoding="utf-8")
+                descriptor_exists = await asyncio.to_thread(descriptor_path.exists)
+                if descriptor_exists:
+                    descriptor_text = await asyncio.to_thread(lambda: descriptor_path.read_text(encoding="utf-8"))
                     descriptor = await asyncio.to_thread(_yaml.safe_load, descriptor_text) or {}
                     port = descriptor.get("spec", {}).get("access_profile", {}).get("port")
+                    _LOGGER.debug("Read port %s from service descriptor for %s", port, service_id)
+                else:
+                    _LOGGER.warning("Service descriptor not found for %s at %s", service_id, descriptor_path)
             except Exception as _exc:
-                _LOGGER.debug("Could not read port from service descriptor for %s: %s", service_id, _exc)
+                _LOGGER.warning("Could not read port from service descriptor for %s: %s", service_id, _exc)
 
             try:
                 await self._client.async_run(
