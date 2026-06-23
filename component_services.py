@@ -201,7 +201,6 @@ def register_service_components():
     # Feature components
     component_registry.register_component_type("python_dependencies", PythonDependencies)
     component_registry.register_component_type("system_dependencies", SystemDependencies)
-    component_registry.register_component_type("config_manager", ConfigurationManager)
     component_registry.register_component_type("data_logging", DataLogging)
     component_registry.register_component_type("motion_detection", MotionDetection)
     component_registry.register_component_type("alert_system", AlertSystem)
