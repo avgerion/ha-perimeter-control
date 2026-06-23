@@ -26,7 +26,6 @@ def main(config_path):
     config_path = Path(config_path)
     if not config_path.exists():
         # Fallback: create minimal bootstrap config if file not deployed yet
-        import logging
         logger = logging.getLogger('perimetercontrol.photo_booth_dashboard')
         logger.warning(f"Config file not found: {config_path}. Using bootstrap defaults.")
         config = {
