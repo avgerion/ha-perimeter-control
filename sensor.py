@@ -73,6 +73,7 @@ async def async_setup_entry(
             async_add_entities(entities)
         else:
             _LOGGER.warning("[SENSOR_SETUP] No sensor entities to add (supervisor_entities may be empty or filtered)")
+        registry = er.async_get(hass)
         for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
             if registry_entry.platform != DOMAIN or registry_entry.domain != "sensor":
                 continue

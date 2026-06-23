@@ -300,6 +300,7 @@ class Deployer(BaseDeployer):
                 # in phase_config. Services auto-deploy from this file via supervisor.
                 # supervisor is running.  Calling it here would fail because the
                 # supervisor service was stopped in Phase 0.
+                service_info = SERVICE_REGISTRY.get(service_id, {})
                 deploy_api = service_info.get("deploy_api")
                 if deploy_api:
                     self._pending_deploy_apis.append((service_id, deploy_api))
