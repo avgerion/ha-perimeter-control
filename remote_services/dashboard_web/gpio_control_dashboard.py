@@ -20,8 +20,19 @@ from pathlib import Path
 
 
 def main(config_path):
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config_path = Path(config_path)
+    if not config_path.exists():
+        # Fallback: create minimal bootstrap config if file not deployed yet
+        import logging
+        logger = logging.getLogger('perimetercontrol.gpio_dashboard')
+        logger.warning(f"Config file not found: {config_path}. Using bootstrap defaults.")
+        config = {
+            'services': {'gpio_control': {}},
+            'log_root': '/var/log/PerimeterControl'
+        }
+    else:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
     instances = config.get('services', {}).get('gpio_control', {})
     instance_name, instance_config = next(iter(instances.items())) if instances else (None, {})
     port = int(instance_config.get('port', 8095))

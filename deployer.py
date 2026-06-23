@@ -168,24 +168,28 @@ class Deployer(BaseDeployer):
             _LOGGER.warning("Phase 0: Stop managed services (ID: %s)", deployment_id)
             await self._phase_stop_services()
 
-            # Phase 1: Service Selection & Validation
-            _LOGGER.warning("Phase 1: Service selection and validation (ID: %s)", deployment_id)
+            # Phase 1: Deploy configuration files
+            _LOGGER.warning("Phase 1: Deploy configuration files (ID: %s)", deployment_id)
+            await self._phase_config()
+
+            # Phase 2: Service Selection & Validation
+            _LOGGER.warning("Phase 2: Service selection and validation (ID: %s)", deployment_id)
             await self._phase_service_selection()
 
-            # Phase 2: Service-Specific Deployment
-            _LOGGER.warning("Phase 2: Service-specific deployments (ID: %s)", deployment_id)
+            # Phase 3: Service-Specific Deployment
+            _LOGGER.warning("Phase 3: Service-specific deployments (ID: %s)", deployment_id)
             await self._phase_service_deployment()
 
-            # Phase 3: Supervisor Installation
-            _LOGGER.warning("Phase 3: Install supervisor (ID: %s)", deployment_id)
+            # Phase 4: Supervisor Installation
+            _LOGGER.warning("Phase 4: Install supervisor (ID: %s)", deployment_id)
             await self._phase_supervisor()
 
-            # Phase 4: Service Restart
-            _LOGGER.warning("Phase 4: Restart services (ID: %s)", deployment_id)
+            # Phase 5: Service Restart
+            _LOGGER.warning("Phase 5: Restart services (ID: %s)", deployment_id)
             await self._phase_restart()
 
-            # Phase 5: Service Verification
-            _LOGGER.warning("Phase 5: Verify deployment (ID: %s)", deployment_id)
+            # Phase 6: Service Verification
+            _LOGGER.warning("Phase 6: Verify deployment (ID: %s)", deployment_id)
             await self._phase_verify()
 
             _LOGGER.warning("=== SERVICE-AWARE DEPLOYMENT COMPLETED === (ID: %s)", deployment_id)
@@ -209,6 +213,17 @@ class Deployer(BaseDeployer):
             except Exception as exc:
                 _LOGGER.warning("Failed to stop service %s: %s", unit, exc)
         self._emit("stop", "All managed services stopped (if running)", 3)
+
+    async def _phase_config(self) -> None:
+        """Deploy unified configuration file to the Pi."""
+        self._emit("config", "Deploying configuration files...", 5)
+        try:
+            await self.phase_config(["perimeterControl.conf.yaml"])
+            _LOGGER.info("Configuration files deployed successfully")
+            self._emit("config", "Configuration deployed", 6)
+        except Exception as exc:
+            _LOGGER.error("Configuration deployment failed: %s", exc)
+            raise
 
     async def _phase_service_selection(self) -> None:
         """Validate service selection and check for conflicts using component architecture."""

@@ -23,8 +23,19 @@ import yaml
 
 def main(config_path):
     # Use the unified config file and select the correct instance config
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config_path = Path(config_path)
+    if not config_path.exists():
+        # Fallback: create minimal bootstrap config if file not deployed yet
+        import logging
+        logger = logging.getLogger('perimetercontrol.photo_booth_dashboard')
+        logger.warning(f"Config file not found: {config_path}. Using bootstrap defaults.")
+        config = {
+            'services': {'photo_booth': {}},
+            'log_root': '/var/log/PerimeterControl'
+        }
+    else:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
     booth_instances = config.get('services', {}).get('photo_booth', {})
     instance_name, instance_config = next(iter(booth_instances.items())) if booth_instances else (None, {})
     log_root = instance_config.get('log_root') or config.get('log_root', '/var/log/PerimeterControl')

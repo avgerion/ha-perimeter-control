@@ -23,8 +23,19 @@ from pathlib import Path
 
 def main(config_path):
     # Load config and instance
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config_path = Path(config_path)
+    if not config_path.exists():
+        # Fallback: create minimal bootstrap config if file not deployed yet
+        import logging
+        logger = logging.getLogger('perimetercontrol.ble_gatt_dashboard')
+        logger.warning(f"Config file not found: {config_path}. Using bootstrap defaults.")
+        config = {
+            'services': {'ble_gatt_repeater': {}},
+            'log_root': '/var/log/PerimeterControl'
+        }
+    else:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
     instances = config.get('services', {}).get('ble_gatt_repeater', {})
     instance_name, instance_config = next(iter(instances.items())) if instances else (None, {})
     log_root = instance_config.get('log_root', '/var/log/PerimeterControl')
