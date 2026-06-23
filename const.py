@@ -20,7 +20,7 @@ service_prefix = "PerimeterControl"
 
 # Dashboard and template directories (relative to integration dir)
 DASHBOARD_WEB_DIR = INTEGRATION_DIR / "remote_services" / "dashboard_web"
-TEMPLATES_DIR = INTEGRATION_DIR / "config" / "templates"
+
 # Local supervisor source directory (single source of truth)
 SUPERVISOR_SRC_DIR = INTEGRATION_DIR / "remote_services" / "supervisor"
 # Unified service registry: all per-service config here

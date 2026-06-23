@@ -51,7 +51,6 @@ from .const import (
     DASHBOARD_WEB_DIR,
     SUPERVISOR_SRC_DIR,
     SHARED_WEB_FILES,
-    TEMPLATES_DIR,
 )
 from urllib.parse import urlparse, urlunparse
 
@@ -538,22 +537,17 @@ class Deployer(BaseDeployer):
             if not unit:
                 continue
 
-            # Read dashboard port from the YAML config template (single source of truth).
+            # Read dashboard port from the service descriptor YAML (single source of truth).
             port = None
-            config_template_rel = service_info.get("config_template")
-            if config_template_rel:
-                try:
-                    import yaml as _yaml
-                    template_path = TEMPLATES_DIR / Path(config_template_rel).name
-                    if await asyncio.to_thread(template_path.exists):
-                        template_text = await asyncio.to_thread(template_path.read_text, encoding="utf-8")
-                        tmpl = await asyncio.to_thread(_yaml.safe_load, template_text) or {}
-                        port = (
-                            tmpl.get("dashboard", {}).get("server", {}).get("port")
-                            or tmpl.get("port")
-                        )
-                except Exception as _exc:
-                    _LOGGER.debug("Could not read port from config template for %s: %s", service_id, _exc)
+            try:
+                import yaml as _yaml
+                descriptor_path = INTEGRATION_DIR / "config" / "services" / f"{service_id}.service.yaml"
+                if await asyncio.to_thread(descriptor_path.exists):
+                    descriptor_text = await asyncio.to_thread(descriptor_path.read_text, encoding="utf-8")
+                    descriptor = await asyncio.to_thread(_yaml.safe_load, descriptor_text) or {}
+                    port = descriptor.get("spec", {}).get("access_profile", {}).get("port")
+            except Exception as _exc:
+                _LOGGER.debug("Could not read port from service descriptor for %s: %s", service_id, _exc)
 
             try:
                 await self._client.async_run(

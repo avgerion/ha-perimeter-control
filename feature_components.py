@@ -139,45 +139,10 @@ class SystemDependencies(ServiceComponent):
 class ConfigurationManager(ServiceComponent):
     """Centralized configuration management for services."""
     
-    def __init__(self, config_files: Dict[str, str], config: Optional[ComponentConfig] = None, use_templates: bool = False):
+    def __init__(self, config_files: Dict[str, str], config: Optional[ComponentConfig] = None):
         super().__init__("config_manager", config)
-        self.use_templates = use_templates
+        self.config_files = config_files  # filename -> content mapping
         self.deployed_configs: Set[str] = set()
-        
-        if use_templates:
-            # config_files contains filename -> template_path mapping
-            self._template_mappings = config_files
-            self.config_files = None  # Will be loaded async
-        else:
-            # config_files contains filename -> content mapping (legacy)
-            self.config_files = config_files
-    
-    async def _load_template_files(self, template_mappings: Dict[str, str], hass=None) -> Dict[str, str]:
-        """Load configuration content from template files asynchronously."""
-        import os
-        import asyncio
-        config_content = {}
-        # Use TEMPLATES_DIR from const.py for template resolution
-        from .const import TEMPLATES_DIR
-        for filename, template_path in template_mappings.items():
-            try:
-                # Use only the filename part to avoid nested paths
-                full_path = str(TEMPLATES_DIR / os.path.basename(template_path))
-                if hass is not None:
-                    content = await hass.async_add_executor_job(self._read_file, full_path)
-                else:
-                    content = await asyncio.to_thread(self._read_file, full_path)
-                config_content[filename] = content
-                self.logger.debug(f"Loaded template {full_path} for {filename}")
-            except Exception as exc:
-                self.logger.error(f"Failed to load template {template_path}: {exc}")
-                config_content[filename] = f"# Template load failed: {exc}"
-        return config_content
-
-    @staticmethod
-    def _read_file(path):
-        with open(path, 'r', encoding='utf-8') as f:
-            return f.read()
     
     @property
     def resource_requirements(self) -> ResourceRequirement:
@@ -190,9 +155,6 @@ class ConfigurationManager(ServiceComponent):
     async def deploy(self, ssh_client: SshClient, deployment_path: Path, **kwargs) -> bool:
         """Deploy configuration files."""
         try:
-            # If using templates, load them asynchronously
-            if self.use_templates and self.config_files is None:
-                self.config_files = await self._load_template_files(self._template_mappings, hass=kwargs.get('hass'))
             await ssh_client.async_run(f"sudo mkdir -p {deployment_path / 'config'}")
             for filename, content in self.config_files.items():
                 config_path = deployment_path / "config" / filename
