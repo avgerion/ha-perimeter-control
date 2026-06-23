@@ -13,7 +13,7 @@ from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from gpio_control_layouts import create_gpio_control_dashboard_layout
 from gpio_control_callbacks import setup_gpio_control_callbacks
-from ..supervisor.data_manager import DataManager
+from data_manager import DataManager
 from dashboard_common import create_service_status_panel, create_log_tail_panel, setup_common_dashboard_callbacks
 from bokeh.layouts import column as bk_column
 from pathlib import Path

@@ -178,33 +178,29 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     except Exception:
         _DC_LOGGER.exception("Failed to bind local Run Command handler")
 
-    # Group status and logs into explicit vertical sections so Bokeh's
-    # layout engine stacks them reliably instead of attempting absolute
-    # positioning that can overlap dynamic preformatted text.
-    status_section = column(status_badge, status_details, sizing_mode="stretch_width")
-    # Ensure section titles provide spacing even without external CSS
-    service_log_section = column(
-        Div(text="<div class='pc-section-title' style='margin-top:12px; margin-bottom:6px;'><b>Service Log</b></div>"),
-        service_log_text,
-        sizing_mode="stretch_width",
-    )
-    supervisor_log_section = column(
-        Div(text="<div class='pc-section-title' style='margin-top:12px; margin-bottom:6px;'><b>Supervisor Log</b></div>"),
-        supervisor_log_text,
-        sizing_mode="stretch_width",
-    )
-
-    # Add explicit spacers between major sections to avoid overlapping
+    # Flatten the layout: avoid nested columns to prevent Bokeh layout engine bugs
+    # Use wrapper Divs with CSS classes instead of inline styles
     layout = column(
         style_div,
         header,
-        Spacer(height=8),
-        status_section,
-        Spacer(height=8),
-        service_log_section,
-        Spacer(height=8),
-        supervisor_log_section,
-        Spacer(height=8),
+        Spacer(height=12),
+        status_badge,
+        status_details,
+        Spacer(height=12),
+        Div(
+            text="<div class='pc-section-title'><b>Service Log</b></div>",
+            sizing_mode="stretch_width",
+            css_classes=["pc-section-title-container"],
+        ),
+        service_log_text,
+        Spacer(height=12),
+        Div(
+            text="<div class='pc-section-title'><b>Supervisor Log</b></div>",
+            sizing_mode="stretch_width",
+            css_classes=["pc-section-title-container"],
+        ),
+        supervisor_log_text,
+        Spacer(height=12),
         ssh_command_select,
         Spacer(height=6),
         row(ssh_run_button, sizing_mode="stretch_width"),

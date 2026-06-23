@@ -24,6 +24,9 @@ async def async_setup_entry(
     # Wait for initial coordinator data
     await coordinator.async_config_entry_first_refresh()
     
+    _LOGGER.info("[SENSOR_SETUP] Starting sensor entity setup for %s", entry.entry_id)
+    _LOGGER.info("[SENSOR_SETUP] Coordinator data keys: %s", list(coordinator.data.keys()))
+    
     known_unique_ids: set[str] = set()
 
     def _add_new_sensor_entities() -> None:
@@ -32,6 +35,10 @@ async def async_setup_entry(
         added_by_service: dict[str, int] = defaultdict(int)
         pruned_by_service: dict[str, int] = defaultdict(int)
         supervisor_entities = coordinator.data.get("supervisor_entities", [])
+
+        _LOGGER.info("[SENSOR_SETUP] Found %d supervisor_entities from coordinator", len(supervisor_entities))
+        _LOGGER.debug("[SENSOR_SETUP] Entity types in supervisor_entities: %s", 
+                     [e.get("type") for e in supervisor_entities if isinstance(e, dict)])
 
         for entity_schema in supervisor_entities:
             try:
@@ -62,10 +69,10 @@ async def async_setup_entry(
                 )
 
         if entities:
-            _LOGGER.info("Adding %d new sensor entities from updated schema", len(entities))
+            _LOGGER.info("[SENSOR_SETUP] Adding %d new sensor entities from updated schema", len(entities))
             async_add_entities(entities)
-
-        registry = er.async_get(hass)
+        else:
+            _LOGGER.warning("[SENSOR_SETUP] No sensor entities to add (supervisor_entities may be empty or filtered)")
         for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
             if registry_entry.platform != DOMAIN or registry_entry.domain != "sensor":
                 continue

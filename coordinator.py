@@ -392,6 +392,12 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             node_info = result.get("node_info", {})
             capabilities = node_info.get("capabilities", [])
 
+            # DIAGNOSTIC: Log raw API response
+            _LOGGER.info("[HA_INTEGRATION] Raw response from /ha/integration: %d total entities, %d services",
+                        total_entities_before_filter, 
+                        len(services_raw) if isinstance(services_raw, list) else len(services_raw) if isinstance(services_raw, dict) else 0)
+            _LOGGER.debug("[HA_INTEGRATION] Selected services: %s", self._selected_services)
+
             # Filter entities to only those belonging to selected services.
             # Entities always carry a "capability_id" field matching the service ID.
             # Entities without a capability_id (supervisor-level) pass through unfiltered.
@@ -1233,16 +1239,18 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Get all integration data from the efficient HA endpoint
         try:
             integration_data = await self._fetch_ha_integration_data()
-            _LOGGER.debug("Successfully fetched %d entities from supervisor", 
-                        len(integration_data.get("supervisor_entities", [])))
+            entities_count = len(integration_data.get("supervisor_entities", []))
+            _LOGGER.info("[COORDINATOR_UPDATE] Successfully fetched %d entities from supervisor", entities_count)
+            
             if integration_data.get("supervisor_active") and not integration_data.get("supervisor_entities"):
                 _LOGGER.warning(
-                    "Supervisor is reachable but returned zero entities to Home Assistant. "
-                    "Dashboard may be online while entity schema is empty or filtered out."
+                    "[COORDINATOR_UPDATE] Supervisor is reachable but returned zero entities to Home Assistant. "
+                    "Dashboard may be online while entity schema is empty or filtered out. "
+                    "Check if /ha/integration endpoint is returning entities."
                 )
             return integration_data
         except Exception as exc:
-            _LOGGER.warning("Failed to fetch integration data: %s. Using fallback status-only mode.", exc)
+            _LOGGER.warning("[COORDINATOR_UPDATE] Failed to fetch integration data: %s. Using fallback status-only mode.", exc)
             
         # Fallback to basic status if HA endpoint fails
         supervisor_data = {}
