@@ -1,13 +1,11 @@
-"""
-Wildlife service-specific layouts.
-"""
+"""Wildlife service-specific layouts."""
 from bokeh.layouts import column
 from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
 
 
 def create_wildlife_dashboard_layout(data_manager):
     """Bokeh layout for Wildlife Monitor dashboard."""
-    header = Div(text="<h1>Wildlife Monitor Dashboard</h1>")
+    header = Div(text="<h1 class='dashboard-h1'>Wildlife Monitor Dashboard</h1>", sizing_mode="stretch_width")
 
     # Populate from config if available
     config = getattr(data_manager, 'config', {})

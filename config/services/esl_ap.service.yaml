@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.pawr_esl_advertiser
 
   config_file:
-    path: /mnt/PerimeterControl/conf/esl-ap.yaml
+    path: /mnt/PerimeterControl/conf/perimeterControl.conf.yaml
     format: yaml
     schema_ref: schema://services/pawr_esl_ap/v1
 

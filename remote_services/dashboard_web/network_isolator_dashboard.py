@@ -93,5 +93,5 @@ def main(config_path: Path):
 
 if __name__ == "__main__":
     import sys
-    config = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/PerimeterControl/conf/network-isolator.yaml")
+    config = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/PerimeterControl/conf/perimeterControl.conf.yaml")
     sys.exit(main(config))

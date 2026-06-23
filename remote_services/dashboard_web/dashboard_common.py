@@ -84,7 +84,11 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         ),
         sizing_mode="stretch_width",
     )
-    status_badge = Div(text="<b>Status:</b> checking...", sizing_mode="stretch_width")
+    status_badge = Div(
+        text="<b>Status:</b> <span class='status-checking'>checking...</span>",
+        sizing_mode="stretch_width",
+        css_classes=["status-badge"]
+    )
     status_details = PreText(text="Waiting for first health check...", height=90, sizing_mode="stretch_width")
 
     # Use PreText widgets for log content and style them via CSS classes so
@@ -221,70 +225,93 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
 
 
 def get_loader_div() -> Div:
-    """Return a Div containing a small loader script that ensures jQuery/UI exist.
-
-    This is separated from the CSS helper so the loader can be added once
-    at application startup and the CSS helper can focus solely on styling.
+    """Return a Div that loads jQuery UI support for DataTable.reorderable.
+    
+    Loads datatable-loader.js which ensures jQuery UI is ready and injects
+    minimal CSS for drag/drop column support.
     """
-    loader_script = (
-        "<script>(function(){"
-        "function loadScript(src, onload){var s=document.createElement('script');s.src=src;s.onload=onload;document.head.appendChild(s);}"
-        "function loadCSS(href){var l=document.createElement('link');l.rel='stylesheet';l.href=href;document.head.appendChild(l);}"
-        "function ensurejQuery(cb){if(window.jQuery) return cb(); loadScript('https://code.jquery.com/jquery-3.6.0.min.js', cb);}"
-        "ensurejQuery(function(){if(typeof jQuery.ui!=='undefined'&&jQuery.ui) return; loadCSS('https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css'); loadScript('https://code.jquery.com/ui/1.13.2/jquery-ui.min.js', function(){console.log('jQuery UI loaded');});});"
-        "})();</script>"
-    )
-    return Div(text=loader_script, sizing_mode="stretch_width")
+    loader_html = '<script src="/js/datatable-loader.js"></script>'
+    return Div(text=loader_html, sizing_mode="stretch_width")
 
 
 def get_extra_static_patterns():
-    """Return Tornado extra_patterns to serve CSS directly.
+    """Return Tornado extra_patterns to serve static files (CSS, JS) directly.
     
-    Uses /css/ path instead of /static/css/ to avoid Bokeh's built-in
-    static handler which was intercepting requests and returning 404.
-
-    Tries to serve pc-dashboard.css from:
-    - Local dev: remote_services/dashboard_web/static/css/pc-dashboard.css
-    - Remote Pi: /opt/PerimeterControl/web/static/css/pc-dashboard.css
+    Uses /css/ and /js/ paths to avoid Bokeh's built-in static handler.
+    Serves from: remote_services/dashboard_web/static/{css,js}/ (dev)
+                  or /opt/PerimeterControl/web/static/{css,js}/ (deployed)
     """
     from tornado.web import RequestHandler
+    from mimetypes import guess_type
     
-    # Determine where CSS file is located at startup
-    local_css = Path(__file__).parent / "static" / "css" / "pc-dashboard.css"
-    deployed_css = Path("/opt/PerimeterControl/web/static/css/pc-dashboard.css")
+    # Determine paths at startup
+    local_base = Path(__file__).parent / "static"
+    deployed_base = Path("/opt/PerimeterControl/web/static")
     
-    css_location = None
-    if local_css.exists():
-        css_location = local_css
-        _DC_LOGGER.info("[CSS_SETUP] Found CSS at local dev path: %s", local_css)
-    elif deployed_css.exists():
-        css_location = deployed_css
-        _DC_LOGGER.info("[CSS_SETUP] Found CSS at deployed path: %s", deployed_css)
+    static_base = None
+    if local_base.exists():
+        static_base = local_base
+        _DC_LOGGER.info("[STATIC_SETUP] Using local dev static path: %s", local_base)
+    elif deployed_base.exists():
+        static_base = deployed_base
+        _DC_LOGGER.info("[STATIC_SETUP] Using deployed static path: %s", deployed_base)
     else:
-        _DC_LOGGER.error("[CSS_SETUP] CSS not found at local (%s) or deployed (%s) paths", local_css, deployed_css)
+        _DC_LOGGER.error("[STATIC_SETUP] Static base not found at %s or %s", local_base, deployed_base)
     
-    class CSSHandler(RequestHandler):
-        """Simple handler for serving the CSS file directly."""
-        def get(self):
-            if css_location is None:
-                _DC_LOGGER.error("[CSS_HANDLER] CSS file not found at startup - returning 404")
+    class StaticFileHandler(RequestHandler):
+        """Serve static files (CSS, JS, HTML) with proper MIME types."""
+        def get(self, file_type, file_name):
+            if static_base is None:
+                _DC_LOGGER.error("[STATIC_HANDLER] Static base not found at startup")
+                self.set_status(404)
+                return
+            
+            file_path = static_base / file_type / file_name
+            
+            # Security check: prevent path traversal
+            try:
+                file_path = file_path.resolve()
+                if not str(file_path).startswith(str(static_base.resolve())):
+                    _DC_LOGGER.error("[STATIC_HANDLER] Path traversal attempt: %s", file_path)
+                    self.set_status(403)
+                    return
+            except Exception as e:
+                _DC_LOGGER.error("[STATIC_HANDLER] Path resolution error: %s", e)
+                self.set_status(400)
+                return
+            
+            if not file_path.exists():
+                _DC_LOGGER.warning("[STATIC_HANDLER] File not found: %s", file_path)
                 self.set_status(404)
                 return
             
             try:
-                css_content = css_location.read_text(encoding="utf-8")
-                _DC_LOGGER.info("[CSS_HANDLER] Request for /css/pc-dashboard.css - serving %d bytes from %s", len(css_content), css_location)
-                self.set_header("Content-Type", "text/css")
-                self.write(css_content)
+                content = file_path.read_bytes()
+                mime_type, _ = guess_type(str(file_path))
+                if mime_type is None:
+                    # Fallback MIME types
+                    if file_path.suffix == ".css":
+                        mime_type = "text/css"
+                    elif file_path.suffix == ".js":
+                        mime_type = "application/javascript"
+                    elif file_path.suffix == ".html":
+                        mime_type = "text/html"
+                    else:
+                        mime_type = "application/octet-stream"
+                
+                _DC_LOGGER.debug("[STATIC_HANDLER] Serving /%s/%s (%s) - %d bytes", 
+                                file_type, file_name, mime_type, len(content))
+                self.set_header("Content-Type", mime_type)
+                self.write(content)
             except Exception as e:
-                _DC_LOGGER.error("[CSS_HANDLER] Error reading CSS file %s: %s", css_location, e)
+                _DC_LOGGER.error("[STATIC_HANDLER] Error reading file %s: %s", file_path, e)
                 self.set_status(500)
     
-    if css_location:
-        _DC_LOGGER.info("[CSS_SETUP] Registering CSS handler for /css/pc-dashboard.css (NOT /static/)")
-        return [(r"/css/pc-dashboard\.css", CSSHandler, {})]
+    if static_base:
+        _DC_LOGGER.info("[STATIC_SETUP] Registering static file handler for /css/, /js/, /html/")
+        return [(r"/(css|js|html)/(.+)", StaticFileHandler, {})]
     else:
-        _DC_LOGGER.error("[CSS_SETUP] CSS handler NOT registered - file not found")
+        _DC_LOGGER.error("[STATIC_SETUP] Static handler NOT registered - base path not found")
         return None
  
 
@@ -308,14 +335,15 @@ def create_log_tail_panel(log_path: str = "/var/log/PerimeterControl/supervisor.
                 pass
         doc.add_periodic_callback(update_log, 5000)
     """
-    header_html = (
-        f"<div style='background:#2c3e50;padding:10px;border-radius:6px;'>"
-        f"<h4 style='margin:0 0 6px 0;color:#ecf0f1;'>📋 {title}</h4>"
-        f"<p style='margin:0 0 6px 0;font-size:11px;color:#95a5a6;'>{log_path}</p>"
-        f"</div>"
+    header = Div(
+        text=(
+            "<div class='pc-header' style='position:relative; z-index:2;'>"
+            f"<h4 class='pc-h4-no-margin'>📋 {title}</h4>"
+            f"<p class='pc-muted'>{log_path}</p>"
+            "</div>"
+        ),
+        sizing_mode="stretch_width"
     )
-
-    header = Div(text=header_html, sizing_mode="stretch_width")
 
     log_text = PreText(
         text="Loading log…",
@@ -343,11 +371,11 @@ def setup_common_dashboard_callbacks(
     def _update_status_and_logs() -> None:
         status = _run_shell(f"systemctl is-active {unit_name}", timeout=4).lower()
         if "active" in status and "inactive" not in status and "failed" not in status:
-            doc.service_status_badge.text = "<b>Status:</b> <span style='color:#27ae60;'>active</span>"
+            doc.service_status_badge.text = "<b>Status:</b> <span class='status-active'>active</span>"
         elif "activating" in status:
-            doc.service_status_badge.text = "<b>Status:</b> <span style='color:#f39c12;'>activating</span>"
+            doc.service_status_badge.text = "<b>Status:</b> <span class='status-activating'>activating</span>"
         else:
-            doc.service_status_badge.text = "<b>Status:</b> <span style='color:#e74c3c;'>inactive/failing</span>"
+            doc.service_status_badge.text = "<b>Status:</b> <span class='status-inactive'>inactive/failing</span>"
 
         doc.service_status_details.text = _run_shell(f"systemctl status {unit_name} --no-pager", timeout=6)
 

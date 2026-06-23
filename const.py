@@ -40,8 +40,6 @@ SERVICE_REGISTRY = {
             "remote_services/scripts/network_isolator/topology_config.py"
         ],
         "pip_packages": ["bokeh", "tornado", "pyyaml", "pandas"],
-        "config_template": "config/templates/network_isolator.conf.yaml",
-        "config_target": "network-isolator.yaml",
         "deploy_api": None,
         "is_default_dashboard": True,  # This service is the default dashboard for generic/fallback logic
     },
@@ -55,8 +53,6 @@ SERVICE_REGISTRY = {
         ],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/photo_booth_config.yaml",
-        "config_target": "photo-booth.yaml",
         "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
@@ -69,8 +65,6 @@ SERVICE_REGISTRY = {
         ],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/gpio_control.yaml",
-        "config_target": "gpio-control.yaml",
         # Use explicit placeholder for host so deployers can substitute the
         # actual node host when executing remote commands via SSH.
         # Replace `<host_ip>` with the node IP or hostname at runtime.
@@ -92,8 +86,6 @@ SERVICE_REGISTRY = {
             "remote_services/scripts/ble_gatt_repeater/ble-sniffer.py"
         ],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/ble_gatt_repeater.yaml",
-        "config_target": "ble-gatt-repeater.yaml",
         "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_ESL_AP_SERVICE", "esl_ap"): {
@@ -106,8 +98,6 @@ SERVICE_REGISTRY = {
         ],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/esl_config.yaml",
-        "config_target": "esl-ap.yaml",
         "deploy_api": None,
     },
     os.environ.get("PERIMETERCONTROL_WILDLIFE_MONITOR_SERVICE", "wildlife_monitor"): {
@@ -120,8 +110,6 @@ SERVICE_REGISTRY = {
         ],
         "script_files": [],
         "pip_packages": ["tornado"],
-        "config_template": "config/templates/wildlife_config.yaml",
-        "config_target": "wildlife-monitor.yaml",
         "deploy_api": None,
     },
 }

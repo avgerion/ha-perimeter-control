@@ -99,8 +99,8 @@ def create_gpio_control_dashboard_layout(data_manager):
         _GPIO_LOGGER.error("[GPIO] Failed to bootstrap from config: %s", e)
     
     layout = column(
-        Div(text="<h1>GPIO Control Dashboard</h1>", sizing_mode="stretch_width"),
-        Div(text="<p><small>GPIO pins are loaded from supervisor API with fallback to config file. Check logs if pins not showing.</small></p>", sizing_mode="stretch_width"),
+        Div(text="<h1 class='dashboard-h1'>GPIO Control Dashboard</h1>", sizing_mode="stretch_width"),
+        Div(text="<p class='dashboard-info'><small>GPIO pins are loaded from supervisor API with fallback to config file. Check logs if pins not showing.</small></p>", sizing_mode="stretch_width"),
         table
     )
     widgets = {"entity_table": table, "source": source}

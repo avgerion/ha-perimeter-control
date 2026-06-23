@@ -91,5 +91,5 @@ def main(config_path):
 
 if __name__ == "__main__":
     import sys
-    config = Path("/mnt/PerimeterControl/conf/photo-booth.yaml")
+    config = Path("/mnt/PerimeterControl/conf/perimeterControl.conf.yaml")
     sys.exit(main(config))

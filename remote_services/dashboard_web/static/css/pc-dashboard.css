@@ -152,7 +152,82 @@
     padding: 0;
 }
 
+/* Status badge styles */
+.status-badge {
+    padding: 4px 0;
+}
+
+.status-checking {
+    color: #95a5a6;
+}
+
+.status-active {
+    color: #27ae60;
+}
+
+.status-activating {
+    color: #f39c12;
+}
+
+.status-inactive {
+    color: #e74c3c;
+}
+
+/* Heading styles */
+.dashboard-h1 {
+    margin: 0;
+    color: #ecf0f1;
+}
+
+.dashboard-h2 {
+    margin: 8px 0;
+    color: #ecf0f1;
+}
+
+.dashboard-h3 {
+    margin: 0;
+    color: #ecf0f1;
+}
+
+.dashboard-info {
+    color: #7f8c8d;
+    font-size: 12px;
+    margin: 0;
+}
+
 /* Misc */
 .pc-warning {
     color: #e67e22;
+}
+
+/* jQuery UI styles for DataTable.reorderable support */
+.ui-draggable {
+    cursor: move;
+}
+
+.ui-draggable-dragging {
+    opacity: 0.7;
+    z-index: 1000;
+}
+
+.ui-sortable {
+    cursor: pointer;
+}
+
+.ui-sortable-handle {
+    cursor: grab;
+    user-select: none;
+}
+
+.ui-sortable-handle:active {
+    cursor: grabbing;
+}
+
+/* Bokeh DataTable column headers should be sortable/draggable */
+.bk-data-table-header .bk-header-row .bk-header-column {
+    cursor: grab;
+}
+
+.bk-data-table-header .bk-header-row .bk-header-column:active {
+    cursor: grabbing;
 }

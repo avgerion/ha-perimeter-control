@@ -1,6 +1,6 @@
-dashboard:
-ap:
-supervisor_api_url: http://192.168.111.1:8080/api/v1
+# PerimeterControl Runtime Configuration
+# Deployed once per Pi, read by supervisor on startup
+# All service configurations auto-deployed via supervisor._deploy_configured_capabilities()
 
 services:
   network_isolator:
@@ -59,6 +59,21 @@ services:
         enabled: true
         interval_sec: 120
       output: /mnt/PerimeterControl/captures/moto-g-2025
+  gpio_control:
+    relays:
+      pins:
+        - id: relay1
+          gpio_pin: 17
+          type: switch
+          friendly_name: Relay 1
+          active_high: true
+          initial_state: off
+        - id: led1
+          gpio_pin: 18
+          type: light
+          friendly_name: Indicator LED
+          active_high: true
+          initial_brightness: 255
 default_policy:
   internet: log-only
   lan_access: []

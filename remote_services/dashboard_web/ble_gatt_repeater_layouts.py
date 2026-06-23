@@ -11,7 +11,7 @@ def create_ble_gatt_repeater_dashboard_layout(data_manager):
     """
     Bokeh layout for BLE GATT dashboard, with entity table.
     """
-    header = Div(text="<h1>BLE GATT Repeater Dashboard</h1>")
+    header = Div(text="<h1 class='dashboard-h1'>BLE GATT Repeater Dashboard</h1>", sizing_mode="stretch_width")
     columns = [
         TableColumn(field="friendly_name", title="Name"),
         TableColumn(field="type", title="Type"),

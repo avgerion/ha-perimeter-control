@@ -296,24 +296,8 @@ class Deployer(BaseDeployer):
                 if not success:
                     raise Exception(f"Service {service_id} component deployment failed")
 
-                # Ensure capability runtime config is installed at the exact path
-                # the service descriptor expects under /mnt/PerimeterControl/conf.
-                # Use config_template and config_target from SERVICE_REGISTRY if present
-                service_info = SERVICE_REGISTRY.get(service_id, {})
-                template_rel_path = service_info.get("config_template")
-                target_name = service_info.get("config_target")
-                if template_rel_path and target_name:
-                    await self._deploy_template_config(
-                        template_rel_path=template_rel_path,
-                        target_name=target_name,
-                    )
-                    _LOGGER.info(
-                        "Installed runtime config for %s -> %s/%s",
-                        service_id,
-                        remote_conf_dir,
-                        target_name,
-                    )
-                # If deploy_api is present, defer the call to Phase 4 when the
+                # Runtime config is deployed from the single perimeterControl.conf.yaml
+                # in phase_config. Services auto-deploy from this file via supervisor.
                 # supervisor is running.  Calling it here would fail because the
                 # supervisor service was stopped in Phase 0.
                 deploy_api = service_info.get("deploy_api")
@@ -343,41 +327,12 @@ class Deployer(BaseDeployer):
         """Deploy service using legacy monolithic approach."""
         self._emit("service_deploy", f"Legacy deployment for {service_id}...", base_progress)
         
-        # Use base deployer capabilities for unknown services
-        config_files = ["perimeterControl.conf.yaml"]
-        await self.phase_config(config_files)
+        # Runtime config is deployed from the single perimeterControl.conf.yaml
+        # in phase_config. Services auto-deploy from this file via supervisor.
         
-        # Ensure a baseline config is present even when using legacy deployment.
-        # Use config_template and config_target from SERVICE_REGISTRY if present
-        service_info = SERVICE_REGISTRY.get(service_id, {})
-        template_rel_path = service_info.get("config_template")
-        target_name = service_info.get("config_target")
-        if template_rel_path and target_name:
-            await self._deploy_template_config(
-                template_rel_path=template_rel_path,
-                target_name=target_name,
-            )
-
         await self.deploy_service_descriptors([service_id], auto_entities=self._auto_entities)
         
         self._emit("service_deploy", f"Legacy deployment for {service_id} completed", base_progress + 5)
-
-    async def _deploy_template_config(self, template_rel_path: str, target_name: str) -> None:
-        """Upload a template config file to the remote runtime config directory."""
-        # Always resolve config templates using TEMPLATES_DIR for robustness
-
-        template_name = Path(template_rel_path).name
-        template_path = TEMPLATES_DIR / template_name
-        if not template_path.exists():
-            _LOGGER.error("Service config not found, skipping: %s (cwd=%s)", template_path, os.getcwd())
-            return
-
-        await self._client.async_put_file(template_path, f"{remote_temp_root}/{target_name}")
-        await self._client.async_run(f"sudo mkdir -p {remote_conf_dir}")
-        await self._client.async_run(
-            f"sudo install -o root -g root -m 0644 {remote_temp_root}/{target_name} {remote_conf_dir}/{target_name}"
-        )
-        _LOGGER.info("Installed template config: %s -> %s/%s", template_path.name, remote_conf_dir, target_name)
 
     async def _phase_supervisor(self) -> None:
         """Install supervisor using base deployer functionality."""

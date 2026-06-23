@@ -7,7 +7,7 @@ from bokeh.models import Div, DataTable, TableColumn, ColumnDataSource
 
 def create_esl_dashboard_layout(data_manager):
     """Bokeh layout for ESL (Electronic Shelf Label) dashboard."""
-    header = Div(text="<h1>ESL AP Dashboard</h1>")
+    header = Div(text="<h1 class='dashboard-h1'>ESL AP Dashboard</h1>", sizing_mode="stretch_width")
 
     # Populate from config if available
     config = getattr(data_manager, 'config', {})

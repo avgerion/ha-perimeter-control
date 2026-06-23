@@ -46,8 +46,8 @@ def create_dashboard_layout(data_manager):
     connections_table = create_connections_table()
     events_log = create_events_log()
     bottom_row = row(
-        column(Div(text="<h3>Active Connections</h3>"), connections_table, width=700),
-        column(Div(text="<h3>Events & Alerts</h3>"), events_log, width=500),
+        column(Div(text="<h3 class='dashboard-h3'>Active Connections</h3>", sizing_mode="stretch_width"), connections_table, width=700),
+        column(Div(text="<h3 class='dashboard-h3'>Events & Alerts</h3>", sizing_mode="stretch_width"), events_log, width=500),
         sizing_mode="stretch_width"
     )
     config_panel, config_widgets = create_config_panel(data_manager)
@@ -57,9 +57,9 @@ def create_dashboard_layout(data_manager):
     main_content = column(
         header,
         system_status,
-        Div(text="<h2>Connected Devices</h2>"),
+        Div(text="<h2 class='dashboard-h2'>Connected Devices</h2>", sizing_mode="stretch_width"),
         device_grid,
-        Div(text="<h2>Live Traffic</h2>"),
+        Div(text="<h2 class='dashboard-h2'>Live Traffic</h2>", sizing_mode="stretch_width"),
         traffic_row,
         bottom_row,
         log_panel,

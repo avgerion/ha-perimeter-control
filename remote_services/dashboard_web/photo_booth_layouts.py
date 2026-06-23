@@ -11,8 +11,8 @@ def create_photo_booth_dashboard_layout(data_manager):
     """
     Bokeh layout for Photo Booth dashboard, with photo preview and capture button.
     """
-    header = Div(text="<h1>Photo Booth Dashboard</h1>")
-    camera_status_div = Div(text="<p>Camera service status: checking...</p>")
+    header = Div(text="<h1 class='dashboard-h1'>Photo Booth Dashboard</h1>", sizing_mode="stretch_width")
+    camera_status_div = Div(text="<p class='dashboard-info'>Camera service status: checking...</p>", sizing_mode="stretch_width")
     photo_source = ColumnDataSource(data=dict(url=["/static/placeholder.jpg"], x=[0], y=[0], w=[400], h=[300]))
     # ImageURL is the correct glyph for displaying images from URLs in modern Bokeh
     from bokeh.models import ImageURL

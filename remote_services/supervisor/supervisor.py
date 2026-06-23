@@ -23,6 +23,7 @@ import platform
 import signal
 import tarfile
 import uuid
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type
@@ -98,6 +99,7 @@ class Supervisor:
         self.db.init()
 
         await self._restore_state()
+        await self._deploy_configured_capabilities()
 
         self._running = True
         self._reconcile_task = asyncio.create_task(self._reconciliation_loop())
@@ -492,6 +494,59 @@ class Supervisor:
                 await self._start_capability(cap["id"], cap["config"], "startup_restore")
             except Exception as exc:
                 logger.error("Failed to restore capability %s: %s", cap["id"], exc)
+
+    async def _deploy_configured_capabilities(self) -> None:
+        """Deploy capabilities from perimeterControl.conf.yaml that aren't already in the database."""
+        config_file = self.config_dir / "perimeterControl.conf.yaml"
+        if not config_file.exists():
+            logger.debug("No perimeterControl.conf.yaml found at %s", config_file)
+            return
+
+        try:
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as exc:
+            logger.warning("Failed to load perimeterControl.conf.yaml: %s", exc)
+            return
+
+        services = config.get("services", {})
+        if not services:
+            logger.debug("No services found in perimeterControl.conf.yaml")
+            return
+
+        # Get list of capabilities already in database
+        existing_caps = {c["id"] for c in self.db.list_capabilities()}
+        
+        # Deploy each service from config that isn't already deployed
+        for cap_type, instances in services.items():
+            if not isinstance(instances, dict):
+                logger.warning("Service %s config is not a dict, skipping", cap_type)
+                continue
+            
+            for instance_name, instance_config in instances.items():
+                # Use instance_name or construct a unique capability ID
+                cap_id = f"{cap_type}:{instance_name}" if instance_name else cap_type
+                
+                if cap_id in existing_caps:
+                    logger.debug("Capability %s already in database, skipping", cap_id)
+                    continue
+                
+                # Create deployment config: wrap instance_config in services/cap_type structure
+                # so that the capability receives the config in the expected format
+                deployment_config = {
+                    "type": cap_type,
+                    "services": {
+                        cap_type: {
+                            instance_name: instance_config
+                        }
+                    }
+                }
+                
+                try:
+                    logger.info("Auto-deploying capability %s from config", cap_id)
+                    await self._start_capability(cap_id, deployment_config, "startup_config")
+                except Exception as exc:
+                    logger.warning("Failed to auto-deploy capability %s: %s", cap_id, exc)
 
     # ------------------------------------------------------------------
     # Event bus

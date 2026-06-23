@@ -89,5 +89,5 @@ def main(config_path):
     return 0
 if __name__ == "__main__":
     import sys
-    config = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/PerimeterControl/conf/ble-gatt-repeater.yaml")
+    config = Path(sys.argv[1] if len(sys.argv) > 1 else "/mnt/PerimeterControl/conf/perimeterControl.conf.yaml")
     sys.exit(main(config))

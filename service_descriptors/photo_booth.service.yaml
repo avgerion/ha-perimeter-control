@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.photo_booth
 
   config_file:
-    path: ${PHOTOBOOTH_CONFIG_PATH:-/mnt/PerimeterControl/conf/photo-booth.yaml}
+    path: ${PERIMETERCONTROL_CONFIG_PATH:-/mnt/PerimeterControl/conf/perimeterControl.conf.yaml}
     format: yaml
     schema_ref: schema://services/photo_booth/v1
 

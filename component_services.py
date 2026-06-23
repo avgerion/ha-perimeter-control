@@ -5,10 +5,9 @@ from __future__ import annotations
 from .service_framework import BaseService, ComponentConfig, component_registry
 from .hardware_components import BluetoothInterface, CameraInterface, NetworkInterface, I2CSensorInterface
 from .feature_components import (
-    PythonDependencies, SystemDependencies, ConfigurationManager,
+    PythonDependencies, SystemDependencies,
     DataLogging, MotionDetection, AlertSystem, BluetoothAdvertiser
 )
-from .const import DEFAULT_CONF_TEMPLATE, DEFAULT_FIREWALL_RULES_TEMPLATE
 
 class BleService(BaseService):
     """BLE GATT Repeater service using component composition."""
@@ -35,13 +34,6 @@ class BleService(BaseService):
             "bluez", 
             "bluez-tools"
         ]), 2)
-        
-        # Add configuration from template files
-        config_templates = {
-            "ble-gatt-repeater.yaml": "config/templates/ble_gatt_repeater.yaml",
-            "mqtt_config.yaml": "config/templates/mqtt_config.yaml"
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 3)
         
         # Add data logging
         self.add_component(DataLogging(["sensor", "event"]), 4)
@@ -75,12 +67,6 @@ class PhotoBoothService(BaseService):
             "bokeh",
             "tornado"
         ]), 4)
-        
-        # Add configuration from template files
-        config_templates = {
-            "photo-booth-config.yaml": "config/templates/photo_booth_config.yaml"
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
         
         # Add data logging
         self.add_component(DataLogging(["event", "capture"]), 6)
@@ -119,13 +105,6 @@ class NetworkService(BaseService):
         # Add features
         self.add_component(DataLogging(["network", "firewall"]), 3)
         self.add_component(AlertSystem(["webhook"]), 4)
-        
-        # Add configuration from template files
-        config_templates = {
-            "perimeterControl.conf.yaml": DEFAULT_CONF_TEMPLATE,
-            "firewall_rules.yaml": DEFAULT_FIREWALL_RULES_TEMPLATE
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
 
 class WildlifeService(BaseService):
@@ -162,12 +141,6 @@ class WildlifeService(BaseService):
         self.add_component(DataLogging(["sensor", "wildlife", "environment"]), 4)
         self.add_component(MotionDetection(sensitivity=0.3), 5)  # More sensitive for wildlife
         self.add_component(AlertSystem(["email", "webhook"]), 6)
-        
-        # Add configuration from template files
-        config_templates = {
-            "wildlife_config.yaml": "config/templates/wildlife_config.yaml"
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 7)
 
 
 class EslService(BaseService):
@@ -199,12 +172,6 @@ class EslService(BaseService):
         # Add features
         self.add_component(DataLogging(["esl", "advertising"]), 3)
         self.add_component(AlertSystem(["mqtt"]), 4)
-        
-        # Add configuration from template files
-        config_templates = {
-            "esl_config.yaml": "config/templates/esl_config.yaml"
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 5)
 
 
 class GpioControlService(BaseService):
@@ -217,12 +184,6 @@ class GpioControlService(BaseService):
         self.add_component(SystemDependencies([
             "gpiod",
         ]), 0)
-
-        # Ensure the runtime config exists at the exact filename the descriptor expects.
-        config_templates = {
-            "gpio_control.yaml": "config/templates/gpio_control.yaml"
-        }
-        self.add_component(ConfigurationManager(config_templates, use_templates=True), 1)
 
 
 # Register all service types with the component registry

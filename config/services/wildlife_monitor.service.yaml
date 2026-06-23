@@ -11,7 +11,7 @@ spec:
     entrypoint: supervisor.capabilities.wildlife_monitor
 
   config_file:
-    path: /mnt/PerimeterControl/conf/wildlife-monitor.yaml
+    path: /mnt/PerimeterControl/conf/perimeterControl.conf.yaml
     format: yaml
     schema_ref: schema://services/wildlife_monitor/v1
 
