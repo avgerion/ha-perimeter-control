@@ -78,7 +78,11 @@ class DataManager:
         return {}
 
     def get_entities(self, capability_id: str | None = None, entity_type: str | None = None) -> list[Dict[str, Any]]:
-        """Fetch entity schemas from supervisor and optionally filter by capability/type."""
+        """Fetch entity schemas from supervisor and optionally filter by capability/type.
+        
+        When filtering by capability_id, supports both exact match and prefix match.
+        E.g., capability_id="gpio_control" matches both "gpio_control" and "gpio_control:relays".
+        """
         result = self._request_json("/entities")
         
         # Handle both list response and dict response
@@ -101,8 +105,11 @@ class DataManager:
             entity_id = entity.get("id") or entity.get("entity_id")
             capability = entity.get("capability_id") or entity.get("capability")
             
-            if capability_id and capability != capability_id:
-                continue
+            if capability_id:
+                # Support both exact match and prefix match with colon separator
+                # E.g., "gpio_control" matches "gpio_control:relays" but not "gpio_control_other"
+                if capability != capability_id and not capability.startswith(f"{capability_id}:"):
+                    continue
             if entity_type and entity.get("type") != entity_type:
                 continue
             
