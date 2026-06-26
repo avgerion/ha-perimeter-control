@@ -201,9 +201,10 @@ def create_supervisor_api() -> FastAPI:
         """Get all entity states."""
         entities = []
         try:
-            for entity_data in supervisor.db.list_entities():
+            for entity_data in supervisor.get_entities():
+                entity_id = entity_data.get("id") or entity_data.get("entity_id", "unknown")
                 entities.append(EntityState(
-                    entity_id=entity_data["entity_id"],
+                    entity_id=entity_id,
                     state=entity_data.get("state"),
                     attributes=entity_data.get("attributes", {}),
                     last_changed=entity_data.get("last_changed", datetime.utcnow().isoformat()),
@@ -219,7 +220,7 @@ def create_supervisor_api() -> FastAPI:
     async def get_entity_state(entity_id: str, supervisor = Depends(get_supervisor)) -> EntityState:
         """Get a specific entity's state."""
         try:
-            entity_data = supervisor.db.get_entity_state(entity_id)
+            entity_data = supervisor.get_entity_state(entity_id)
             if entity_data is None:
                 raise HTTPException(status_code=404, detail=f"Entity not found: {entity_id}")
                 
@@ -240,7 +241,7 @@ def create_supervisor_api() -> FastAPI:
         entities = []
         try:
             for entity_id in query.entity_ids:
-                entity_data = supervisor.db.get_entity_state(entity_id)
+                entity_data = supervisor.get_entity_state(entity_id)
                 if entity_data:
                     entities.append(EntityState(
                         entity_id=entity_id,
