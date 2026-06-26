@@ -405,7 +405,10 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if selected_ids:
                 entities = [
                     e for e in all_entities
-                    if not e.get("capability_id") or e.get("capability_id") in selected_ids
+                    if not e.get("capability_id") or any(
+                        e.get("capability_id") == service or e.get("capability_id").startswith(f"{service}:")
+                        for service in selected_ids
+                    )
                 ]
                 dropped = len(all_entities) - len(entities)
                 if dropped:
