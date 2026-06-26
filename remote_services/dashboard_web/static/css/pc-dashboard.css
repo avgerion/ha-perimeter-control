@@ -85,7 +85,6 @@
     font-family: monospace;
     font-size: 11px;
     white-space: pre-wrap;
-    display: block;
     box-sizing: border-box;
     width: 100%;
 }
@@ -100,7 +99,6 @@
     height: 140px;
     font-family: monospace;
     font-size: 12px;
-    display: block;
     box-sizing: border-box;
     width: 100%;
 }
@@ -109,47 +107,52 @@
     margin-bottom: 6px;
 }
 
-/* Force Bokeh layout containers and PreText hosts to use static positioning so absolute top offsets are not applied */
-.bk {
-    flex-wrap: wrap !important;
-}
 
+
+/* Bokeh layout fixes for column stacking */
 .bk-Column {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
     position: static !important;
     width: 100% !important;
-    flex: 0 0 auto !important;
+    box-sizing: border-box !important;
+}
+
+/* Bokeh wraps each item in .bk-widget-wrapper - these must be flex children */
+.bk-Column>div {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .bk-Row,
 .bk-LayoutDOM,
 .bk-Root,
-.bk-Column>div,
 .bk-Row>div {
     position: static !important;
     top: auto !important;
     left: auto !important;
 }
 
-.bk-PreText,
-.bk-PreText.pc-log {
+/* PreText widgets - remove display: block to let flex layout work */
+.bk-PreText {
     position: static !important;
     top: auto !important;
-    display: block !important;
     width: 100% !important;
     box-sizing: border-box !important;
+    /* Do NOT set display: block here - let Bokeh handle it */
 }
 
 .bk-Spacer {
-    display: block !important;
     position: static !important;
-    flex: 0 0 auto !important;
     width: 100% !important;
-    /* or a fixed width if horizontal spacing */
-    height: 20px !important;
-    /* adjust to the space you want */
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    /* Respect height parameter - do NOT override */
 }
 
 /* Status badge styles */
