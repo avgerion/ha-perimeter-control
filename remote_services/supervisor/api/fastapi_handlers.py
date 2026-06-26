@@ -196,6 +196,11 @@ def create_supervisor_api() -> FastAPI:
             "networking": True
         }
 
+    @app.get("/api/v1/capabilities", response_model=List[str])
+    async def get_deployed_capabilities(supervisor = Depends(get_supervisor)) -> List[str]:
+        """Get list of currently deployed capabilities."""
+        return supervisor.get_active_capabilities()
+
     @app.get("/api/v1/entities", response_model=List[EntityState])
     async def get_entities(supervisor = Depends(get_supervisor)) -> List[EntityState]:
         """Get all entity states."""

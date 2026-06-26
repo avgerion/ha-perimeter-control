@@ -255,6 +255,10 @@ class Supervisor:
             ],
         }
 
+    def get_active_capabilities(self) -> List[str]:
+        """Return list of capability IDs currently deployed."""
+        return list(self._active.keys())
+
     def get_entities(self) -> List[Dict[str, Any]]:
         entities: List[Dict] = []
         for cap in self._active.values():
@@ -506,18 +510,21 @@ class Supervisor:
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f) or {}
         except Exception as exc:
-            logger.warning("Failed to load perimeterControl.conf.yaml: %s", exc)
+            logger.error("Failed to load perimeterControl.conf.yaml: %s", exc)
             return
 
         services = config.get("services", {})
         if not services:
-            logger.debug("No services found in perimeterControl.conf.yaml")
+            logger.warning("No services found in perimeterControl.conf.yaml")
             return
-
-        # Get list of capabilities already in database
-        existing_caps = {c["id"] for c in self.db.list_capabilities()}
         
-        # Deploy each service from config that isn't already deployed
+        logger.info("Found %d service types in config: %s", len(services), list(services.keys()))
+
+        # Get list of capabilities already actively deployed (not just in database)
+        # Active capabilities are actually running and providing entities
+        active_cap_ids = set(self._active.keys())
+        
+        # Deploy each service from config that isn't already actively running
         for cap_type, instances in services.items():
             if not isinstance(instances, dict):
                 logger.warning("Service %s config is not a dict, skipping", cap_type)
@@ -527,8 +534,8 @@ class Supervisor:
                 # Use instance_name or construct a unique capability ID
                 cap_id = f"{cap_type}:{instance_name}" if instance_name else cap_type
                 
-                if cap_id in existing_caps:
-                    logger.debug("Capability %s already in database, skipping", cap_id)
+                if cap_id in active_cap_ids:
+                    logger.debug("Capability %s already active, skipping", cap_id)
                     continue
                 
                 # Create deployment config: wrap instance_config in services/cap_type structure
