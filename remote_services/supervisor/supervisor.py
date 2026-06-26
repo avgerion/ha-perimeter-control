@@ -531,8 +531,10 @@ class Supervisor:
                 continue
             
             for instance_name, instance_config in instances.items():
-                # Use instance_name or construct a unique capability ID
-                cap_id = f"{cap_type}:{instance_name}" if instance_name else cap_type
+                # For auto-deployed capabilities, use just the capability type as ID (no instance name)
+                # Instance names are only used internally in the service config.
+                # The capability ID matches what Home Assistant expects for filtering.
+                cap_id = cap_type
                 
                 if cap_id in active_cap_ids:
                     logger.debug("Capability %s already active, skipping", cap_id)
@@ -542,7 +544,7 @@ class Supervisor:
                 # so that the capability receives the config in the expected format
                 deployment_config = {
                     "type": cap_type,
-                    "name": f"{cap_type}:{instance_name}" if instance_name else cap_type,
+                    "name": cap_type,
                     "services": {
                         cap_type: {
                             instance_name: instance_config
