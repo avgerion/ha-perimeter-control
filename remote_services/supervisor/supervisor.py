@@ -542,6 +542,7 @@ class Supervisor:
                 # so that the capability receives the config in the expected format
                 deployment_config = {
                     "type": cap_type,
+                    "name": f"{cap_type}:{instance_name}" if instance_name else cap_type,
                     "services": {
                         cap_type: {
                             instance_name: instance_config
@@ -551,9 +552,15 @@ class Supervisor:
                 
                 try:
                     logger.info("Auto-deploying capability %s from config", cap_id)
+                    # Save to database so it persists across restarts
+                    cap_name = deployment_config.get("name", cap_id)
+                    cap_version = deployment_config.get("version")
+                    self.db.upsert_capability(cap_id, cap_name, deployment_config, "deploying", cap_version)
                     await self._start_capability(cap_id, deployment_config, "startup_config")
+                    self.db.update_capability_status(cap_id, "active", consecutive_failures=0)
                 except Exception as exc:
                     logger.warning("Failed to auto-deploy capability %s: %s", cap_id, exc)
+                    self.db.update_capability_status(cap_id, "failed", consecutive_failures=1)
 
     # ------------------------------------------------------------------
     # Event bus
