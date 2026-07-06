@@ -334,7 +334,6 @@ class GpioControlCapability(CapabilityModule):
             "id": pin.entity_id,
             "type": pin.entity_type,
             "friendly_name": pin.friendly_name,
-            "capability_id": self.cap_id,
             "state": "on" if state_on else "off",
             "icon": pin.icon,
             "attributes": attrs,
@@ -345,6 +344,8 @@ class GpioControlCapability(CapabilityModule):
             entity["turn_on_action_id"] = "turn_on"
             entity["turn_off_action_id"] = "turn_off"
         
+        logger.info("[%s] Publishing entity: id=%s, type=%s, direction=%s, state=%s", 
+                   self.cap_id, pin.entity_id, pin.entity_type, pin.direction, entity["state"])
         self._publish_entity(entity)
 
     async def _monitor_input_pins(self) -> None:
