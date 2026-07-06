@@ -8,8 +8,16 @@
 }
 
 .pc-header-item {
-    line-height: 1.8;
+    display: block;
+    clear: both;
     margin: 0.5em 0;
+    padding: 0;
+}
+
+.pc-header-item p {
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
 }
 
 .pc-header h3 {
@@ -30,7 +38,7 @@
 .pc-section-title-container {
     margin: 0;
     padding: 0;
-    height: auto !important;
+    height: auto;
     min-height: 24px;
 }
 
@@ -116,47 +124,47 @@
 
 /* Bokeh layout fixes for column stacking */
 .bk-Column {
-    display: flex !important;
-    flex-direction: column !important;
-    position: static !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
+    display: flex;
+    flex-direction: column;
+    position: static;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Bokeh wraps each item in .bk-widget-wrapper - these must be flex children */
 .bk-Column>div {
-    position: static !important;
-    top: auto !important;
-    left: auto !important;
-    display: block !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
+    position: static;
+    top: auto;
+    left: auto;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .bk-Row,
 .bk-LayoutDOM,
 .bk-Root,
 .bk-Row>div {
-    position: static !important;
-    top: auto !important;
-    left: auto !important;
+    position: static;
+    top: auto;
+    left: auto;
 }
 
 /* PreText widgets - remove display: block to let flex layout work */
 .bk-PreText {
-    position: static !important;
-    top: auto !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
+    position: static;
+    top: auto;
+    width: 100%;
+    box-sizing: border-box;
     /* Do NOT set display: block here - let Bokeh handle it */
 }
 
 .bk-Spacer {
-    position: static !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    flex-shrink: 0 !important;
+    position: static;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
     /* Respect height parameter - do NOT override */
 }
 
