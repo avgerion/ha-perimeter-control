@@ -89,15 +89,16 @@ class GpioControlCapability(CapabilityModule):
                 self._states[entity_id] = initial_on
                 self._brightness[entity_id] = brightness
 
-                logger.debug("[%s] Setting up pin %s (GPIO%d, type=%s, direction=%s)", 
+                logger.info("[%s] [SETUP] Setting up pin %s (GPIO%d, type=%s, direction=%s)", 
                            self.cap_id, pin.pin_id, pin.gpio_pin, pin.entity_type, pin.direction)
                 self._setup_pin(pin, initial_on)
-                logger.debug("[%s] Pin setup complete, publishing entity %s", self.cap_id, entity_id)
+                logger.info("[%s] [PUBLISH] Publishing entity %s (type=%s, direction=%s)", 
+                           self.cap_id, entity_id, pin.entity_type, pin.direction)
                 self._publish_pin_entity(pin)
-                logger.info("[%s] Registered GPIO entity: %s (pin=%d, type=%s, direction=%s, state=%s)", 
+                logger.info("[%s] ✓ Registered GPIO entity: %s (pin=%d, type=%s, direction=%s, state=%s)", 
                            self.cap_id, pin.friendly_name, pin.gpio_pin, pin.entity_type, pin.direction, pin.initial_state)
             except Exception as e:
-                logger.error("[%s] Failed to setup entity %s: %s", self.cap_id, entity_id, e, exc_info=True)
+                logger.error("[%s] ✗ Failed to setup entity %s: %s", self.cap_id, entity_id, e, exc_info=True)
 
         logger.info("[%s] GPIO control started with %d entities using %s", self.cap_id, len(self._pins), self._driver)
         
@@ -290,45 +291,45 @@ class GpioControlCapability(CapabilityModule):
                     
                 entity_type = str(item.get("type", "switch")).lower()
                 friendly_name = str(item.get("friendly_name") or pin_id.replace("_", " ").title())
-            icon = str(item.get("icon") or ("mdi:lightbulb" if entity_type == "light" else "mdi:toggle-switch"))
-            active_high = bool(item.get("active_high", True))
-            initial_state = str(item.get("initial_state", "off")).strip().lower()
-            if initial_state not in {"on", "off"}:
-                initial_state = "off"
-            initial_brightness = int(item.get("initial_brightness", 255))
-            initial_brightness = max(0, min(255, initial_brightness))
+                icon = str(item.get("icon") or ("mdi:lightbulb" if entity_type == "light" else "mdi:toggle-switch"))
+                active_high = bool(item.get("active_high", True))
+                initial_state = str(item.get("initial_state", "off")).strip().lower()
+                if initial_state not in {"on", "off"}:
+                    initial_state = "off"
+                initial_brightness = int(item.get("initial_brightness", 255))
+                initial_brightness = max(0, min(255, initial_brightness))
 
-            # Direction: infer from entity_type or use explicit config
-            direction = str(item.get("direction", "")).lower()
-            if not direction:
-                # Infer: binary_sensor → input, others → output
-                direction = "input" if entity_type == "binary_sensor" else "output"
-            elif direction not in {"input", "output"}:
-                direction = "output"  # Default to output if invalid
+                # Direction: infer from entity_type or use explicit config
+                direction = str(item.get("direction", "")).lower()
+                if not direction:
+                    # Infer: binary_sensor → input, others → output
+                    direction = "input" if entity_type == "binary_sensor" else "output"
+                elif direction not in {"input", "output"}:
+                    direction = "output"  # Default to output if invalid
 
-            # Pull mode for input pins
-            pull_mode = str(item.get("pull_mode", "none")).lower()
-            if pull_mode not in {"none", "pull_up", "pull_down"}:
-                pull_mode = "none"
+                # Pull mode for input pins
+                pull_mode = str(item.get("pull_mode", "none")).lower()
+                if pull_mode not in {"none", "pull_up", "pull_down"}:
+                    pull_mode = "none"
 
-            slug = re.sub(r"[^a-z0-9_]+", "_", pin_id.lower()).strip("_")
-            if not slug:
-                slug = f"pin_{gpio_pin}"
-            entity_id = f"gpio_control:{entity_type}:{slug}"
+                slug = re.sub(r"[^a-z0-9_]+", "_", pin_id.lower()).strip("_")
+                if not slug:
+                    slug = f"pin_{gpio_pin}"
+                entity_id = f"gpio_control:{entity_type}:{slug}"
 
-            out[entity_id] = PinConfig(
-                entity_id=entity_id,
-                pin_id=pin_id,
-                gpio_pin=gpio_pin,
-                entity_type=entity_type,
-                friendly_name=friendly_name,
-                icon=icon,
-                active_high=active_high,
-                initial_state=initial_state,
-                initial_brightness=initial_brightness,
-                direction=direction,
-                pull_mode=pull_mode,
-            )
+                out[entity_id] = PinConfig(
+                    entity_id=entity_id,
+                    pin_id=pin_id,
+                    gpio_pin=gpio_pin,
+                    entity_type=entity_type,
+                    friendly_name=friendly_name,
+                    icon=icon,
+                    active_high=active_high,
+                    initial_state=initial_state,
+                    initial_brightness=initial_brightness,
+                    direction=direction,
+                    pull_mode=pull_mode,
+                )
                 logger.debug("[%s] Parsed pin: %s (GPIO%d, type=%s, dir=%s)", 
                            self.cap_id, entity_id, gpio_pin, entity_type, direction)
             except Exception as e:
@@ -337,6 +338,46 @@ class GpioControlCapability(CapabilityModule):
         
         logger.info("[%s] Successfully loaded %d GPIO pins: %s", self.cap_id, len(out),
                    [f"{eid}(dir={p.direction})" for eid, p in out.items()])
+        return out
+
+    def _publish_pin_entity(self, pin: PinConfig) -> None:
+        """Publish pin entity state to entity cache."""
+        state_on = self._states.get(pin.entity_id, False)
+        brightness = self._brightness.get(pin.entity_id, 255 if state_on else 0)
+        attrs: Dict[str, Any] = {
+            "gpio_pin": pin.gpio_pin,
+            "pin_id": pin.pin_id,
+            "active_high": pin.active_high,
+            "driver": self._driver,
+            "direction": pin.direction,
+        }
+
+        # Output pins only
+        if pin.direction == "output":
+            attrs["turn_on_action_id"] = "turn_on"
+            attrs["turn_off_action_id"] = "turn_off"
+
+        if pin.entity_type == "light":
+            attrs["brightness"] = brightness
+            attrs["brightness_pct"] = round((brightness / 255.0) * 100)
+
+        entity = {
+            "id": pin.entity_id,
+            "type": pin.entity_type,
+            "friendly_name": pin.friendly_name,
+            "state": "on" if state_on else "off",
+            "icon": pin.icon,
+            "attributes": attrs,
+        }
+        
+        # Add action IDs only for output pins
+        if pin.direction == "output":
+            entity["turn_on_action_id"] = "turn_on"
+            entity["turn_off_action_id"] = "turn_off"
+        
+        self._publish_entity(entity)
+
+    async def _monitor_input_pins(self) -> None:
         """Async task to monitor input pins and publish state changes."""
         poll_interval = 0.5  # Poll input pins every 500ms
         logger.debug("[%s] Input pin monitoring started (interval: %sms)", self.cap_id, poll_interval * 1000)
@@ -379,6 +420,7 @@ class GpioControlCapability(CapabilityModule):
             pct = max(0.0, min(100.0, pct))
             return round((pct / 100.0) * 255)
         return None
+
 
     def _read_pin_state(self, pin: PinConfig) -> Optional[bool]:
         """Read current state of an input pin. Returns True if high, False if low, None if error."""
