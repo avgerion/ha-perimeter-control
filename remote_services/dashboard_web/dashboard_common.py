@@ -77,9 +77,9 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         text=(
             "<div class='pc-header' style='position:relative; z-index:2; margin-bottom:12px;'>"
             f"<h3>Service Status - {service_name}</h3>"
-            f"<p>Unit: <code>{unit_name}.service</code></p>"
-            f"<p>Service log: <code>{service_log}</code><br>"
-            f"Supervisor log: <code>{supervisor_log}</code></p>"
+            f"<p class='pc-header-item'>Unit: <code>{unit_name}.service</code></p>"
+            f"<p class='pc-header-item'>Service log: <code>{service_log}</code></p>"
+            f"<p class='pc-header-item'>Supervisor log: <code>{supervisor_log}</code></p>"
             "</div>"
         ),
         sizing_mode="stretch_width",
