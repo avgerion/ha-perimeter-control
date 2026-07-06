@@ -65,7 +65,7 @@ class GpioControlCapability(CapabilityModule):
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._last_input_states: Dict[str, bool] = {}  # Track last known state for change detection
-        logger.info("[%s] GPIO capability initialized [BUILD: 2026-07-06-InputSupport]", self.cap_id)
+        logger.info("[%s] GPIO capability initialized [NEW CODE 2026-07-07-DEBUG]", self.cap_id)
 
     async def start(self) -> None:
         logger.info("[%s] Starting GPIO control", self.cap_id)
@@ -330,14 +330,14 @@ class GpioControlCapability(CapabilityModule):
                     direction=direction,
                     pull_mode=pull_mode,
                 )
-                logger.debug("[%s] Parsed pin: %s (GPIO%d, type=%s, dir=%s)", 
-                           self.cap_id, entity_id, gpio_pin, entity_type, direction)
+                logger.debug("[%s] ✓ Parsed pin: %s (GPIO%d, type=%s, dir=%s, pull=%s)", 
+                           self.cap_id, entity_id, gpio_pin, entity_type, direction, pull_mode)
             except Exception as e:
-                logger.error("[%s] Failed to parse pin[%d]: %s", self.cap_id, idx, e, exc_info=True)
+                logger.error("[%s] ✗ Failed to parse pin[%d]: %s", self.cap_id, idx, e, exc_info=True)
                 continue
         
         logger.info("[%s] Successfully loaded %d GPIO pins: %s", self.cap_id, len(out),
-                   [f"{eid}(dir={p.direction})" for eid, p in out.items()])
+                   [f"{eid}(type={p.entity_type},dir={p.direction})" for eid, p in out.items()])
         return out
 
     def _publish_pin_entity(self, pin: PinConfig) -> None:

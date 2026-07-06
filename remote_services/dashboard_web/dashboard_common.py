@@ -198,7 +198,7 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         _DC_LOGGER.exception("Failed to bind local Run Command handler")
 
     # Flatten the layout: avoid nested columns to prevent Bokeh layout engine bugs
-    # Use wrapper Divs with CSS classes instead of inline styles
+    # Simplify section titles - no nested divs, just plain text
     layout = column(
         style_div,
         header_title,
@@ -208,19 +208,17 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         Spacer(height=20),
         status_badge,
         status_details,
-        Spacer(height=15),
+        Spacer(height=20),
         Div(
-            text="<div class='pc-section-title'><b>Service Log</b></div>",
+            text="<b>Service Log</b>",
             sizing_mode="stretch_width",
-            css_classes=["pc-section-title-container"],
             height=24,
         ),
         service_log_text,
         Spacer(height=12),
         Div(
-            text="<div class='pc-section-title'><b>Supervisor Log</b></div>",
+            text="<b>Supervisor Log</b>",
             sizing_mode="stretch_width",
-            css_classes=["pc-section-title-container"],
             height=24,
         ),
         supervisor_log_text,

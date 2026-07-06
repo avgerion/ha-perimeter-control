@@ -37,17 +37,11 @@
 
 .pc-section-title {
     margin-top: 0;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
     font-weight: bold;
-    min-height: 20px;
-    line-height: 1.4;
-}
-
-.pc-section-title-container {
-    margin: 0;
-    padding: 0;
-    height: auto;
     min-height: 24px;
+    line-height: 1.5;
+    padding: 4px 0 4px 0;
 }
 
 .pc-muted {
