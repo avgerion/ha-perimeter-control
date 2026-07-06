@@ -37,9 +37,7 @@ async def async_setup_entry(
             try:
                 if entity_schema.get("type") == "light":
                     service_id = str(
-                        entity_schema.get("capability_id")
-                        or entity_schema.get("capability")
-                        or "unknown"
+                        entity_schema.get("capability_id", "unknown")
                     )
                     new_entities = expand_templated_entities(coordinator, entity_schema)
                     for new_entity in new_entities:

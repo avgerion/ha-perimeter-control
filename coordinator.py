@@ -466,7 +466,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for entity in entities:
                 if not isinstance(entity, dict):
                     continue
-                capability_id = entity.get("capability_id") or entity.get("capability")
+                capability_id = entity.get("capability_id")
                 if isinstance(capability_id, str) and capability_id:
                     entities_by_capability[capability_id] = entities_by_capability.get(capability_id, 0) + 1
 
