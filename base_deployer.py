@@ -422,10 +422,11 @@ fi
 
         _LOGGER.info("Package installation completed for %s", service_name)
 
-    async def deploy_service_descriptors(self, service_ids: list[str], auto_entities: dict[str, list] | None = None) -> None:
+    async def deploy_service_descriptors(self, service_ids: list[str], auto_entities: dict[str, list] | None = None) -> list[str]:
         """Deploy service descriptor files for specified services."""
         self._emit("supervisor", "Deploying service descriptors...", 78)
         auto_entities = auto_entities or {}
+        apt_packages: list[str] = []
         
         for service_id in service_ids:
             fname = f"{service_id}.service.yaml"
@@ -449,6 +450,17 @@ fi
                     _LOGGER.info("Injected %d auto-entities into descriptor for %s",
                                  len(auto_entities[service_id]), service_id)
 
+                # Collect any system_deps.apt entries from the descriptor so the
+                # deployer can install system packages generically on the target.
+                try:
+                    spec = descriptor_data.get("spec", {}) or {}
+                    system_deps = spec.get("system_deps") or {}
+                    apt_list = system_deps.get("apt") or []
+                    if apt_list:
+                        apt_packages.extend(str(p) for p in apt_list)
+                except Exception:
+                    _LOGGER.debug("Failed to parse system_deps from descriptor for %s", service_id, exc_info=True)
+
                 rendered_text = await asyncio.to_thread(
                     yaml.safe_dump,
                     descriptor_data,
@@ -462,7 +474,16 @@ fi
             else:
                 _LOGGER.warning("Service descriptor not found: %s", src)
                 
+        # Deduplicate while preserving order
+        seen = set()
+        unique_pkgs = []
+        for p in apt_packages:
+            if p not in seen:
+                seen.add(p)
+                unique_pkgs.append(p)
+
         self._emit("supervisor", "Service descriptors deployed", 80)
+        return unique_pkgs
 
     async def install_systemd_services(self, template_files: list[str]) -> None:
         """Install systemd service templates."""

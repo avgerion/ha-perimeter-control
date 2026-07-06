@@ -16,13 +16,21 @@ Examples of HA-side issues:
 
 ## 🚀 Quick Deploy (Windows → Pi)
 
-```powershell
-# One-command deploy
-.\deploy.ps1
+**Use Python deployers (deploy.ps1 is deprecated):**
 
-# Or specify custom settings
-.\deploy.ps1 -PiIP "192.168.69.11" -PiUser "paul" -KeyFile "./y"
+From HA integration (async deployer):
+```python
+# deployer.py is invoked automatically by HA integration
+# For manual deployment from CLI, use:
+python3 ha-integration/scripts/deploy.py --host 192.168.69.11 --user paul --ssh-key ./y
 ```
+
+Or Windows PowerShell (if you have Python 3.8+):
+```powershell
+python .\ha-integration\scripts\deploy.py --host 192.168.50.47 --user paul --ssh-key .\y
+```
+
+**Note:** `deploy.ps1` (PowerShell) is deprecated. Use the Python deployers above (deploy.py or deployer.py via HA).
 
 ## 🔌 Access Dashboard
 

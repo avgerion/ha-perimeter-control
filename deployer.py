@@ -447,7 +447,19 @@ class Deployer(BaseDeployer):
 
         # Always sync selected service descriptors so Supervisor reads current access_profile
         # (mode/port/tls) instead of stale files from previous deployments.
-        await self.deploy_service_descriptors(self._selected_services, auto_entities=self._auto_entities)
+        apt_packages = await self.deploy_service_descriptors(self._selected_services, auto_entities=self._auto_entities)
+
+        # Install any system-level packages requested by service descriptors
+        if apt_packages:
+            try:
+                pkgs = " ".join(apt_packages)
+                _LOGGER.info("Installing system packages from descriptors: %s", pkgs)
+                # Update apt cache and install packages non-interactively
+                cmd = f"sudo apt-get update -y >/dev/null && sudo apt-get install -y --no-install-recommends {pkgs}"
+                await self._client.async_run(cmd)
+                _LOGGER.info("System packages installed: %s", pkgs)
+            except Exception as exc:
+                _LOGGER.warning("Failed to install system packages (%s): %s", pkgs, exc)
         
         # Install supervisor
         sup_install_script = _build_supervisor_install_script()

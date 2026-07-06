@@ -134,8 +134,32 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
             "<link rel='stylesheet' href='/css/pc-dashboard.css' "
             "onerror=\"console.error('CSS failed to load'); this.remove();\">"
         )
-        _DC_LOGGER.debug("[CSS] Returning external CSS link tag: /css/pc-dashboard.css")
-        return Div(text=css_link_html, sizing_mode="stretch_width")
+
+        # Small runtime script to measure the header and add top padding to Bokeh's
+        # root container so main content does not overlap the header. Runs on load
+        # and resize and also after a short timeout to handle delayed Bokeh rendering.
+        script_html = (
+            "<script>\n"
+            "(function(){\n"
+            "  function adjustPadding(){\n"
+            "    try{\n"
+            "      var hdr = document.querySelector('.pc-header');\n"
+            "      var root = document.querySelector('.bk-root') || document.querySelector('.bk-LayoutDOM');\n"
+            "      if(!hdr || !root) return;\n"
+            "      var h = Math.ceil(hdr.getBoundingClientRect().height || 0);\n"
+            "      root.style.paddingTop = (h + 8) + 'px';\n"
+            "      root.style.boxSizing = 'border-box';\n"
+            "    }catch(e){console && console.debug && console.debug('adjustPadding error', e);}\n"
+            "  }\n"
+            "  window.addEventListener('load', adjustPadding);\n"
+            "  window.addEventListener('resize', adjustPadding);\n"
+            "  setTimeout(adjustPadding, 400);\n"
+            "})();\n"
+            "</script>"
+        )
+
+        _DC_LOGGER.debug("[CSS] Returning external CSS link tag and header-adjust script: /css/pc-dashboard.css")
+        return Div(text=(css_link_html + script_html), sizing_mode="stretch_width")
 
     # Style + controls belong to the service panel; build them here.
     style_div = _get_style_div()

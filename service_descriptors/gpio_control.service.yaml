@@ -37,3 +37,4 @@ spec:
   system_deps:
     apt:
       - gpiod
+      - raspi-gpio

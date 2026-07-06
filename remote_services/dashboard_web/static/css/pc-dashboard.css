@@ -94,7 +94,7 @@
     color: #ecf0f1;
     padding: 8px;
     border-radius: 4px;
-    margin-bottom: 8px;
+    margin: 8px 0;
     overflow: auto;
     height: 140px;
     font-family: monospace;
@@ -109,7 +109,7 @@
     color: #111;
     padding: 8px;
     border-radius: 4px;
-    margin-top: 8px;
+    margin: 8px 0;
     overflow: auto;
     height: 140px;
     font-family: monospace;
