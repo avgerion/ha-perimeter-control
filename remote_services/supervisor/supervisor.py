@@ -525,44 +525,40 @@ class Supervisor:
         active_cap_ids = set(self._active.keys())
         
         # Deploy each service from config that isn't already actively running
+        # Key: services may have multiple instances (e.g., gpio_control.relays, gpio_control.buttons)
+        # Deploy all instances of a service in ONE capability, not separately
         for cap_type, instances in services.items():
             if not isinstance(instances, dict):
                 logger.warning("Service %s config is not a dict, skipping", cap_type)
                 continue
             
-            for instance_name, instance_config in instances.items():
-                # For auto-deployed capabilities, use just the capability type as ID (no instance name)
-                # Instance names are only used internally in the service config.
-                # The capability ID matches what Home Assistant expects for filtering.
-                cap_id = cap_type
-                
-                if cap_id in active_cap_ids:
-                    logger.debug("Capability %s already active, skipping", cap_id)
-                    continue
-                
-                # Create deployment config: wrap instance_config in services/cap_type structure
-                # so that the capability receives the config in the expected format
-                deployment_config = {
-                    "type": cap_type,
-                    "name": cap_type,
-                    "services": {
-                        cap_type: {
-                            instance_name: instance_config
-                        }
-                    }
+            cap_id = cap_type
+            
+            if cap_id in active_cap_ids:
+                logger.debug("Capability %s already active, skipping", cap_id)
+                continue
+            
+            # Create deployment config with ALL instances for this service
+            # The capability will iterate through instances internally
+            deployment_config = {
+                "type": cap_type,
+                "name": cap_type,
+                "services": {
+                    cap_type: instances  # Pass ALL instances, not just one
                 }
-                
-                try:
-                    logger.info("Auto-deploying capability %s from config", cap_id)
-                    # Save to database so it persists across restarts
-                    cap_name = deployment_config.get("name", cap_id)
-                    cap_version = deployment_config.get("version")
-                    self.db.upsert_capability(cap_id, cap_name, deployment_config, "deploying", cap_version)
-                    await self._start_capability(cap_id, deployment_config, "startup_config")
-                    self.db.update_capability_status(cap_id, "active", consecutive_failures=0)
-                except Exception as exc:
-                    logger.warning("Failed to auto-deploy capability %s: %s", cap_id, exc)
-                    self.db.update_capability_status(cap_id, "failed", consecutive_failures=1)
+            }
+            
+            try:
+                logger.info("Auto-deploying capability %s with %d instances from config", cap_id, len(instances))
+                # Save to database so it persists across restarts
+                cap_name = deployment_config.get("name", cap_id)
+                cap_version = deployment_config.get("version")
+                self.db.upsert_capability(cap_id, cap_name, deployment_config, "deploying", cap_version)
+                await self._start_capability(cap_id, deployment_config, "startup_config")
+                self.db.update_capability_status(cap_id, "active", consecutive_failures=0)
+            except Exception as exc:
+                logger.warning("Failed to auto-deploy capability %s: %s", cap_id, exc)
+                self.db.update_capability_status(cap_id, "failed", consecutive_failures=1)
 
     # ------------------------------------------------------------------
     # Event bus
