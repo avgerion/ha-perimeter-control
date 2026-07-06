@@ -78,7 +78,7 @@ class SupervisorEntity(Entity):
         """Return extra state attributes."""
         attrs = {
             "entity_id": self._entity_id,
-            "capability": self.entity_schema.get("capability"),
+            "capability": self.entity_schema.get("capability_id"),
             "entity_type": self.entity_schema.get("type"),
         }
         
@@ -259,7 +259,7 @@ class DynamicButtonEntity(SupervisorEntity, ButtonEntity):
         """Handle button press."""
         # For now, just fire an event - can be extended to trigger Supervisor actions
         action_id = self.entity_schema.get("action_id", "button_press")
-        capability = self.entity_schema.get("capability")
+        capability = self.entity_schema.get("capability_id")
         
         self.hass.bus.async_fire(
             "perimeter_control_button_press",
@@ -319,7 +319,7 @@ class DynamicSwitchEntity(SupervisorEntity, SwitchEntity):
 
     async def _call_capability_action(self, action_id: str, payload: Dict[str, Any]) -> None:
         """Call supervisor capability action for this entity."""
-        capability = self.entity_schema.get("capability")
+        capability = self.entity_schema.get("capability_id")
         if not capability:
             _LOGGER.debug("No capability found for switch entity %s", self._entity_id)
             return
@@ -402,7 +402,7 @@ class DynamicLightEntity(SupervisorEntity, LightEntity):
 
     async def _call_capability_action(self, action_id: str, payload: Dict[str, Any]) -> None:
         """Call supervisor capability action for this entity."""
-        capability = self.entity_schema.get("capability")
+        capability = self.entity_schema.get("capability_id")
         if not capability:
             _LOGGER.debug("No capability found for light entity %s", self._entity_id)
             return
@@ -479,7 +479,7 @@ class DynamicCameraEntity(SupervisorEntity, Camera):
 
             image_url = attrs.get("image_url") or attrs.get("snapshot_url")
             if not image_url:
-                capability = self.entity_schema.get("capability")
+                capability = self.entity_schema.get("capability_id")
                 if capability:
                     image_url = f"/api/v1/cameras/{capability}/latest.jpg"
 
