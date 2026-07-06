@@ -65,6 +65,7 @@ class GpioControlCapability(CapabilityModule):
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._last_input_states: Dict[str, bool] = {}  # Track last known state for change detection
+        logger.info("[%s] GPIO capability initialized [BUILD: 2026-07-06-InputSupport]", self.cap_id)
 
     async def start(self) -> None:
         logger.info("[%s] Starting GPIO control", self.cap_id)
@@ -75,19 +76,28 @@ class GpioControlCapability(CapabilityModule):
             logger.warning("[%s] No GPIO pins configured (checked nested format services.gpio_control.<instance>.pins and flat format pins)", self.cap_id)
             return
 
+        logger.info("[%s] Loaded %d pins from config: %s", self.cap_id, len(self._pins), 
+                   [f"{eid}(type={p.entity_type},dir={p.direction})" for eid, p in self._pins.items()])
+
         for entity_id, pin in self._pins.items():
-            initial_on = pin.initial_state == "on"
-            brightness = pin.initial_brightness if pin.entity_type == "light" else 255
-            if not initial_on and pin.entity_type == "light":
-                brightness = 0
+            try:
+                initial_on = pin.initial_state == "on"
+                brightness = pin.initial_brightness if pin.entity_type == "light" else 255
+                if not initial_on and pin.entity_type == "light":
+                    brightness = 0
 
-            self._states[entity_id] = initial_on
-            self._brightness[entity_id] = brightness
+                self._states[entity_id] = initial_on
+                self._brightness[entity_id] = brightness
 
-            self._setup_pin(pin, initial_on)
-            self._publish_pin_entity(pin)
-            logger.info("[%s] Registered GPIO entity: %s (pin=%d, type=%s, state=%s)", 
-                       self.cap_id, pin.friendly_name, pin.gpio_pin, pin.entity_type, pin.initial_state)
+                logger.debug("[%s] Setting up pin %s (GPIO%d, type=%s, direction=%s)", 
+                           self.cap_id, pin.pin_id, pin.gpio_pin, pin.entity_type, pin.direction)
+                self._setup_pin(pin, initial_on)
+                logger.debug("[%s] Pin setup complete, publishing entity %s", self.cap_id, entity_id)
+                self._publish_pin_entity(pin)
+                logger.info("[%s] Registered GPIO entity: %s (pin=%d, type=%s, direction=%s, state=%s)", 
+                           self.cap_id, pin.friendly_name, pin.gpio_pin, pin.entity_type, pin.direction, pin.initial_state)
+            except Exception as e:
+                logger.error("[%s] Failed to setup entity %s: %s", self.cap_id, entity_id, e, exc_info=True)
 
         logger.info("[%s] GPIO control started with %d entities using %s", self.cap_id, len(self._pins), self._driver)
         
@@ -238,7 +248,7 @@ class GpioControlCapability(CapabilityModule):
         #   gpio_control:
         #     relays:
         #       pins: [...]
-        #     lights:
+        #     buttons:
         #       pins: [...]
         pins_list = []
         
@@ -246,7 +256,7 @@ class GpioControlCapability(CapabilityModule):
         services = config.get("services", {})
         gpio_control_cfg = services.get("gpio_control", {})
         if isinstance(gpio_control_cfg, dict):
-            # Iterate over instances (relays, lights, inputs, etc.)
+            # Iterate over instances (relays, buttons, etc.)
             for instance_name, instance_cfg in gpio_control_cfg.items():
                 if isinstance(instance_cfg, dict):
                     instance_pins = instance_cfg.get("pins", [])
@@ -258,17 +268,28 @@ class GpioControlCapability(CapabilityModule):
         if not pins_list:
             pins_list = config.get("pins", [])
         
-        for item in pins_list:
-            if not isinstance(item, dict):
-                continue
+        logger.info("[%s] Parsing %d pins from config", self.cap_id, len(pins_list))
+        
+        for idx, item in enumerate(pins_list):
+            try:
+                if not isinstance(item, dict):
+                    logger.warning("[%s] Pin[%d] is not a dict, skipping", self.cap_id, idx)
+                    continue
 
-            pin_id = str(item.get("id", "")).strip()
-            if not pin_id:
-                continue
+                pin_id = str(item.get("id", "")).strip()
+                if not pin_id:
+                    logger.warning("[%s] Pin[%d] missing id, skipping", self.cap_id, idx)
+                    continue
 
-            gpio_pin = int(item.get("gpio_pin"))
-            entity_type = str(item.get("type", "switch")).lower()
-            friendly_name = str(item.get("friendly_name") or pin_id.replace("_", " ").title())
+                gpio_pin_val = item.get("gpio_pin")
+                try:
+                    gpio_pin = int(gpio_pin_val)
+                except (TypeError, ValueError) as e:
+                    logger.warning("[%s] Pin[%d] (%s) invalid gpio_pin=%r: %s", self.cap_id, idx, pin_id, gpio_pin_val, e)
+                    continue
+                    
+                entity_type = str(item.get("type", "switch")).lower()
+                friendly_name = str(item.get("friendly_name") or pin_id.replace("_", " ").title())
             icon = str(item.get("icon") or ("mdi:lightbulb" if entity_type == "light" else "mdi:toggle-switch"))
             active_high = bool(item.get("active_high", True))
             initial_state = str(item.get("initial_state", "off")).strip().lower()
@@ -308,47 +329,14 @@ class GpioControlCapability(CapabilityModule):
                 direction=direction,
                 pull_mode=pull_mode,
             )
-        return out
-
-    def _publish_pin_entity(self, pin: PinConfig) -> None:
-        state_on = self._states.get(pin.entity_id, False)
-        brightness = self._brightness.get(pin.entity_id, 255 if state_on else 0)
-        attrs: Dict[str, Any] = {
-            "gpio_pin": pin.gpio_pin,
-            "pin_id": pin.pin_id,
-            "active_high": pin.active_high,
-            "driver": self._driver,
-            "direction": pin.direction,
-        }
-
-        # Output pins only
-        if pin.direction == "output":
-            attrs["turn_on_action_id"] = "turn_on"
-            attrs["turn_off_action_id"] = "turn_off"
-
-        if pin.entity_type == "light":
-            attrs["brightness"] = brightness
-            attrs["brightness_pct"] = round((brightness / 255.0) * 100)
-
-        entity = {
-            "id": pin.entity_id,
-            "type": pin.entity_type,
-            "friendly_name": pin.friendly_name,
-            "state": "on" if state_on else "off",
-            "icon": pin.icon,
-            "attributes": attrs,
-        }
+                logger.debug("[%s] Parsed pin: %s (GPIO%d, type=%s, dir=%s)", 
+                           self.cap_id, entity_id, gpio_pin, entity_type, direction)
+            except Exception as e:
+                logger.error("[%s] Failed to parse pin[%d]: %s", self.cap_id, idx, e, exc_info=True)
+                continue
         
-        # Add action IDs only for output pins
-        if pin.direction == "output":
-            entity["turn_on_action_id"] = "turn_on"
-            entity["turn_off_action_id"] = "turn_off"
-        
-        logger.info("[%s] Publishing entity: id=%s, type=%s, direction=%s, state=%s", 
-                   self.cap_id, pin.entity_id, pin.entity_type, pin.direction, entity["state"])
-        self._publish_entity(entity)
-
-    async def _monitor_input_pins(self) -> None:
+        logger.info("[%s] Successfully loaded %d GPIO pins: %s", self.cap_id, len(out),
+                   [f"{eid}(dir={p.direction})" for eid, p in out.items()])
         """Async task to monitor input pins and publish state changes."""
         poll_interval = 0.5  # Poll input pins every 500ms
         logger.debug("[%s] Input pin monitoring started (interval: %sms)", self.cap_id, poll_interval * 1000)

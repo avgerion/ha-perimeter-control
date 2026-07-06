@@ -112,10 +112,10 @@ Auto-scroll to latest, with pause button.
 ```
 server/
   web/
-    dashboard.py          # Main Bokeh app entry point
-    layouts.py            # Dashboard layout definitions
+    xxxdashboard.py          # Main Bokeh app entry point
+    xxxlayouts.py            # Dashboard layout definitions
     data_sources.py       # Live data fetching and processing
-    callbacks.py          # Interactive widget callbacks
+    xxxcallbacks.py          # Interactive widget callbacks
     config_manager.py     # Read/write isolator.conf.yaml
     traffic_monitor.py    # Parse nftables logs, dnsmasq leases
     static/

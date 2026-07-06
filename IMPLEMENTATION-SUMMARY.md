@@ -218,9 +218,9 @@ Device connects to AP
 │   ├── monitor-devices.py        # Device monitor daemon
 │   └── start-capture.py          # Capture manager
 ├── web/                          # Dashboard code
-│   ├── dashboard.py              # Bokeh server entry
-│   ├── layouts.py                # UI components
-│   ├── callbacks.py              # Live update handlers
+│   ├── xxx_dashboard.py              # Bokeh server entry
+│   ├── xxx_layouts.py                # UI components
+│   ├── xxx_callbacks.py              # Live update handlers
 │   └── data_sources.py           # Data fetching
 └── requirements.txt              # Python dependencies
 

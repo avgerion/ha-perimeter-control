@@ -16,9 +16,9 @@ This directory contains the server-side components for Network Isolator.
 
 ### Web Dashboard
 - `web/` - Dashboard implementation (see [../docs/WEB-DASHBOARD.md](../docs/WEB-DASHBOARD.md))
-  - `dashboard.py` - Main Bokeh server entry point
-  - `layouts.py` - UI components and structure
-  - `callbacks.py` - Live update handlers
+  - `xxxdashboard.py` - Main Bokeh server entry point
+  - `xxxlayouts.py` - UI components and structure
+  - `xxxcallbacks.py` - Live update handlers
   - `data_sources.py` - Data fetching from system sources
 - `requirements.txt` - Python dependencies
 

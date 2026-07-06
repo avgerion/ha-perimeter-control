@@ -80,12 +80,12 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     header_unit = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Unit: <code>{unit_name}.service</code></p>",
         sizing_mode="stretch_width",
-        height=18,
+        height=24,
     )
     header_service_log = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Service log: <code>{service_log}</code></p>",
         sizing_mode="stretch_width",
-        height=18,
+        height=24,
     )
     header_supervisor_log = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Supervisor log: <code>{supervisor_log}</code></p>",
