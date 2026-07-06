@@ -160,6 +160,57 @@
     box-sizing: border-box;
 }
 
+/* Defensive overrides to prevent Shadow DOM / fixed-position overlap issues
+   - Ensure Bokeh hosts participate in normal document flow
+   - Reset any negative offsets coming from nested shadow content
+   - Provide stacking contexts for headers/notifications */
+.bk-root,
+.bk-LayoutDOM,
+.bk-Column {
+    position: relative !important;
+    top: 0 !important;
+    left: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    transform: none !important;
+}
+
+/* Reset common nested wrappers inside Bokeh shadow content. Use a deep selector
+   where possible; these rules are defensive and meant to be safe for most layouts. */
+.bk-Column>div,
+.bk-LayoutDOM>div,
+.bk-root>div {
+    position: relative !important;
+    top: 0 !important;
+    left: 0 !important;
+    margin-top: 0 !important;
+    transform: none !important;
+}
+
+/* Make page header and notifications sit above content */
+.pc-header {
+    position: relative !important;
+    z-index: 1200 !important;
+}
+
+.bk-Notifications {
+    position: relative !important;
+    z-index: 1000 !important;
+}
+
+/* Restore natural document flow for html/body in case global styles were restrictive */
+html,
+body {
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100% !important;
+    height: auto !important;
+    display: block !important;
+}
+
 /* Bokeh wraps each item in .bk-widget-wrapper - these must be flex children */
 .bk-Column>div {
     position: static;
