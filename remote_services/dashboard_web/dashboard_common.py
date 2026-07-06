@@ -71,25 +71,38 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     service_log = f"{log_dir}/{service_name}_dashboard.log"
     supervisor_log = f"{log_dir}/supervisor.log"
 
-    # Add a small inline style to ensure the header occupies normal flow
-    # even if external CSS hasn't loaded yet (defensive fallback).
-    header = Div(
-        text=(
-            "<div class='pc-header' style='position:relative; z-index:2; margin-bottom:12px;'>"
-            f"<h3>Service Status - {service_name}</h3>"
-            f"<div class='pc-header-item'><p>Unit: <code>{unit_name}.service</code></p></div>"
-            f"<div class='pc-header-item'><p>Service log: <code>{service_log}</code></p></div>"
-            f"<div class='pc-header-item'><p>Supervisor log: <code>{supervisor_log}</code></p></div>"
-            "</div>"
-        ),
+    # Split header into separate divs so Bokeh layout engine handles spacing
+    header_title = Div(
+        text=f"<h3 style='margin:0; padding:0; color:#ecf0f1;'>Service Status - {service_name}</h3>",
         sizing_mode="stretch_width",
-        height=100,
+        height=25,
+    )
+    header_unit = Div(
+        text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Unit: <code>{unit_name}.service</code></p>",
+        sizing_mode="stretch_width",
+        height=18,
+    )
+    header_service_log = Div(
+        text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Service log: <code>{service_log}</code></p>",
+        sizing_mode="stretch_width",
+        height=18,
+    )
+    header_supervisor_log = Div(
+        text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Supervisor log: <code>{supervisor_log}</code></p>",
+        sizing_mode="stretch_width",
+        height=18,
+    )
+    # Wrap header divs in a container with background styling
+    header_container = Div(
+        text="<div style='background: #2c3e50; padding: 8px; border-radius: 6px;'></div>",
+        sizing_mode="stretch_width",
+        height=5,
     )
     status_badge = Div(
         text="<b>Status:</b> <span class='status-checking'>checking...</span>",
         sizing_mode="stretch_width",
         css_classes=["status-badge"],
-        height=30,
+        height=35,
     )
     status_details = PreText(text="Waiting for first health check...", height=100, sizing_mode="stretch_width")
 
@@ -188,11 +201,14 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     # Use wrapper Divs with CSS classes instead of inline styles
     layout = column(
         style_div,
-        header,
-        Spacer(height=12),
+        header_title,
+        header_unit,
+        header_service_log,
+        header_supervisor_log,
+        Spacer(height=20),
         status_badge,
         status_details,
-        Spacer(height=12),
+        Spacer(height=15),
         Div(
             text="<div class='pc-section-title'><b>Service Log</b></div>",
             sizing_mode="stretch_width",
