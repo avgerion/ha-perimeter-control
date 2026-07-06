@@ -17,15 +17,18 @@ gpio_control:
       - id: example_pin        # Required: unique ID for this pin
         gpio_pin: 17           # Required: GPIO pin number (integer, 0+)
         type: switch           # Required: switch | light | binary_sensor
+        direction: output      # Optional: input | output (inferred from type if omitted)
         
         # Optional fields (show defaults):
         friendly_name: "Pin Description"  # Default: id in title case
         active_high: true                 # Default: true
-        initial_state: off                # Default: off (for switches)
-        initial_brightness: 255           # Default: 255 (for lights only)
-        icon: mdi:icon-name               # Default: mdi:toggle-switch (switch) or mdi:lightbulb (light)
+        initial_state: off                # Default: off (for output pins)
+        initial_brightness: 255           # Default: 255 (for light outputs only)
+        icon: mdi:icon-name               # Default: mdi:toggle-switch (switch/output) or mdi:lightbulb (light/output)
+        pull_mode: none                   # Optional: none | pull_up | pull_down (for input pins only)
 
-# Real example to add to perimeterControl.conf.yaml:
+# Real examples for perimeterControl.conf.yaml:
+
 # services:
 #   gpio_control:
 #     relays:
@@ -33,8 +36,22 @@ gpio_control:
 #         - id: relay1
 #           gpio_pin: 17
 #           type: switch
+#           direction: output
+#           friendly_name: Main Relay
+#
 #     leds:
 #       pins:
 #         - id: status_led
 #           gpio_pin: 18
 #           type: light
+#           direction: output
+#           initial_brightness: 255
+#
+#     buttons:
+#       pins:
+#         - id: reset_button
+#           gpio_pin: 23
+#           type: binary_sensor
+#           direction: input
+#           pull_mode: pull_up
+#           friendly_name: Reset Button

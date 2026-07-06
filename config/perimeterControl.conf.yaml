@@ -74,6 +74,14 @@ services:
           friendly_name: Indicator LED
           active_high: true
           initial_brightness: 255
+    buttons:
+      pins:
+        - id: reset_button
+          gpio_pin: 23
+          type: binary_sensor
+          direction: input
+          pull_mode: pull_up
+          friendly_name: Reset Button
 default_policy:
   internet: log-only
   lan_access: []

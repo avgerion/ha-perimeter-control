@@ -49,6 +49,8 @@ class PinConfig:
     active_high: bool
     initial_state: str
     initial_brightness: int
+    direction: str  # "input" or "output"
+    pull_mode: str  # "none", "pull_up", or "pull_down" (inputs only)
 
 
 class GpioControlCapability(CapabilityModule):
@@ -61,6 +63,8 @@ class GpioControlCapability(CapabilityModule):
         self._brightness: Dict[str, int] = {}
         self._driver = "none"
         self._lock = asyncio.Lock()
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._last_input_states: Dict[str, bool] = {}  # Track last known state for change detection
 
     async def start(self) -> None:
         logger.info("[%s] Starting GPIO control", self.cap_id)
@@ -86,9 +90,21 @@ class GpioControlCapability(CapabilityModule):
                        self.cap_id, pin.friendly_name, pin.gpio_pin, pin.entity_type, pin.initial_state)
 
         logger.info("[%s] GPIO control started with %d entities using %s", self.cap_id, len(self._pins), self._driver)
+        
+        # Start async monitoring for input pins
+        input_pins = [p for p in self._pins.values() if p.direction == "input"]
+        if input_pins:
+            self._monitor_task = asyncio.create_task(self._monitor_input_pins())
+            logger.info("[%s] Started monitoring %d input pins", self.cap_id, len(input_pins))
 
     async def stop(self) -> None:
         logger.info("[%s] Stopping GPIO control", self.cap_id)
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
         self.entity_cache.clear_capability_entities(self.cap_id)
 
     def get_entities(self) -> List[Dict[str, Any]]:
@@ -105,6 +121,10 @@ class GpioControlCapability(CapabilityModule):
             return {"success": False, "error": f"Unknown GPIO entity: {entity_id}"}
 
         pin = self._pins[entity_id]
+
+        # Input pins do not support control actions
+        if pin.direction == "input":
+            return {"success": False, "error": f"Input pin {entity_id} is read-only"}
 
         async with self._lock:
             if action_id == "turn_on":
@@ -198,8 +218,8 @@ class GpioControlCapability(CapabilityModule):
                 seen_gpio.add(gpio_pin)
 
             entity_type = str(item.get("type", "switch")).lower()
-            if entity_type not in {"switch", "light"}:
-                errors.append(f"pins[{idx}] type must be 'switch' or 'light'")
+            if entity_type not in {"switch", "light", "binary_sensor"}:
+                errors.append(f"pins[{idx}] type must be 'switch', 'light', or 'binary_sensor'")
 
         return errors
 
@@ -257,6 +277,19 @@ class GpioControlCapability(CapabilityModule):
             initial_brightness = int(item.get("initial_brightness", 255))
             initial_brightness = max(0, min(255, initial_brightness))
 
+            # Direction: infer from entity_type or use explicit config
+            direction = str(item.get("direction", "")).lower()
+            if not direction:
+                # Infer: binary_sensor → input, others → output
+                direction = "input" if entity_type == "binary_sensor" else "output"
+            elif direction not in {"input", "output"}:
+                direction = "output"  # Default to output if invalid
+
+            # Pull mode for input pins
+            pull_mode = str(item.get("pull_mode", "none")).lower()
+            if pull_mode not in {"none", "pull_up", "pull_down"}:
+                pull_mode = "none"
+
             slug = re.sub(r"[^a-z0-9_]+", "_", pin_id.lower()).strip("_")
             if not slug:
                 slug = f"pin_{gpio_pin}"
@@ -272,6 +305,8 @@ class GpioControlCapability(CapabilityModule):
                 active_high=active_high,
                 initial_state=initial_state,
                 initial_brightness=initial_brightness,
+                direction=direction,
+                pull_mode=pull_mode,
             )
         return out
 
@@ -283,9 +318,13 @@ class GpioControlCapability(CapabilityModule):
             "pin_id": pin.pin_id,
             "active_high": pin.active_high,
             "driver": self._driver,
-            "turn_on_action_id": "turn_on",
-            "turn_off_action_id": "turn_off",
+            "direction": pin.direction,
         }
+
+        # Output pins only
+        if pin.direction == "output":
+            attrs["turn_on_action_id"] = "turn_on"
+            attrs["turn_off_action_id"] = "turn_off"
 
         if pin.entity_type == "light":
             attrs["brightness"] = brightness
@@ -299,10 +338,48 @@ class GpioControlCapability(CapabilityModule):
             "state": "on" if state_on else "off",
             "icon": pin.icon,
             "attributes": attrs,
-            "turn_on_action_id": "turn_on",
-            "turn_off_action_id": "turn_off",
         }
+        
+        # Add action IDs only for output pins
+        if pin.direction == "output":
+            entity["turn_on_action_id"] = "turn_on"
+            entity["turn_off_action_id"] = "turn_off"
+        
         self._publish_entity(entity)
+
+    async def _monitor_input_pins(self) -> None:
+        """Async task to monitor input pins and publish state changes."""
+        poll_interval = 0.5  # Poll input pins every 500ms
+        logger.debug("[%s] Input pin monitoring started (interval: %sms)", self.cap_id, poll_interval * 1000)
+        
+        try:
+            while True:
+                await asyncio.sleep(poll_interval)
+                
+                async with self._lock:
+                    for entity_id, pin in self._pins.items():
+                        if pin.direction != "input":
+                            continue
+                        
+                        # Read current pin state
+                        current_state = self._read_pin_state(pin)
+                        if current_state is None:
+                            continue
+                        
+                        # Check if state changed
+                        last_state = self._last_input_states.get(entity_id)
+                        if last_state != current_state:
+                            self._last_input_states[entity_id] = current_state
+                            self._states[entity_id] = current_state
+                            self._publish_pin_entity(pin)
+                            logger.info("[%s] Input pin state changed: %s → %s", 
+                                       self.cap_id, pin.friendly_name, 
+                                       "on" if current_state else "off")
+        except asyncio.CancelledError:
+            logger.debug("[%s] Input pin monitoring stopped", self.cap_id)
+            raise
+        except Exception as exc:
+            logger.error("[%s] Input pin monitoring error: %s", self.cap_id, exc)
 
     def _coerce_brightness(self, params: Dict[str, Any]) -> Optional[int]:
         if "brightness" in params:
@@ -314,14 +391,68 @@ class GpioControlCapability(CapabilityModule):
             return round((pct / 100.0) * 255)
         return None
 
+    def _read_pin_state(self, pin: PinConfig) -> Optional[bool]:
+        """Read current state of an input pin. Returns True if high, False if low, None if error."""
+        if pin.direction != "input":
+            return None
+        
+        if self._driver == "raspi-gpio":
+            return self._read_with_raspi_gpio(pin.gpio_pin, pin.active_high)
+        elif self._driver == "sysfs":
+            return self._read_with_sysfs(pin.gpio_pin, pin.active_high)
+        return None
+
+    def _read_with_raspi_gpio(self, gpio_pin: int, active_high: bool) -> Optional[bool]:
+        """Read GPIO value using raspi-gpio. Returns state: True if high, False if low."""
+        try:
+            res = subprocess.run(
+                ["raspi-gpio", "get", str(gpio_pin)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if res.returncode == 0:
+                # Output format: GPIO 23: level=0 fsel=0
+                if "level=1" in res.stdout:
+                    level = 1
+                elif "level=0" in res.stdout:
+                    level = 0
+                else:
+                    return None
+                return bool(level) == active_high
+            return None
+        except Exception as exc:
+            logger.warning("raspi-gpio read failed for GPIO%d: %s", gpio_pin, exc)
+            return None
+
+    def _read_with_sysfs(self, gpio_pin: int, active_high: bool) -> Optional[bool]:
+        """Read GPIO value from sysfs. Returns state: True if high, False if low."""
+        try:
+            gpio_path = _SYSFS_GPIO / f"gpio{gpio_pin}"
+            value_file = gpio_path / "value"
+            if value_file.exists():
+                value_str = value_file.read_text(encoding="utf-8").strip()
+                level = int(value_str)
+                return bool(level) == active_high
+            return None
+        except Exception as exc:
+            logger.warning("sysfs GPIO read failed for GPIO%d: %s", gpio_pin, exc)
+            return None
+
     def _set_pin_state(self, pin: PinConfig, on: bool) -> None:
+        # Input pins are read-only; skip state changes
+        if pin.direction == "input":
+            logger.debug("[%s] Ignoring state change for input pin %s", self.cap_id, pin.friendly_name)
+            return
+        
         level = 1 if on == pin.active_high else 0
         success = False
 
         if self._driver == "raspi-gpio":
-            success = self._set_with_raspi_gpio(pin.gpio_pin, level)
+            success = self._set_with_raspi_gpio(pin.gpio_pin, level, direction="out")
         elif self._driver == "sysfs":
-            success = self._set_with_sysfs(pin.gpio_pin, level)
+            success = self._set_with_sysfs(pin.gpio_pin, level, direction="out")
 
         if not success:
             logger.warning("[%s] Failed to drive GPIO%d using %s; state tracked in memory only", self.cap_id, pin.gpio_pin, self._driver)
@@ -329,15 +460,36 @@ class GpioControlCapability(CapabilityModule):
         self._states[pin.entity_id] = on
 
     def _setup_pin(self, pin: PinConfig, on: bool) -> None:
-        level = 1 if on == pin.active_high else 0
-        if self._driver == "raspi-gpio":
-            self._set_with_raspi_gpio(pin.gpio_pin, level)
-        elif self._driver == "sysfs":
-            self._set_with_sysfs(pin.gpio_pin, level)
+        if pin.direction == "input":
+            # Setup input pin (level parameter ignored)
+            if self._driver == "raspi-gpio":
+                self._set_with_raspi_gpio(pin.gpio_pin, 0, direction="in", pull_mode=pin.pull_mode)
+            elif self._driver == "sysfs":
+                self._set_with_sysfs(pin.gpio_pin, 0, direction="in", pull_mode=pin.pull_mode)
+        else:
+            # Setup output pin with initial state
+            level = 1 if on == pin.active_high else 0
+            if self._driver == "raspi-gpio":
+                self._set_with_raspi_gpio(pin.gpio_pin, level, direction="out")
+            elif self._driver == "sysfs":
+                self._set_with_sysfs(pin.gpio_pin, level, direction="out")
 
-    def _set_with_raspi_gpio(self, gpio_pin: int, level: int) -> bool:
-        cmd = ["raspi-gpio", "set", str(gpio_pin), "op", "dh" if level else "dl"]
+    def _set_with_raspi_gpio(self, gpio_pin: int, level: int, direction: str = "out", pull_mode: str = "none") -> bool:
         try:
+            if direction == "in":
+                # Setup input with optional pull mode: raspi-gpio set <pin> ip [pu|pd|pn]
+                pull_arg = ""
+                if pull_mode == "pull_up":
+                    pull_arg = " pu"
+                elif pull_mode == "pull_down":
+                    pull_arg = " pd"
+                else:
+                    pull_arg = " pn"
+                cmd = ["raspi-gpio", "set", str(gpio_pin), "ip" + pull_arg]
+            else:
+                # Setup output: raspi-gpio set <pin> op dh|dl
+                cmd = ["raspi-gpio", "set", str(gpio_pin), "op", "dh" if level else "dl"]
+            
             res = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=2)
             if res.returncode == 0:
                 return True
@@ -347,21 +499,38 @@ class GpioControlCapability(CapabilityModule):
             logger.warning("raspi-gpio exception for GPIO%d: %s", gpio_pin, exc)
             return False
 
-    def _set_with_sysfs(self, gpio_pin: int, level: int) -> bool:
+    def _set_with_sysfs(self, gpio_pin: int, level: int, direction: str = "out", pull_mode: str = "none") -> bool:
         try:
             gpio_path = _SYSFS_GPIO / f"gpio{gpio_pin}"
             export_path = _SYSFS_GPIO / "export"
             if not gpio_path.exists() and export_path.exists():
                 export_path.write_text(str(gpio_pin), encoding="utf-8")
 
-            direction = gpio_path / "direction"
-            value = gpio_path / "value"
-            if direction.exists():
-                direction.write_text("out", encoding="utf-8")
-            if value.exists():
-                value.write_text("1" if level else "0", encoding="utf-8")
+            direction_file = gpio_path / "direction"
+            value_file = gpio_path / "value"
+            
+            if direction_file.exists():
+                direction_file.write_text(direction, encoding="utf-8")
+            
+            # Set pull mode via sysfs if available (some implementations support this)
+            if direction == "in" and pull_mode != "none":
+                pull_file = gpio_path / "bias"
+                if pull_file.exists():
+                    pull_value = "pull_up" if pull_mode == "pull_up" else "pull_down"
+                    try:
+                        pull_file.write_text(pull_value, encoding="utf-8")
+                    except Exception:
+                        # Pull mode not supported, continue anyway
+                        pass
+            
+            # For output pins, set the value
+            if direction == "out" and value_file.exists():
+                value_file.write_text("1" if level else "0", encoding="utf-8")
+                return True
+            elif direction == "in":
+                # Input pin setup successful
                 return True
             return False
         except Exception as exc:
-            logger.warning("sysfs GPIO write failed for GPIO%d: %s", gpio_pin, exc)
+            logger.warning("sysfs GPIO setup failed for GPIO%d: %s", gpio_pin, exc)
             return False
