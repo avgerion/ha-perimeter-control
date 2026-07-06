@@ -334,7 +334,7 @@ class GpioControlCapability(CapabilityModule):
             "id": pin.entity_id,
             "type": pin.entity_type,
             "friendly_name": pin.friendly_name,
-            "capability": self.cap_id,
+            "capability_id": self.cap_id,
             "state": "on" if state_on else "off",
             "icon": pin.icon,
             "attributes": attrs,
