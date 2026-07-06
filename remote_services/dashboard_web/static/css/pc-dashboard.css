@@ -5,13 +5,18 @@
     color: #ecf0f1;
     padding: 10px;
     border-radius: 6px;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
 }
 
 .pc-header-item {
     display: block;
     clear: both;
-    margin: 0.5em 0;
+    margin: 4px 0;
     padding: 0;
+    line-height: 1.6;
+    min-height: 18px;
 }
 
 .pc-header-item p {
@@ -21,7 +26,8 @@
 }
 
 .pc-header h3 {
-    margin: 0 0 6px 0;
+    margin: 0 0 8px 0;
+    padding: 0;
 }
 
 .pc-header p {
@@ -30,9 +36,11 @@
 }
 
 .pc-section-title {
-    margin-top: 8px;
+    margin-top: 0;
     margin-bottom: 4px;
     font-weight: bold;
+    min-height: 20px;
+    line-height: 1.4;
 }
 
 .pc-section-title-container {
@@ -118,6 +126,33 @@
 
 .pc-status-badge {
     margin-bottom: 6px;
+    min-height: 22px;
+    line-height: 1.5;
+}
+
+.status-badge {
+    background-color: #34495e;
+    padding: 8px;
+    border-radius: 4px;
+    display: block;
+    min-height: 22px;
+    line-height: 1.5;
+}
+
+.status-checking {
+    color: #f39c12;
+}
+
+.status-running {
+    color: #27ae60;
+}
+
+.status-stopped {
+    color: #e74c3c;
+}
+
+.status-error {
+    color: #c0392b;
 }
 
 

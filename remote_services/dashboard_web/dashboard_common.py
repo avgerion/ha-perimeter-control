@@ -83,13 +83,15 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
             "</div>"
         ),
         sizing_mode="stretch_width",
+        height=100,
     )
     status_badge = Div(
         text="<b>Status:</b> <span class='status-checking'>checking...</span>",
         sizing_mode="stretch_width",
-        css_classes=["status-badge"]
+        css_classes=["status-badge"],
+        height=30,
     )
-    status_details = PreText(text="Waiting for first health check...", height=90, sizing_mode="stretch_width")
+    status_details = PreText(text="Waiting for first health check...", height=100, sizing_mode="stretch_width")
 
     # Use PreText widgets for log content and style them via CSS classes so
     # they behave consistently and avoid overlapping other Divs.
