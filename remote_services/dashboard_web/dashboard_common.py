@@ -18,6 +18,8 @@ from bokeh.io import curdoc
 import subprocess
 import logging
 from pathlib import Path
+import re
+from bokeh.resources import Resources
 
 _DC_LOGGER = logging.getLogger("perimetercontrol.dashboard_common")
 
@@ -54,6 +56,35 @@ def _run_shell(command: str, timeout: int = 8) -> str:
     return f"$ {command}\n[error] {exc}"
 
 
+def render_sanitized_bokeh_css(mode: str = "inline") -> str:
+    """Render Bokeh CSS server-side and sanitize it to remove problematic rules.
+
+    This prevents Bokeh from injecting `display: flow-root` into the global
+    stylesheet which forces `html, body` into a layout that breaks our header
+    positioning. We replace occurrences of `display: flow-root` with
+    `display: block` as a conservative, safe fallback.
+    """
+    try:
+        resources = Resources(mode=mode)
+        css = resources.render_css()
+        # Replace any 'display: flow-root' occurrences to avoid forcing flow-root
+        sanitized = re.sub(r"display:\\s*flow-root;?", "display: block;", css, flags=re.IGNORECASE)
+        return sanitized
+    except Exception:
+        # On failure return an empty string so template falls back to default placeholder
+        return ""
+
+
+def get_index_with_sanitized_css(template_text: str, mode: str = "inline") -> str:
+    """Return `template_text` with the `{{ bokeh_css }}` placeholder replaced by
+    sanitized Bokeh CSS rendered server-side.
+    """
+    sanitized_css = render_sanitized_bokeh_css(mode=mode)
+    if not sanitized_css:
+        return template_text
+    return template_text.replace("{{ bokeh_css }}", sanitized_css)
+
+
 def create_service_status_panel(service_name: str, log_dir: str = "/var/log/PerimeterControl",
                                  unit_name: str | None = None) -> tuple:
     """
@@ -75,22 +106,18 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     header_title = Div(
         text=f"<h3 style='margin:0; padding:0; color:#ecf0f1;'>Service Status - {service_name}</h3>",
         sizing_mode="stretch_width",
-        height=25,
     )
     header_unit = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Unit: <code>{unit_name}.service</code></p>",
         sizing_mode="stretch_width",
-        height=24,
     )
     header_service_log = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Service log: <code>{service_log}</code></p>",
         sizing_mode="stretch_width",
-        height=24,
     )
     header_supervisor_log = Div(
         text=f"<p style='margin:0; padding:0; color:#ecf0f1; font-size:12px;'>Supervisor log: <code>{supervisor_log}</code></p>",
         sizing_mode="stretch_width",
-        height=18,
     )
     # Wrap header divs in a container with background styling
     header_container = Div(
@@ -102,7 +129,6 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         text="<b>Status:</b> <span class='status-checking'>checking...</span>",
         sizing_mode="stretch_width",
         css_classes=["status-badge"],
-        height=35,
     )
     status_details = PreText(text="Waiting for first health check...", height=100, sizing_mode="stretch_width")
 
@@ -110,13 +136,11 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     # they behave consistently and avoid overlapping other Divs.
     service_log_text = PreText(
         text="Loading service log...",
-        height=140,
         sizing_mode="stretch_width",
         css_classes=["pc-log"],
     )
     supervisor_log_text = PreText(
         text="Loading supervisor log...",
-        height=140,
         sizing_mode="stretch_width",
         css_classes=["pc-log"],
     )
@@ -161,7 +185,6 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
     ssh_run_button = Button(label="Run Command", button_type="primary", sizing_mode="stretch_width")
     ssh_command_output = PreText(
         text="Command output will appear here.",
-        height=140,
         sizing_mode="stretch_width",
         css_classes=["pc-command-output"],
     )
@@ -218,14 +241,12 @@ def create_service_status_panel(service_name: str, log_dir: str = "/var/log/Peri
         Div(
             text="<b>Service Log</b>",
             sizing_mode="stretch_width",
-            height=24,
         ),
         service_log_text,
         Spacer(height=12),
         Div(
             text="<b>Supervisor Log</b>",
             sizing_mode="stretch_width",
-            height=24,
         ),
         supervisor_log_text,
         Spacer(height=12),
