@@ -109,7 +109,7 @@ def main(config_path):
     except Exception as e:
         logger.exception("Failed to load application template: %s", e)
         app_template = None
-    app = Application(handler, template=app_template)
+    app = Application(handler)
     from dashboard_common import get_extra_static_patterns
     extra_patterns = get_extra_static_patterns()
     if app_template:
