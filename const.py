@@ -185,6 +185,12 @@ APT_DEPENDENCY_GROUPS: dict[str, list[str]] = {
         "gstreamer1.0-plugins-base",
         "gstreamer1.0-plugins-good",
     ],
+    "i2c": [
+        "i2c-tools",
+    ],
+    "raspi-gpio": [
+        "gpiod",
+    ],
 }
 
 # Helper functions for path management

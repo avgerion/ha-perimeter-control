@@ -484,7 +484,26 @@ fi
             if p not in seen:
                 seen.add(p)
                 unique_pkgs.append(p)
-
+        # Expand any dependency group keywords using const.APT_DEPENDENCY_GROUPS
+        try:
+            from .const import APT_DEPENDENCY_GROUPS
+            expanded: list[str] = []
+            for pkg in unique_pkgs:
+                if pkg in APT_DEPENDENCY_GROUPS:
+                    expanded.extend(APT_DEPENDENCY_GROUPS[pkg])
+                else:
+                    expanded.append(pkg)
+            # Deduplicate expanded list while preserving order
+            seen2 = set()
+            final_pkgs: list[str] = []
+            for pkg in expanded:
+                if pkg not in seen2:
+                    seen2.add(pkg)
+                    final_pkgs.append(pkg)
+            unique_pkgs = final_pkgs
+        except Exception:
+            # If expansion fails for any reason, fall back to the original list
+            pass
         self._emit("supervisor", "Service descriptors deployed", 80)
         return unique_pkgs
 

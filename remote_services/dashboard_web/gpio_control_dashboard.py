@@ -74,10 +74,14 @@ def main(config_path):
         # embedding the template directly in Python files and to ensure
         # the document head does not inject restrictive global styles.
         try:
-                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
-                if tmpl_path.exists():
-                        doc.template = tmpl_path.read_text(encoding="utf-8")
+            tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+            if tmpl_path.exists():
+                doc.template = tmpl_path.read_text(encoding="utf-8")
+                logger.info("Loaded custom template, length=%d", len(doc.template or ""))
+            else:
+                logger.warning("Template missing: %s", tmpl_path)
         except Exception:
+                logger.warning("Failed to load custom dashboard template; using default Bokeh template")
                 pass
         try:
             from dashboard_common import _get_style_div, get_loader_div

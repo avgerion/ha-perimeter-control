@@ -79,7 +79,9 @@ def create_gpio_control_dashboard_layout(data_manager):
         TableColumn(field="state", title="State"),
     ]
     source = ColumnDataSource(source_data)
-    table = DataTable(source=source, columns=columns, width=800)
+    # Use responsive sizing to avoid fixed-width overflow which can cause
+    # layout overlap when the page header or container styles change.
+    table = DataTable(source=source, columns=columns, sizing_mode="stretch_width")
     
     # Bootstrap with config entities if available
     try:
