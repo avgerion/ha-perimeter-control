@@ -66,6 +66,12 @@ def main(config_path):
         doc.supervisor_api_url = final_supervisor_api_url
         setup_esl_callbacks(doc, data_manager)
         doc.title = "ESL Dashboard"
+        try:
+                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+                if tmpl_path.exists():
+                        doc.template = tmpl_path.read_text(encoding="utf-8")
+        except Exception:
+                pass
 
     port = int(config.get('port', 8092))
 

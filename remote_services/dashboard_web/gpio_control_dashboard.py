@@ -67,6 +67,18 @@ def main(config_path):
         )
         full_layout = bk_column(layout, status_layout, log_layout, sizing_mode="stretch_width")
         doc.add_root(full_layout)
+        # Provide a minimal HTML template for the Bokeh document to avoid
+        # server-default headers that inject restrictive global styles
+        # (e.g. `display: flow-root; height:100%`) which break layout.
+        # Load shared minimal HTML template from static/html to avoid
+        # embedding the template directly in Python files and to ensure
+        # the document head does not inject restrictive global styles.
+        try:
+                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+                if tmpl_path.exists():
+                        doc.template = tmpl_path.read_text(encoding="utf-8")
+        except Exception:
+                pass
         try:
             from dashboard_common import _get_style_div, get_loader_div
             doc.add_root(_get_style_div())

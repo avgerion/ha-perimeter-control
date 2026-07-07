@@ -86,6 +86,12 @@ def main(config_path):
         )
         setup_photo_booth_callbacks(doc, data_manager)
         doc.title = f"Photo Booth Dashboard - {instance_name or 'default'}"
+        try:
+                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+                if tmpl_path.exists():
+                        doc.template = tmpl_path.read_text(encoding="utf-8")
+        except Exception:
+                pass
     handler = FunctionHandler(create_app)
     app = Application(handler)
     from dashboard_common import get_extra_static_patterns

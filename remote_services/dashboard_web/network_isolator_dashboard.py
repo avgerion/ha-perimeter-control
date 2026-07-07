@@ -67,6 +67,14 @@ def main(config_path: Path):
             setattr(doc, key, value)
         setup_callbacks(doc, data_manager)
         doc.title = "Network Isolator Quick View"
+        # Ensure document uses a minimal HTML template without restrictive
+        # global styles that interfere with our layout.
+        try:
+                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+                if tmpl_path.exists():
+                        doc.template = tmpl_path.read_text(encoding="utf-8")
+        except Exception:
+                pass
     handler = FunctionHandler(create_app)
     app = Application(handler)
     from dashboard_common import get_extra_static_patterns

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    {{ bokeh_css }}
+    {{ bokeh_js }}
+    <link rel="stylesheet" href="/css/pc-dashboard.css">
+</head>
+
+<body>
+    {{ plot_div | indent(4) }}
+    {{ plot_script | indent(4) }}
+</body>
+
+</html>
