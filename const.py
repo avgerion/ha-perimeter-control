@@ -123,6 +123,7 @@ SHARED_WEB_FILES = [
     "remote_services/supervisor/data_manager.py",
     "remote_services/dashboard_web/dashboard_common.py",
     "remote_services/dashboard_web/static/css/pc-dashboard.css",
+    "remote_services/dashboard_web/static/html/pc-dashboard-template.html",
 ]
 
 # List of all available service IDs (for Home Assistant integration compatibility)

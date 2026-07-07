@@ -354,7 +354,9 @@ fi
             if not src.exists():
                 _LOGGER.warning("Web file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"{remote_temp_root}/{fname}")
+            base = Path(fname).name
+            # Upload to flat temp directory so install script can locate by basename
+            await self._client.async_put_file(src, f"{remote_temp_root}/{base}")
             pct = 15 + int(15 * (i + 1) / len(web_files))
             self._emit("upload", f"Uploaded {fname}", pct)
         
@@ -364,7 +366,8 @@ fi
             if not src.exists():
                 _LOGGER.warning("Script file not found, skipping: %s", src)
                 continue
-            await self._client.async_put_file(src, f"{remote_temp_root}/{fname}")
+            base = Path(fname).name
+            await self._client.async_put_file(src, f"{remote_temp_root}/{base}")
             pct = 30 + int(15 * (i + 1) / len(script_files))
             self._emit("upload", f"Uploaded {fname}", pct)
 
