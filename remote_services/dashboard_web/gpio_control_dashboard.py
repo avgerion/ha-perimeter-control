@@ -76,13 +76,13 @@ def main(config_path):
         try:
             tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
             if tmpl_path.exists():
-                doc.template = tmpl_path.read_text(encoding="utf-8")
-                logger.info("Loaded custom template, length=%d", len(doc.template or ""))
+                tmpl_text = tmpl_path.read_text(encoding="utf-8")
+                doc.template = tmpl_text
+                logger.info("Loaded custom dashboard template %s (len=%d)", tmpl_path, len(tmpl_text))
             else:
-                logger.warning("Template missing: %s", tmpl_path)
-        except Exception:
-                logger.warning("Failed to load custom dashboard template; using default Bokeh template")
-                pass
+                logger.warning("Custom dashboard template not found: %s", tmpl_path)
+        except Exception as e:
+            logger.exception("Failed to load custom dashboard template: %s", e)
         try:
             from dashboard_common import _get_style_div, get_loader_div
             doc.add_root(_get_style_div())
@@ -103,10 +103,26 @@ def main(config_path):
         doc.title = f"GPIO Control Dashboard - {instance_name or 'default'}"
 
     handler = FunctionHandler(create_app)
-    app = Application(handler)
+    # Load template at Application level so Bokeh's index uses our template
+    try:
+        tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+        app_template = None
+        if tmpl_path.exists():
+            app_template = tmpl_path.read_text(encoding="utf-8")
+            logger.info("Application-level template loaded %s (len=%d)", tmpl_path, len(app_template))
+        else:
+            logger.warning("Application-level template not found: %s", tmpl_path)
+    except Exception as e:
+        logger.exception("Failed to load application template: %s", e)
+        app_template = None
+    app = Application(handler, template=app_template)
     from dashboard_common import get_extra_static_patterns
     extra_patterns = get_extra_static_patterns()
-    server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], extra_patterns=extra_patterns)
+    if app_template:
+        logger.info("Starting server with application index template present (len=%d)", len(app_template))
+    else:
+        logger.info("Starting server without application index template; Bokeh default index will be used")
+    server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], index=app_template, extra_patterns=extra_patterns)
     logger.info(f"GPIO Control dashboard running on port {port}")
     logger.info("[GPIO_DASH] CSS will be loaded from /css/pc-dashboard.css via HTTP (custom handler, not Bokeh /static/)")
     logger.info("[GPIO_DASH] Check server logs for GET /css/pc-dashboard.css requests")

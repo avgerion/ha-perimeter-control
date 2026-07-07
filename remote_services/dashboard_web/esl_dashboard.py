@@ -67,19 +67,39 @@ def main(config_path):
         setup_esl_callbacks(doc, data_manager)
         doc.title = "ESL Dashboard"
         try:
-                tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
-                if tmpl_path.exists():
-                        doc.template = tmpl_path.read_text(encoding="utf-8")
-        except Exception:
-                pass
+            tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+            if tmpl_path.exists():
+                tmpl_text = tmpl_path.read_text(encoding="utf-8")
+                doc.template = tmpl_text
+                logger.info("Loaded custom dashboard template %s (len=%d)", tmpl_path, len(tmpl_text))
+            else:
+                logger.warning("Custom dashboard template not found: %s", tmpl_path)
+        except Exception as e:
+            logger.exception("Failed to load custom dashboard template: %s", e)
 
     port = int(config.get('port', 8092))
 
     handler = FunctionHandler(create_app)
-    app = Application(handler)
+    # Load template at Application level so Bokeh's index uses our template
+    try:
+        tmpl_path = Path(__file__).parent / "static" / "html" / "pc-dashboard-template.html"
+        app_template = None
+        if tmpl_path.exists():
+            app_template = tmpl_path.read_text(encoding="utf-8")
+            logger.info("Application-level template loaded %s (len=%d)", tmpl_path, len(app_template))
+        else:
+            logger.warning("Application-level template not found: %s", tmpl_path)
+    except Exception as e:
+        logger.exception("Failed to load application template: %s", e)
+        app_template = None
+    app = Application(handler, template=app_template)
     from dashboard_common import get_extra_static_patterns, get_loader_div
     extra_patterns = get_extra_static_patterns()
-    server = Server({'/': app}, port=port, address='0.0.0.0', allow_websocket_origin=["*"], extra_patterns=extra_patterns)
+    if app_template:
+        logger.info("Starting server with application index template present (len=%d)", len(app_template))
+    else:
+        logger.info("Starting server without application index template; Bokeh default index will be used")
+    server = Server({'/': app}, port=port, address='0.0.0.0', allow_websocket_origin=["*"], index=app_template, extra_patterns=extra_patterns)
     server.start()
     server.io_loop.start()
     return 0
