@@ -119,14 +119,7 @@ def main(config_path):
     from dashboard_common import get_extra_static_patterns
     extra_patterns = get_extra_static_patterns()
     if app_template:
-        # Sanitize the template by substituting in server-rendered, sanitized
-        # Bokeh CSS to prevent `display: flow-root` from being injected.
-        try:
-            from dashboard_common import get_index_with_sanitized_css
-            app_template = get_index_with_sanitized_css(app_template, mode="inline")
-            logger.info("Starting server with sanitized application index template (len=%d)", len(app_template))
-        except Exception:
-            logger.exception("Failed to sanitize application template; falling back to raw template")
+        logger.info("Starting server with application index template (len=%d)", len(app_template))
     else:
         logger.info("Starting server without application index template; Bokeh default index will be used")
     server = Server({'/': app}, port=port, address="0.0.0.0", allow_websocket_origin=["*"], index=app_template, extra_patterns=extra_patterns)
