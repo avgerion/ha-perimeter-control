@@ -43,9 +43,9 @@ def _register_capabilities(supervisor: Supervisor) -> None:
     """Import and register all available capability module classes."""
     try:
         from .capabilities.network_isolation import NetworkIsolationCapability
-        supervisor.register_capability("network_isolation", NetworkIsolationCapability)
+        supervisor.register_capability("network_isolator", NetworkIsolationCapability)
     except ImportError as exc:
-        logging.warning("Could not load network_isolation module: %s", exc)
+        logging.warning("Could not load network_isolator module: %s", exc)
 
     try:
         from .capabilities.ble_gatt_repeater import BleGattRepeaterCapability
