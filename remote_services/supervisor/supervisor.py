@@ -500,7 +500,12 @@ class Supervisor:
                 logger.error("Failed to restore capability %s: %s", cap["id"], exc)
 
     async def _deploy_configured_capabilities(self) -> None:
-        """Deploy capabilities from perimeterControl.conf.yaml that aren't already in the database."""
+        """Deploy capabilities from perimeterControl.conf.yaml that aren't already in the database.
+        
+        For services with multiple instances (e.g., gpio_control.relays, gpio_control.buttons),
+        this removes any base capability (e.g., gpio_control) that was deployed without instances,
+        and deploys the full instance set instead.
+        """
         config_file = self.config_dir / "perimeterControl.conf.yaml"
         if not config_file.exists():
             logger.debug("No perimeterControl.conf.yaml found at %s", config_file)
@@ -535,8 +540,21 @@ class Supervisor:
             cap_id = cap_type
             
             if cap_id in active_cap_ids:
-                logger.debug("Capability %s already active, skipping", cap_id)
-                continue
+                # If base capability is active but config has instances, remove the base and deploy instances
+                # This handles the case where gpio_control was deployed as base but config wants gpio_control:relays
+                if len(instances) > 0:
+                    logger.info("Base capability %s is active but config has instances; replacing with instance-based deployment", cap_id)
+                    try:
+                        await self._active[cap_id].stop()
+                        del self._active[cap_id]
+                        self.resources.release(cap_id)
+                        # Continue to redeploy with instances below
+                    except Exception as exc:
+                        logger.warning("Error stopping base capability %s: %s", cap_id, exc)
+                        continue
+                else:
+                    logger.debug("Capability %s already active, skipping", cap_id)
+                    continue
             
             # Create deployment config with ALL instances for this service
             # The capability will iterate through instances internally
