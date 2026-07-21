@@ -54,6 +54,7 @@ SERVICE_REGISTRY = {
         "script_files": [],
         "pip_packages": ["tornado"],
         "deploy_api": None,
+        "config_based": True,
     },
     os.environ.get("PERIMETERCONTROL_GPIO_CONTROL_SERVICE", "gpio_control"): {
         "unit": "perimetercontrol-gpio-dashboard",
@@ -68,6 +69,7 @@ SERVICE_REGISTRY = {
         # Supervisor auto-deploys gpio_control from perimeterControl.conf.yaml at startup.
         # No explicit deploy_api call needed; auto-deploy preserves instance config.
         "deploy_api": None,
+        "config_based": True,
     },
     os.environ.get("PERIMETERCONTROL_BLE_GATT_REPEATER_SERVICE", "ble_gatt_repeater"): {
         "unit": "perimetercontrol-ble-dashboard",

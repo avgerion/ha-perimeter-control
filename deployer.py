@@ -306,10 +306,19 @@ class Deployer(BaseDeployer):
                 components = [comp.name for comp in service._components.values() if comp.config.enabled]
                 _LOGGER.info(f"Service {service_id} components: {components}")
                 
-                # Deploy using component composition
-                success = await service.deploy(self._client, deployment_path, hass=self._hass)
-                if not success:
-                    raise Exception(f"Service {service_id} component deployment failed")
+                # Skip service.deploy() for config-based instance services
+                # These services have multiple instances defined in perimeterControl.conf.yaml
+                # and supervisor will auto-deploy them. Calling service.deploy() here would
+                # create a base capability that blocks supervisor's instance deployment.
+                # Check SERVICE_REGISTRY for config_based property instead of hardcoding.
+                service_config = SERVICE_REGISTRY.get(service_id, {})
+                is_config_based = service_config.get("config_based", False)
+                if is_config_based:
+                    _LOGGER.info("Skipping service.deploy() for config-based service %s; supervisor will auto-deploy from config", service_id)
+                else:
+                    success = await service.deploy(self._client, deployment_path, hass=self._hass)
+                    if not success:
+                        raise Exception(f"Service {service_id} component deployment failed")
 
                 # Runtime config is deployed from the single perimeterControl.conf.yaml
                 # in phase_config. Services auto-deploy from this file via supervisor.
