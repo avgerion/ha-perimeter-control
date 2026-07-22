@@ -26,6 +26,7 @@ import logging
 import os
 import tarfile
 import tempfile
+import yaml
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -217,13 +218,41 @@ class Deployer(BaseDeployer):
     async def _phase_config(self) -> None:
         """Deploy unified configuration file to the Pi."""
         self._emit("config", "Deploying configuration files...", 5)
+        runtime_config_path = INTEGRATION_DIR / "config" / "perimeterControl.conf.yaml"
+        temp_config_path: Optional[Path] = None
         try:
-            await self.phase_config(["perimeterControl.conf.yaml"])
+            if not runtime_config_path.exists():
+                raise FileNotFoundError(f"Runtime config not found: {runtime_config_path}")
+
+            # Keep full YAML intact, but annotate which services HA selected.
+            selected_services = list(dict.fromkeys(self._selected_services))
+            raw_config = await asyncio.to_thread(runtime_config_path.read_text, encoding="utf-8")
+            parsed = await asyncio.to_thread(yaml.safe_load, raw_config)
+            config_data = parsed if isinstance(parsed, dict) else {}
+            config_data["enabled_services"] = selected_services
+            rendered = await asyncio.to_thread(yaml.safe_dump, config_data, sort_keys=False)
+
+            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as tmp:
+                tmp.write(rendered)
+                temp_config_path = Path(tmp.name)
+
+            await self._client.async_put_file(temp_config_path, f"{remote_temp_root}/perimeterControl.conf.yaml")
+            await self._client.async_run(f"sudo mkdir -p {remote_conf_dir}")
+            await self._client.async_run(
+                f"sudo install -o root -g root -m 0644 {remote_temp_root}/perimeterControl.conf.yaml {remote_conf_dir}/perimeterControl.conf.yaml"
+            )
+            _LOGGER.info("Deployed perimeterControl.conf.yaml with enabled_services=%s", selected_services)
             _LOGGER.info("Configuration files deployed successfully")
             self._emit("config", "Configuration deployed", 6)
         except Exception as exc:
             _LOGGER.error("Configuration deployment failed: %s", exc)
             raise
+        finally:
+            if temp_config_path and temp_config_path.exists():
+                try:
+                    temp_config_path.unlink()
+                except OSError:
+                    _LOGGER.debug("Failed to remove temporary config file %s", temp_config_path)
 
     async def _phase_service_selection(self) -> None:
         """Validate service selection and check for conflicts using component architecture."""

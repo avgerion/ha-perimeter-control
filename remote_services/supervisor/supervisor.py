@@ -26,7 +26,7 @@ import uuid
 import yaml
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Set, Type
 
 from .capabilities.base import CapabilityModule
 from .health.probes import HealthProbeEvaluator
@@ -321,10 +321,19 @@ class Supervisor:
     async def _reconcile(self) -> None:
         """Single reconciliation pass: desired state → actual state."""
         all_caps = self.db.list_capabilities()
+        enabled_service_types = self._load_enabled_service_types()
 
         for cap in all_caps:
             cap_id = cap["id"]
             desired_status = cap["status"]
+
+            if not self._is_capability_enabled(cap_id, cap.get("config") or {}, enabled_service_types):
+                if desired_status != "inactive" or cap_id in self._active:
+                    await self._deactivate_capability(
+                        cap_id,
+                        "Capability is not enabled in perimeterControl.conf.yaml",
+                    )
+                continue
 
             if desired_status == "inactive":
                 continue
@@ -350,6 +359,66 @@ class Supervisor:
                         await self._start_capability(cap_id, cap["config"], "reconciliation")
                     except Exception as exc:
                         logger.error("[reconcile] Retry of %s failed: %s", cap_id, exc)
+
+    async def _deactivate_capability(self, cap_id: str, reason: str) -> None:
+        """Stop a capability if running and mark it inactive in the DB."""
+        if cap_id in self._active:
+            try:
+                await self._active[cap_id].stop()
+            except Exception as exc:
+                logger.warning("Error stopping %s while deactivating: %s", cap_id, exc)
+            finally:
+                self._active.pop(cap_id, None)
+                self.resources.release(cap_id)
+
+        self.db.update_capability_status(cap_id, "inactive", consecutive_failures=0)
+        logger.info("Capability %s marked inactive: %s", cap_id, reason)
+
+    def _load_enabled_service_types(self) -> Optional[Set[str]]:
+        """
+        Read enabled service IDs from perimeterControl.conf.yaml.
+
+        Returns None when the key is absent to preserve backward compatibility
+        with existing configs that do not specify service gating.
+        """
+        config_file = self.config_dir / "perimeterControl.conf.yaml"
+        if not config_file.exists():
+            return None
+
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as exc:
+            logger.warning("Failed reading %s: %s", config_file, exc)
+            return None
+
+        enabled_services = config.get("enabled_services")
+        if enabled_services is None:
+            return None
+        if not isinstance(enabled_services, list):
+            logger.warning("Ignoring non-list enabled_services value: %r", enabled_services)
+            return None
+
+        return {
+            item.strip()
+            for item in enabled_services
+            if isinstance(item, str) and item.strip()
+        }
+
+    def _is_capability_enabled(
+        self,
+        cap_id: str,
+        cap_config: Dict[str, Any],
+        enabled_service_types: Optional[Set[str]],
+    ) -> bool:
+        if enabled_service_types is None:
+            return True
+
+        cap_type = cap_config.get("type") if isinstance(cap_config, dict) else None
+        if not isinstance(cap_type, str) or not cap_type.strip():
+            cap_type = cap_id.split(":", 1)[0].strip()
+
+        return cap_type in enabled_service_types
 
     # ------------------------------------------------------------------
     # Internal start / stop a single capability
@@ -484,6 +553,7 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     async def _restore_state(self) -> None:
+        enabled_service_types = self._load_enabled_service_types()
         active_caps = [
             c for c in self.db.list_capabilities()
             if c["status"] in ("active", "deploying")
@@ -494,6 +564,13 @@ class Supervisor:
 
         logger.info("Restoring %d capabilities from state DB …", len(active_caps))
         for cap in active_caps:
+            if not self._is_capability_enabled(cap["id"], cap.get("config") or {}, enabled_service_types):
+                logger.info(
+                    "Skipping restore of %s because it is not enabled in perimeterControl.conf.yaml",
+                    cap["id"],
+                )
+                self.db.update_capability_status(cap["id"], "inactive", consecutive_failures=0)
+                continue
             try:
                 await self._start_capability(cap["id"], cap["config"], "startup_restore")
             except Exception as exc:
@@ -519,6 +596,7 @@ class Supervisor:
             return
 
         services = config.get("services", {})
+        enabled_service_types = self._load_enabled_service_types()
         if not services:
             logger.warning("No services found in perimeterControl.conf.yaml")
             return
@@ -533,6 +611,11 @@ class Supervisor:
         # Key: services may have multiple instances (e.g., gpio_control.relays, gpio_control.buttons)
         # Deploy all instances of a service in ONE capability, not separately
         for cap_type, instances in services.items():
+            if enabled_service_types is not None and cap_type not in enabled_service_types:
+                logger.info("Skipping configured capability %s because it is not enabled", cap_type)
+                self.db.update_capability_status(cap_type, "inactive", consecutive_failures=0)
+                continue
+
             if not isinstance(instances, dict):
                 logger.warning("Service %s config is not a dict, skipping", cap_type)
                 continue
