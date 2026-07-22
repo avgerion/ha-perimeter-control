@@ -261,8 +261,17 @@ class Supervisor:
 
     def get_entities(self) -> List[Dict[str, Any]]:
         entities: List[Dict] = []
-        for cap in self._active.values():
-            entities.extend(cap.get_entities())
+        logger.debug("[ENTITIES] Collecting from %d active capabilities: %s", len(self._active), list(self._active.keys()))
+        for cap_id, cap in self._active.items():
+            try:
+                cap_entities = cap.get_entities()
+                logger.debug("[ENTITIES] %s returned %d entities", cap_id, len(cap_entities))
+                for e in cap_entities:
+                    logger.debug("[ENTITIES]   - %s (type=%s, platform=%s)", e.get("id"), e.get("type"), e.get("platform"))
+                entities.extend(cap_entities)
+            except Exception as exc:
+                logger.error("[ENTITIES] %s.get_entities() raised: %s", cap_id, exc, exc_info=True)
+        logger.info("[ENTITIES] Total entities collected: %d", len(entities))
         return entities
 
     def get_entity_state(self, entity_id: str) -> Optional[Dict[str, Any]]:
@@ -383,27 +392,32 @@ class Supervisor:
         """
         config_file = self.config_dir / "perimeterControl.conf.yaml"
         if not config_file.exists():
+            logger.warning("[LOAD_ENABLED] Config file not found: %s", config_file)
             return None
 
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f) or {}
         except Exception as exc:
-            logger.warning("Failed reading %s: %s", config_file, exc)
+            logger.warning("[LOAD_ENABLED] Failed reading %s: %s", config_file, exc)
             return None
 
         enabled_services = config.get("enabled_services")
+        logger.info("[LOAD_ENABLED] enabled_services from YAML: %s", enabled_services)
         if enabled_services is None:
+            logger.info("[LOAD_ENABLED] Key not present (backward compat mode - all services enabled)")
             return None
         if not isinstance(enabled_services, list):
-            logger.warning("Ignoring non-list enabled_services value: %r", enabled_services)
+            logger.warning("[LOAD_ENABLED] Ignoring non-list enabled_services value: %r", enabled_services)
             return None
 
-        return {
+        result = {
             item.strip()
             for item in enabled_services
             if isinstance(item, str) and item.strip()
         }
+        logger.info("[LOAD_ENABLED] Parsed enabled_services set: %s", result)
+        return result
 
     def _is_capability_enabled(
         self,
@@ -611,10 +625,12 @@ class Supervisor:
         # Key: services may have multiple instances (e.g., gpio_control.relays, gpio_control.buttons)
         # Deploy all instances of a service in ONE capability, not separately
         for cap_type, instances in services.items():
+            logger.info("[DEPLOY] Processing service type: %s (enabled_service_types=%s)", cap_type, enabled_service_types)
             if enabled_service_types is not None and cap_type not in enabled_service_types:
-                logger.info("Skipping configured capability %s because it is not enabled", cap_type)
+                logger.warning("[DEPLOY] Skipping configured capability %s because it is not in enabled_service_types=%s", cap_type, enabled_service_types)
                 self.db.update_capability_status(cap_type, "inactive", consecutive_failures=0)
                 continue
+            logger.info("[DEPLOY] Service %s is enabled, proceeding with deployment", cap_type)
 
             if not isinstance(instances, dict):
                 logger.warning("Service %s config is not a dict, skipping", cap_type)
@@ -650,15 +666,17 @@ class Supervisor:
             }
             
             try:
-                logger.info("Auto-deploying capability %s with %d instances from config", cap_id, len(instances))
+                logger.info("[DEPLOY] Auto-deploying capability %s with %d instances from config", cap_id, len(instances))
                 # Save to database so it persists across restarts
                 cap_name = deployment_config.get("name", cap_id)
                 cap_version = deployment_config.get("version")
                 self.db.upsert_capability(cap_id, cap_name, deployment_config, "deploying", cap_version)
+                logger.info("[DEPLOY] Starting capability %s with config keys: %s", cap_id, list(deployment_config.keys()))
                 await self._start_capability(cap_id, deployment_config, "startup_config")
+                logger.info("[DEPLOY] Capability %s started successfully", cap_id)
                 self.db.update_capability_status(cap_id, "active", consecutive_failures=0)
             except Exception as exc:
-                logger.warning("Failed to auto-deploy capability %s: %s", cap_id, exc)
+                logger.warning("[DEPLOY] Failed to auto-deploy capability %s: %s", cap_id, exc, exc_info=True)
                 self.db.update_capability_status(cap_id, "failed", consecutive_failures=1)
 
     # ------------------------------------------------------------------

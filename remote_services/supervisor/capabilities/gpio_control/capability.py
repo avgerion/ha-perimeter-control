@@ -68,9 +68,13 @@ class GpioControlCapability(CapabilityModule):
         logger.info("[%s] GPIO capability initialized [NEW CODE 2026-07-07-DEBUG]", self.cap_id)
 
     async def start(self) -> None:
-        logger.info("[%s] Starting GPIO control", self.cap_id)
+        logger.info("[GPIO START] [%s] Starting GPIO control", self.cap_id)
+        logger.info("[GPIO START] [%s] config keys: %s", self.cap_id, list(self.config.keys()))
+        logger.info("[GPIO START] [%s] config['services']: %s", self.cap_id, self.config.get('services', {}))
         self._driver = self._detect_driver()
+        logger.info("[GPIO START] [%s] Detected driver: %s", self.cap_id, self._driver)
         self._pins = self._load_pin_configs(self.config)
+        logger.info("[GPIO START] [%s] Loaded %d pins", self.cap_id, len(self._pins))
 
         if not self._pins:
             logger.warning("[%s] No GPIO pins configured (checked nested format services.gpio_control.<instance>.pins and flat format pins)", self.cap_id)
@@ -120,10 +124,14 @@ class GpioControlCapability(CapabilityModule):
 
     def get_entities(self) -> List[Dict[str, Any]]:
         entities: List[Dict[str, Any]] = []
-        for entity_id, entity_data in self.entity_cache.get_by_capability(self.cap_id).items():
+        cached = self.entity_cache.get_by_capability(self.cap_id)
+        logger.info("[GPIO ENTITIES] [%s] get_entities() called, cached entities: %s", self.cap_id, list(cached.keys()))
+        for entity_id, entity_data in cached.items():
             entity = entity_data.copy()
             entity["id"] = entity_id
             entities.append(entity)
+            logger.debug("[GPIO ENTITIES] [%s] Returning entity: %s", self.cap_id, entity_id)
+        logger.info("[GPIO ENTITIES] [%s] Returning %d entities", self.cap_id, len(entities))
         return entities
 
     async def execute_action(self, action_id: str, params: Dict[str, Any]) -> Any:
@@ -255,21 +263,27 @@ class GpioControlCapability(CapabilityModule):
         
         # Try nested format first
         services = config.get("services", {})
+        logger.info("[GPIO PINS] [%s] config.services keys: %s", self.cap_id, list(services.keys()))
         gpio_control_cfg = services.get("gpio_control", {})
+        logger.info("[GPIO PINS] [%s] gpio_control_cfg type: %s, content: %s", self.cap_id, type(gpio_control_cfg), gpio_control_cfg)
         if isinstance(gpio_control_cfg, dict):
             # Iterate over instances (relays, buttons, etc.)
             for instance_name, instance_cfg in gpio_control_cfg.items():
+                logger.info("[GPIO PINS] [%s] Processing instance '%s': type=%s", self.cap_id, instance_name, type(instance_cfg))
                 if isinstance(instance_cfg, dict):
                     instance_pins = instance_cfg.get("pins", [])
+                    logger.info("[GPIO PINS] [%s] Instance '%s' has %d pins", self.cap_id, instance_name, len(instance_pins) if isinstance(instance_pins, list) else 0)
                     if isinstance(instance_pins, list):
                         pins_list.extend(instance_pins)
         
         # Fall back to flat format (old):
         # pins: [...]
         if not pins_list:
-            pins_list = config.get("pins", [])
+            flat_pins = config.get("pins", [])
+            logger.info("[GPIO PINS] [%s] No nested pins found, trying flat format: %d pins", self.cap_id, len(flat_pins) if isinstance(flat_pins, list) else 0)
+            pins_list = flat_pins
         
-        logger.info("[%s] Parsing %d pins from config", self.cap_id, len(pins_list))
+        logger.info("[GPIO PINS] [%s] Total pins to parse: %d", self.cap_id, len(pins_list))
         
         for idx, item in enumerate(pins_list):
             try:
@@ -375,6 +389,7 @@ class GpioControlCapability(CapabilityModule):
             entity["turn_on_action_id"] = "turn_on"
             entity["turn_off_action_id"] = "turn_off"
         
+        logger.info("[GPIO PUBLISH] Publishing entity: %s (state=%s, type=%s)", pin.entity_id, entity["state"], pin.entity_type)
         self._publish_entity(entity)
 
     async def _monitor_input_pins(self) -> None:
