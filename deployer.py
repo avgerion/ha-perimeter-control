@@ -53,6 +53,9 @@ from .const import (
     SUPERVISOR_SRC_DIR,
     SHARED_WEB_FILES,
     INTEGRATION_DIR,
+    CONF_HOST,
+    CONF_SUPERVISOR_PORT,
+    DEFAULT_API_PORT,
 )
 from urllib.parse import urlparse, urlunparse
 
@@ -136,11 +139,13 @@ class Deployer(BaseDeployer):
         service_descriptors: dict | None = None,
         progress_cb: Optional[ProgressCallback] = None,
         hass=None,
+        entry_data: dict | None = None,
     ) -> None:
         super().__init__(client, progress_cb)
         self._selected_services = selected_services
         self._service_descriptors = service_descriptors or {}
         self._hass = hass
+        self._entry_data = entry_data or {}
         # deploy_api URLs collected during Phase 2, fired in Phase 4 after supervisor is up
         self._pending_deploy_apis: list[tuple[str, str]] = []  # (service_id, url)
         # Auto-entities collected from hardware detection during Phase 2,
@@ -230,6 +235,15 @@ class Deployer(BaseDeployer):
             parsed = await asyncio.to_thread(yaml.safe_load, raw_config)
             config_data = parsed if isinstance(parsed, dict) else {}
             config_data["enabled_services"] = selected_services
+            
+            # Inject supervisor_api_url from HA config entry
+            if CONF_HOST in self._entry_data and "supervisor_api_url" not in config_data:
+                host = self._entry_data[CONF_HOST]
+                port = self._entry_data.get(CONF_SUPERVISOR_PORT, DEFAULT_API_PORT)
+                supervisor_api_url = f"http://{host}:{port}/api/v1"
+                config_data["supervisor_api_url"] = supervisor_api_url
+                _LOGGER.info("Injected supervisor_api_url: %s", supervisor_api_url)
+            
             rendered = await asyncio.to_thread(yaml.safe_dump, config_data, sort_keys=False)
 
             with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as tmp:

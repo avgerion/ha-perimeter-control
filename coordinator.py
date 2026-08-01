@@ -1423,6 +1423,7 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             service_descriptors=self._service_descriptors,
             progress_cb=_on_progress,
             hass=self.hass,
+            entry_data=dict(self._entry.data),
         )
         try:
             _LOGGER.debug("Calling deployer.async_deploy()...")
