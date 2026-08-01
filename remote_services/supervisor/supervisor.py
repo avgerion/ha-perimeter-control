@@ -597,6 +597,7 @@ class Supervisor:
         this removes any base capability (e.g., gpio_control) that was deployed without instances,
         and deploys the full instance set instead.
         """
+        logger.info("[DEPLOY] _deploy_configured_capabilities() starting")
         config_file = self.config_dir / "perimeterControl.conf.yaml"
         if not config_file.exists():
             logger.debug("No perimeterControl.conf.yaml found at %s", config_file)
@@ -615,7 +616,7 @@ class Supervisor:
             logger.warning("No services found in perimeterControl.conf.yaml")
             return
         
-        logger.info("Found %d service types in config: %s", len(services), list(services.keys()))
+        logger.info("[DEPLOY] Found %d service types in config: %s", len(services), list(services.keys()))
 
         # Get list of capabilities already actively deployed (not just in database)
         # Active capabilities are actually running and providing entities
