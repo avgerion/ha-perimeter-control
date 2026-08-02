@@ -116,7 +116,7 @@ class PhotoBoothCapability(CapabilityModule):
         self.photo_dir.mkdir(parents=True, exist_ok=True)
         
         # Check camera availability
-        await self._check_camera_availability()
+        self._check_camera_availability()
         
         # Create initial entities
         await self._create_camera_entities()
@@ -176,7 +176,7 @@ class PhotoBoothCapability(CapabilityModule):
     async def execute_action(self, action_id: str, params: Dict[str, Any]) -> Any:
         """Execute photo booth actions."""
         if action_id == "capture_photo":
-            return await self._capture_photo(params.get("filename"))
+            return self._capture_photo(params.get("filename"))
             
         elif action_id == "start_timelapse":
             interval = params.get("interval_sec", 60)
@@ -220,7 +220,7 @@ class PhotoBoothCapability(CapabilityModule):
     # Camera Operations
     # ------------------------------------------------------------------
 
-    async def _check_camera_availability(self) -> None:
+    def _check_camera_availability(self) -> None:
         """Check if camera device is available and working."""
         try:
             # Check if camera device exists
@@ -245,9 +245,9 @@ class PhotoBoothCapability(CapabilityModule):
             
             # Try rpicam-still first (modern Raspberry Pi OS with CSI camera module)
             # rpicam-still is the standard camera tool for Pi OS Bookworm+
-            test_result = await self._run_camera_command([
+            test_result = self._run_camera_command([
                 "rpicam-still", "-o", test_file, "-t", "100"
-            ])
+            ], timeout=3)
             
             # Check if output file was actually created
             file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
@@ -258,10 +258,10 @@ class PhotoBoothCapability(CapabilityModule):
             else:
                 # Fallback: try fswebcam for USB cameras
                 logger.debug("[%s] rpicam-still test failed, trying fswebcam fallback...", self.cap_id)
-                test_result = await self._run_camera_command([
+                test_result = self._run_camera_command([
                     "fswebcam", "-d", self.camera_device, 
                     "--no-banner", "-r", "640x480", test_file
-                ])
+                ], timeout=3)
                 
                 file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
                 
@@ -291,21 +291,31 @@ class PhotoBoothCapability(CapabilityModule):
             logger.warning("[%s] Camera availability check failed: %s", self.cap_id, e)
             self._camera_available = False
 
-    async def _run_camera_command(self, cmd: List[str]) -> subprocess.CompletedProcess:
-        """Run camera command asynchronously."""
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        
-        return subprocess.CompletedProcess(
-            args=cmd,
-            returncode=process.returncode,
-            stdout=stdout,
-            stderr=stderr
-        )
+    def _run_camera_command(self, cmd: List[str], timeout: int = 5) -> subprocess.CompletedProcess:
+        """Run camera command synchronously with timeout."""
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            logger.warning("[%s] Command %s timed out after %d seconds", self.cap_id, cmd[0], timeout)
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=-1,
+                stdout=b'',
+                stderr=b'Command timeout'
+            )
+        except Exception as e:
+            logger.error("[%s] Failed to run command %s: %s", self.cap_id, cmd[0], e)
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=-1,
+                stdout=b'',
+                stderr=str(e).encode()
+            )
 
     async def _start_gstreamer_stream(self) -> None:
         """Start gstreamer MJPEG stream from camera."""
@@ -435,7 +445,7 @@ class PhotoBoothCapability(CapabilityModule):
             self._stream_active = False
             self._stream_process = None
 
-    async def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
+    def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
         """Capture a single photo."""
         if not self._camera_available:
             raise RuntimeError("Camera not available")
@@ -457,7 +467,7 @@ class PhotoBoothCapability(CapabilityModule):
             ]
             
             logger.debug("[%s] Attempting capture with rpicam-still: %s", self.cap_id, photo_path)
-            result = await self._run_camera_command(rpicam_cmd)
+            result = self._run_camera_command(rpicam_cmd, timeout=3)
             
             # If rpicam-still fails, try fswebcam (USB cameras)
             if result.returncode != 0 or not (os.path.exists(photo_path) and os.path.getsize(photo_path) > 0):
@@ -472,7 +482,7 @@ class PhotoBoothCapability(CapabilityModule):
                     str(photo_path)
                 ]
                 
-                result = await self._run_camera_command(fswebcam_cmd)
+                result = self._run_camera_command(fswebcam_cmd, timeout=3)
             
             if result.returncode == 0 and os.path.exists(photo_path) and os.path.getsize(photo_path) > 0:
                 self._last_capture_time = datetime.now()
@@ -591,7 +601,7 @@ class PhotoBoothCapability(CapabilityModule):
                     if self._camera_available:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         filename = f"timelapse_{timestamp}.jpg"
-                        await self._capture_photo(filename)
+                        self._capture_photo(filename)
                     
                     await asyncio.sleep(interval)
                     
