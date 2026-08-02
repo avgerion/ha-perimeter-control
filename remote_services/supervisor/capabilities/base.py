@@ -155,10 +155,14 @@ class CapabilityModule(ABC):
                 "icon": entity.get("icon"),
                 "friendly_name": entity.get("friendly_name"),
                 **{k: v for k, v in entity.items() 
-                   if k not in ["id", "state", "attributes", "capability", "capability_id", "last_updated"]}
+                   if k not in ["id", "state", "attributes", "capability"]}
             }
             # Filter out None values
             extra = {k: v for k, v in extra.items() if v is not None}
+            # Remove capability_id from extra if present, since it's passed explicitly
+            # This prevents "multiple values for keyword argument" error
+            extra.pop("capability_id", None)
+            extra.pop("last_updated", None)
         else:
             # Called with individual parameters (legacy)
             entity_id = entity_or_id
