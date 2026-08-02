@@ -185,6 +185,16 @@ class Supervisor:
                 old_cap = self.db.get_capability(cap_id)
                 old_hash = old_cap["config_hash"] if old_cap else None
 
+                # Preserve 'services' key from existing config when deploying with minimal metadata.
+                # This allows the deployer to update metadata (name, version, enabled) without
+                # accidentally clearing the service configuration that was previously deployed.
+                # Works generically for any service that uses nested service config structure.
+                if old_cap and "services" in old_cap.get("config", {}) and "services" not in cap_config:
+                    merged_config = {**old_cap["config"], **cap_config}
+                    cap_config = merged_config
+                    logger.info("[%s] [DEPLOY] Preserved 'services' config for %s during metadata-only update", 
+                               deployment_id, cap_id)
+
                 self.db.upsert_capability(cap_id, cap_name, cap_config, "deploying", cap_version)
                 new_hash = (self.db.get_capability(cap_id) or {}).get("config_hash")
                 self.db.record_config_change(cap_id, initiator, old_hash, new_hash or "", deployment_id=deployment_id)
