@@ -186,10 +186,10 @@ APT_DEPENDENCY_GROUPS: dict[str, list[str]] = {
         "gstreamer1.0-tools",
         "gstreamer1.0-plugins-base",
         "gstreamer1.0-plugins-good",
+        "gstreamer1.0-libcamera",
     ],
     "libcamera": [
-        "libcamera-tools",
-        "libcamera0",
+        "rpicam-apps-core",
     ],
     "i2c": [
         "i2c-tools",

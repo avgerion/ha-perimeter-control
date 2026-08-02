@@ -243,21 +243,21 @@ class PhotoBoothCapability(CapabilityModule):
                 except:
                     pass
             
-            # Try libcamera-still first (modern Raspberry Pi OS)
-            # libcamera-still is the standard camera tool for Pi with CSI camera module
+            # Try rpicam-still first (modern Raspberry Pi OS with CSI camera module)
+            # rpicam-still is the standard camera tool for Pi OS Bookworm+
             test_result = await self._run_camera_command([
-                "libcamera-still", "-o", test_file, "-t", "100", "--nopreview"
+                "rpicam-still", "-o", test_file, "-t", "100"
             ])
             
             # Check if output file was actually created
             file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
             
             if file_created:
-                logger.info("[%s] Camera test capture successful using libcamera-still (%s)", self.cap_id, self.camera_device)
+                logger.info("[%s] Camera test capture successful using rpicam-still (%s)", self.cap_id, self.camera_device)
                 self._camera_available = True
             else:
                 # Fallback: try fswebcam for USB cameras
-                logger.debug("[%s] libcamera-still test failed, trying fswebcam fallback...", self.cap_id)
+                logger.debug("[%s] rpicam-still test failed, trying fswebcam fallback...", self.cap_id)
                 test_result = await self._run_camera_command([
                     "fswebcam", "-d", self.camera_device, 
                     "--no-banner", "-r", "640x480", test_file
@@ -449,21 +449,19 @@ class PhotoBoothCapability(CapabilityModule):
         try:
             result = None
             
-            # Try libcamera-still first (modern Raspberry Pi CSI cameras)
-            libcamera_cmd = [
-                "libcamera-still",
+            # Try rpicam-still first (modern Raspberry Pi CSI cameras)
+            rpicam_cmd = [
+                "rpicam-still",
                 "-o", str(photo_path),
-                "-t", "100",  # 100ms exposure time
-                "--nopreview",
-                "--quiet"
+                "-t", "100"  # 100ms exposure time
             ]
             
-            logger.debug("[%s] Attempting capture with libcamera-still: %s", self.cap_id, photo_path)
-            result = await self._run_camera_command(libcamera_cmd)
+            logger.debug("[%s] Attempting capture with rpicam-still: %s", self.cap_id, photo_path)
+            result = await self._run_camera_command(rpicam_cmd)
             
-            # If libcamera-still fails, try fswebcam (USB cameras)
+            # If rpicam-still fails, try fswebcam (USB cameras)
             if result.returncode != 0 or not (os.path.exists(photo_path) and os.path.getsize(photo_path) > 0):
-                logger.debug("[%s] libcamera-still failed or no output, trying fswebcam fallback", self.cap_id)
+                logger.debug("[%s] rpicam-still failed or no output, trying fswebcam fallback", self.cap_id)
                 
                 fswebcam_cmd = [
                     "fswebcam",

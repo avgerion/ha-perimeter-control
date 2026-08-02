@@ -1506,24 +1506,43 @@ class PerimeterControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         _LOGGER.info("Activating selected services in Supervisor: %s", self._selected_services)
         
-        # Build deployment payload for selected services
+        # Load deployed configuration to include full service config in deployment
+        # This ensures supervisor receives complete configuration, not just metadata.
+        deployed_config = {}
+        if self._client_initialized and self._client:
+            try:
+                config_path = "/mnt/PerimeterControl/conf/perimeterControl.conf.yaml"
+                config_content = await self._client.async_run(f"cat {config_path}")
+                if config_content:
+                    import yaml
+                    deployed_config = yaml.safe_load(config_content) or {}
+                    _LOGGER.debug("Loaded deployed config from %s", config_path)
+            except Exception as exc:
+                _LOGGER.warning("Failed to load deployed config for activation: %s", exc)
+        else:
+            _LOGGER.debug("SSH client not available for loading deployed config")
+        
+        # Build deployment payload for selected services with full configuration
         deployment_payload = {}
         for service_id in self._selected_services:
             if service_id in self._service_descriptors:
                 desc = self._service_descriptors[service_id]
                 # Get version from descriptor metadata, default to "1.0.0"
                 version = desc.raw.get("metadata", {}).get("version", "1.0.0")
-                # Create basic capability config for deployment
+                # Create capability config for deployment with full service configuration
                 deployment_payload[service_id] = {
                     "name": desc.name,
                     "type": service_id,
                     "version": version,
                     "enabled": True,
                 }
+                # Include full service configuration from deployed YAML
+                if deployed_config.get("services"):
+                    deployment_payload[service_id]["services"] = deployed_config["services"]
         
         if deployment_payload:
             try:
-                _LOGGER.warning("Deploying capabilities to Supervisor: %s", list(deployment_payload.keys()))
+                _LOGGER.warning("Deploying capabilities to Supervisor with full config: %s", list(deployment_payload.keys()))
                 
                 # Use a shorter timeout for deployment to avoid connection drops
                 if not self._http_session or self._http_session.closed:
