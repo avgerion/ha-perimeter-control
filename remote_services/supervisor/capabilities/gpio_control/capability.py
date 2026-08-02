@@ -356,6 +356,8 @@ class GpioControlCapability(CapabilityModule):
 
     def _publish_pin_entity(self, pin: PinConfig) -> None:
         """Publish pin entity state to entity cache."""
+        logger.info(f"[_publish_pin_entity] START for {pin.entity_id}, about to build entity dict")
+        
         state_on = self._states.get(pin.entity_id, False)
         brightness = self._brightness.get(pin.entity_id, 255 if state_on else 0)
         attrs: Dict[str, Any] = {
@@ -390,7 +392,9 @@ class GpioControlCapability(CapabilityModule):
             entity["turn_off_action_id"] = "turn_off"
         
         logger.info("[GPIO PUBLISH] Publishing entity: %s (state=%s, type=%s)", pin.entity_id, entity["state"], pin.entity_type)
+        logger.info(f"[_publish_pin_entity] Calling self._publish_entity(entity) for {pin.entity_id}")
         self._publish_entity(entity)
+        logger.info(f"[_publish_pin_entity] DONE calling self._publish_entity for {pin.entity_id}")
 
     async def _monitor_input_pins(self) -> None:
         """Async task to monitor input pins and publish state changes."""

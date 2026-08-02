@@ -118,8 +118,11 @@ class EntityCache:
         if capability_id is not None:
             entity_dict["capability_id"] = capability_id
         
+        logger.info(f"[CACHE UPDATE] Storing {entity_id}: state={state}, capability_id={capability_id}, extra_keys={list(filtered_kwargs.keys())}")
         self._cache[entity_id] = entity_dict
+        logger.info(f"[CACHE SIZE] After update: {len(self._cache)} entities in memory")
         self._save()
+        logger.info(f"[CACHE SAVED] File written to {self.cache_path}")
 
     def remove(self, entity_id: str) -> None:
         """Remove a single entity from the cache."""
@@ -134,11 +137,13 @@ class EntityCache:
         return dict(self._cache)
 
     def get_by_capability(self, capability_id: str) -> Dict[str, Dict[str, Any]]:
-        return {
+        result = {
             eid: state
             for eid, state in self._cache.items()
             if state.get("capability_id") == capability_id
         }
+        logger.info(f"[CACHE QUERY] get_by_capability({capability_id}): {len(self._cache)} total entities, {len(result)} match. IDs in cache: {list(self._cache.keys())}")
+        return result
 
     def list_entity_ids(self) -> List[str]:
         return list(self._cache.keys())

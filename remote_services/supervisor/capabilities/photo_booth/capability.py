@@ -353,7 +353,7 @@ class PhotoBoothCapability(CapabilityModule):
             
             # Try libcamera first
             pipeline = libcamera_pipeline
-            cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ! ")
+            cmd = ["gst-launch-1.0", "-e", pipeline]
             
             try:
                 self._stream_process = await asyncio.wait_for(
@@ -370,7 +370,7 @@ class PhotoBoothCapability(CapabilityModule):
                 logger.debug("[%s] libcamera pipeline failed (%s), trying v4l2 fallback", self.cap_id, type(e).__name__)
                 # Try v4l2 fallback
                 pipeline = v4l2_pipeline
-                cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ! ")
+                cmd = ["gst-launch-1.0", "-e", pipeline]
                 self._stream_process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,

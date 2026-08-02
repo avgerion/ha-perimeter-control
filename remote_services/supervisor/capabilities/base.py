@@ -140,6 +140,8 @@ class CapabilityModule(ABC):
         1. _publish_entity(entity_id, state, attributes=..., **extra)
         2. _publish_entity(entity_dict) - where entity_dict contains id, state, etc.
         """
+        logger.info(f"[BASE._publish_entity] {self.cap_id}: entity_or_id={type(entity_or_id).__name__}, state={state}")
+        
         if isinstance(entity_or_id, dict):
             # Called with entity dict - extract fields
             entity = entity_or_id
@@ -169,6 +171,7 @@ class CapabilityModule(ABC):
             if state is None:
                 raise ValueError("state parameter required when passing entity_id as string")
         
+        logger.info(f"[BASE.update_call] {self.cap_id}: Calling entity_cache.update(entity_id={entity_id}, state={state}, capability_id={self.cap_id})")
         self.entity_cache.update(
             entity_id,
             state,
