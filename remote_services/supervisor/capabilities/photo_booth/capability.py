@@ -116,7 +116,7 @@ class PhotoBoothCapability(CapabilityModule):
         self.photo_dir.mkdir(parents=True, exist_ok=True)
         
         # Check camera availability
-        self._check_camera_availability()
+        await self._check_camera_availability()
         
         # Create initial entities
         await self._create_camera_entities()
@@ -176,7 +176,7 @@ class PhotoBoothCapability(CapabilityModule):
     async def execute_action(self, action_id: str, params: Dict[str, Any]) -> Any:
         """Execute photo booth actions."""
         if action_id == "capture_photo":
-            return self._capture_photo(params.get("filename"))
+            return await self._capture_photo(params.get("filename"))
             
         elif action_id == "start_timelapse":
             interval = params.get("interval_sec", 60)
@@ -220,7 +220,7 @@ class PhotoBoothCapability(CapabilityModule):
     # Camera Operations
     # ------------------------------------------------------------------
 
-    def _check_camera_availability(self) -> None:
+    async def _check_camera_availability(self) -> None:
         """Check if camera device is available and working."""
         try:
             # Check if camera device exists
@@ -445,7 +445,7 @@ class PhotoBoothCapability(CapabilityModule):
             self._stream_active = False
             self._stream_process = None
 
-    def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
+    async def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
         """Capture a single photo."""
         if not self._camera_available:
             raise RuntimeError("Camera not available")
@@ -601,7 +601,7 @@ class PhotoBoothCapability(CapabilityModule):
                     if self._camera_available:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         filename = f"timelapse_{timestamp}.jpg"
-                        self._capture_photo(filename)
+                        await self._capture_photo(filename)
                     
                     await asyncio.sleep(interval)
                     
