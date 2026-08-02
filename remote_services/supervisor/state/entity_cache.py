@@ -92,6 +92,7 @@ class EntityCache:
         entity_id: str,
         state: str,
         attributes: Optional[Dict[str, Any]] = None,
+        capability_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """Insert or update an entity state entry.
@@ -105,12 +106,19 @@ class EntityCache:
             if k not in ("state", "attributes", "entity_id", "last_updated", "capability_id")
         }
         
-        self._cache[entity_id] = {
+        # Build entity dict with explicit parameters and filtered kwargs
+        entity_dict = {
             "state": state,
             "attributes": attributes or {},
             "last_updated": datetime.utcnow().isoformat() + "Z",
             **filtered_kwargs,
         }
+        
+        # Add capability_id if provided
+        if capability_id is not None:
+            entity_dict["capability_id"] = capability_id
+        
+        self._cache[entity_id] = entity_dict
         self._save()
 
     def remove(self, entity_id: str) -> None:
