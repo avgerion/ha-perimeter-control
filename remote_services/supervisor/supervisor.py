@@ -99,7 +99,10 @@ class Supervisor:
         self.db.init()
 
         await self._restore_state()
-        await self._deploy_configured_capabilities()
+        try:
+            await self._deploy_configured_capabilities()
+        except Exception as exc:
+            logger.error("Exception in _deploy_configured_capabilities(): %s", exc, exc_info=True)
 
         self._running = True
         self._reconcile_task = asyncio.create_task(self._reconciliation_loop())
@@ -599,21 +602,25 @@ class Supervisor:
         """
         logger.info("[DEPLOY] _deploy_configured_capabilities() starting")
         config_file = self.config_dir / "perimeterControl.conf.yaml"
+        logger.info("[DEPLOY] Looking for config at: %s", config_file)
         if not config_file.exists():
-            logger.debug("No perimeterControl.conf.yaml found at %s", config_file)
+            logger.warning("[DEPLOY] Config file does NOT exist at %s", config_file)
             return
 
         try:
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f) or {}
+            logger.info("[DEPLOY] Config file loaded successfully, keys: %s", list(config.keys()))
         except Exception as exc:
-            logger.error("Failed to load perimeterControl.conf.yaml: %s", exc)
+            logger.error("[DEPLOY] Failed to load perimeterControl.conf.yaml: %s", exc, exc_info=True)
             return
 
         services = config.get("services", {})
+        logger.info("[DEPLOY] services dict from YAML: keys=%s, value_type=%s", list(services.keys()) if services else "NONE", type(services).__name__)
         enabled_service_types = self._load_enabled_service_types()
+        logger.info("[DEPLOY] enabled_service_types: %s", enabled_service_types)
         if not services:
-            logger.warning("No services found in perimeterControl.conf.yaml")
+            logger.warning("[DEPLOY] No services found in perimeterControl.conf.yaml (services={} or missing)")
             return
         
         logger.info("[DEPLOY] Found %d service types in config: %s", len(services), list(services.keys()))

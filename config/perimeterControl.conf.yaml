@@ -49,16 +49,6 @@ services:
       timelapse:
         enabled: false
         interval_sec: 60
-    booth2:
-      camera_device: /dev/video2
-      photo_directory: /opt/PerimeterControl/photos2
-      resolution: "1280x720"
-      quality: 80
-      motion_detection: true
-      timelapse:
-        enabled: true
-        interval_sec: 120
-      output: /mnt/PerimeterControl/captures/moto-g-2025
   gpio_control:
     relays:
       pins:

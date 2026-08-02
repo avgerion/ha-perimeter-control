@@ -48,25 +48,53 @@ class PhotoBoothCapability(CapabilityModule):
     def __init__(self, cap_id: str, config: Dict[str, Any], entity_cache, emit_event):
         super().__init__(cap_id, config, entity_cache, emit_event)
         
+        # Extract booth config from nested structure (services.photo_booth.booth1, etc.)
+        # If using old flat format, extract from root level
+        booth_config = self._extract_booth_config(config)
+        
         # Configuration
-        self.camera_device = config.get("camera_device", "/dev/video0")
-        self.photo_dir = Path(config.get("photo_directory", "/opt/PerimeterControl/state/photos"))
-        self.resolution = config.get("resolution", "1920x1080")
-        self.quality = config.get("quality", 85)
-        self.max_storage_mb = config.get("max_storage_mb", 1000)
+        self.camera_device = booth_config.get("camera_device", "/dev/video0")
+        self.photo_dir = Path(booth_config.get("photo_directory", "/opt/PerimeterControl/state/photos"))
+        self.resolution = booth_config.get("resolution", "1920x1080")
+        self.quality = booth_config.get("quality", 85)
+        self.max_storage_mb = booth_config.get("max_storage_mb", 1000)
         
         # State
         self._camera_available = False
         self._timelapse_task: Optional[asyncio.Task] = None
         self._timelapse_active = False
-        self._motion_detection = config.get("motion_detection", False)
+        self._motion_detection = booth_config.get("motion_detection", False)
         self._last_capture_time: Optional[datetime] = None
         
         # Streaming state
         self._stream_process: Optional[asyncio.subprocess.Process] = None
         self._stream_active = False
-        self._stream_port = config.get("stream_port", 8100)
+        self._stream_port = booth_config.get("stream_port", 8100)
         self._stream_url = f"http://localhost:{self._stream_port}/stream"
+
+    def _extract_booth_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract booth configuration from nested structure.
+        
+        Supports both formats:
+        1. Nested format (new): config['services']['photo_booth']['booth1'] = {...}
+        2. Flat format (old): config = {...}
+        """
+        # Check for nested format first
+        services = config.get("services", {})
+        photo_booth_cfg = services.get("photo_booth", {})
+        
+        if isinstance(photo_booth_cfg, dict) and photo_booth_cfg:
+            # Get first instance (booth1, booth2, etc.)
+            # For now, we only support one active booth per capability
+            for booth_name, booth_data in photo_booth_cfg.items():
+                if isinstance(booth_data, dict):
+                    logger.info("[%s] Using booth instance: %s", self.cap_id, booth_name)
+                    return booth_data
+        
+        # Fall back to flat format (old config structure)
+        logger.debug("[%s] No nested booth config found, using flat format", self.cap_id)
+        return config
+
 
     def _latest_photo_path(self) -> Path:
         """Return path to the canonical latest camera image."""
@@ -203,6 +231,8 @@ class PhotoBoothCapability(CapabilityModule):
                 self._camera_available = False
                 return
             
+            logger.info("[%s] Camera device exists: %s, testing capture capability...", self.cap_id, self.camera_device)
+            
             # Try to capture a test image to verify camera works
             test_file = "/tmp/test_capture.jpg"
             
@@ -213,22 +243,42 @@ class PhotoBoothCapability(CapabilityModule):
                 except:
                     pass
             
+            # Try libcamera-still first (modern Raspberry Pi OS)
+            # libcamera-still is the standard camera tool for Pi with CSI camera module
             test_result = await self._run_camera_command([
-                "fswebcam", "-d", self.camera_device, 
-                "--no-banner", "-r", "640x480", test_file
+                "libcamera-still", "-o", test_file, "-t", "100", "--nopreview"
             ])
             
-            # Check if output file was actually created (fswebcam may exit 0 but fail to capture)
+            # Check if output file was actually created
             file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
-            self._camera_available = file_created
             
             if file_created:
-                logger.info("[%s] Camera test capture successful (%s)", self.cap_id, self.camera_device)
+                logger.info("[%s] Camera test capture successful using libcamera-still (%s)", self.cap_id, self.camera_device)
+                self._camera_available = True
             else:
-                logger.warning("[%s] Camera test capture failed: fswebcam didn't create output file", self.cap_id)
-                if test_result.stderr:
-                    stderr_msg = test_result.stderr.decode('utf-8', errors='replace') if isinstance(test_result.stderr, bytes) else str(test_result.stderr)
-                    logger.warning("[%s] fswebcam stderr: %s", self.cap_id, stderr_msg)
+                # Fallback: try fswebcam for USB cameras
+                logger.debug("[%s] libcamera-still test failed, trying fswebcam fallback...", self.cap_id)
+                test_result = await self._run_camera_command([
+                    "fswebcam", "-d", self.camera_device, 
+                    "--no-banner", "-r", "640x480", test_file
+                ])
+                
+                file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
+                
+                if file_created:
+                    logger.info("[%s] Camera test capture successful using fswebcam (%s)", self.cap_id, self.camera_device)
+                    self._camera_available = True
+                else:
+                    logger.warning(
+                        "[%s] Camera test capture failed - camera device may not support libcamera or v4l2, or is in use. "
+                        "Device will be marked unavailable but capability will continue. "
+                        "To identify working camera devices, run: v4l2-ctl --list-devices",
+                        self.cap_id
+                    )
+                    if test_result.stderr:
+                        stderr_msg = test_result.stderr.decode('utf-8', errors='replace') if isinstance(test_result.stderr, bytes) else str(test_result.stderr)
+                        logger.debug("[%s] stderr: %s", self.cap_id, stderr_msg)
+                    self._camera_available = False
             
             # Clean up test file
             if os.path.exists(test_file):
@@ -264,11 +314,26 @@ class PhotoBoothCapability(CapabilityModule):
             return
         
         try:
-            # GStreamer pipeline: v4l2src → video/x-raw → jpegenc → multipartmux → tcpserversink
-            # Outputs MJPEG over TCP on the configured port
-            pipeline = (
+            # Determine pipeline based on camera type
+            # For libcamera (Raspberry Pi CSI): use libcamerasrc
+            # For v4l2 (USB cameras): use v4l2src
+            # Try libcamera first, fall back to v4l2
+            
+            width, height = self.resolution.split('x')
+            
+            # Try libcamera pipeline first (for Raspberry Pi CSI cameras)
+            libcamera_pipeline = (
+                f"libcamerasrc ! "
+                f"video/x-raw,width={width},height={height} ! "
+                f"videoconvert ! jpegenc quality={self.quality} ! "
+                f"multipartmux ! "
+                f"tcpserversink host=0.0.0.0 port={self._stream_port}"
+            )
+            
+            # Fallback v4l2 pipeline (for USB cameras)
+            v4l2_pipeline = (
                 f"v4l2src device={self.camera_device} ! "
-                f"video/x-raw,width={self.resolution.split('x')[0]},height={self.resolution.split('x')[1]} ! "
+                f"video/x-raw,width={width},height={height} ! "
                 f"videoconvert ! jpegenc quality={self.quality} ! "
                 f"multipartmux ! "
                 f"tcpserversink host=0.0.0.0 port={self._stream_port}"
@@ -276,14 +341,31 @@ class PhotoBoothCapability(CapabilityModule):
             
             logger.info("[%s] Starting gstreamer MJPEG stream: %s", self.cap_id, self._stream_url)
             
-            # Start gstreamer process
+            # Try libcamera first
+            pipeline = libcamera_pipeline
             cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ! ")
             
-            self._stream_process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            try:
+                self._stream_process = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        stdin=asyncio.subprocess.DEVNULL
+                    ),
+                    timeout=5.0
+                )
+                logger.debug("[%s] libcamera pipeline started", self.cap_id)
+            except (asyncio.TimeoutError, FileNotFoundError, Exception) as e:
+                logger.debug("[%s] libcamera pipeline failed (%s), trying v4l2 fallback", self.cap_id, type(e).__name__)
+                # Try v4l2 fallback
+                pipeline = v4l2_pipeline
+                cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ! ")
+                self._stream_process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
             
             self._stream_active = True
             
@@ -365,19 +447,36 @@ class PhotoBoothCapability(CapabilityModule):
         photo_path = self.photo_dir / filename
         
         try:
-            # Capture photo using fswebcam
-            cmd = [
-                "fswebcam",
-                "-d", self.camera_device,
-                "--no-banner", 
-                "-r", self.resolution,
-                "--jpeg", str(self.quality),
-                str(photo_path)
+            result = None
+            
+            # Try libcamera-still first (modern Raspberry Pi CSI cameras)
+            libcamera_cmd = [
+                "libcamera-still",
+                "-o", str(photo_path),
+                "-t", "100",  # 100ms exposure time
+                "--nopreview",
+                "--quiet"
             ]
             
-            result = await self._run_camera_command(cmd)
+            logger.debug("[%s] Attempting capture with libcamera-still: %s", self.cap_id, photo_path)
+            result = await self._run_camera_command(libcamera_cmd)
             
-            if result.returncode == 0:
+            # If libcamera-still fails, try fswebcam (USB cameras)
+            if result.returncode != 0 or not (os.path.exists(photo_path) and os.path.getsize(photo_path) > 0):
+                logger.debug("[%s] libcamera-still failed or no output, trying fswebcam fallback", self.cap_id)
+                
+                fswebcam_cmd = [
+                    "fswebcam",
+                    "-d", self.camera_device,
+                    "--no-banner", 
+                    "-r", self.resolution,
+                    "--jpeg", str(self.quality),
+                    str(photo_path)
+                ]
+                
+                result = await self._run_camera_command(fswebcam_cmd)
+            
+            if result.returncode == 0 and os.path.exists(photo_path) and os.path.getsize(photo_path) > 0:
                 self._last_capture_time = datetime.now()
 
                 # Keep a stable image path for API and HA camera polling.
@@ -399,7 +498,7 @@ class PhotoBoothCapability(CapabilityModule):
                     "timestamp": self._last_capture_time.isoformat()
                 })
                 
-                logger.info("[%s] Photo captured: %s", self.cap_id, filename)
+                logger.info("[%s] Photo captured: %s (%d bytes)", self.cap_id, filename, photo_path.stat().st_size)
                 return {
                     "status": "success",
                     "filename": filename,
