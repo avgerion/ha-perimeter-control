@@ -154,7 +154,7 @@ class CapabilityModule(ABC):
                 "icon": entity.get("icon"),
                 "friendly_name": entity.get("friendly_name"),
                 **{k: v for k, v in entity.items() 
-                   if k not in ["id", "state", "attributes", "capability"]}
+                   if k not in ["id", "state", "attributes", "capability", "last_updated"]}
             }
             # Filter out None values
             extra = {k: v for k, v in extra.items() if v is not None}
