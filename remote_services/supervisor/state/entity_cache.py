@@ -94,12 +94,22 @@ class EntityCache:
         attributes: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
-        """Insert or update an entity state entry."""
+        """Insert or update an entity state entry.
+        
+        Filters out kwargs that conflict with explicit parameters to allow
+        graceful handling of extra fields without "multiple values for keyword argument" errors.
+        """
+        # Remove any kwargs that would conflict with explicit parameters
+        filtered_kwargs = {
+            k: v for k, v in kwargs.items()
+            if k not in ("state", "attributes", "entity_id")
+        }
+        
         self._cache[entity_id] = {
             "state": state,
             "attributes": attributes or {},
             "last_updated": datetime.utcnow().isoformat() + "Z",
-            **kwargs,
+            **filtered_kwargs,
         }
         self._save()
 
