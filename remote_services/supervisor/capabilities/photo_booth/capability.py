@@ -524,10 +524,9 @@ class PhotoBoothCapability(CapabilityModule):
     async def _update_camera_stream_entity(self) -> None:
         """Refresh primary camera entity attributes after captures/config changes."""
         camera_entity_id = "photo_booth:camera:stream"
-        if camera_entity_id not in self.entity_cache._entities:
+        entity = self.entity_cache.get(camera_entity_id)
+        if not entity:
             return
-
-        entity = self.entity_cache._entities[camera_entity_id].copy()
         entity["id"] = camera_entity_id
         attrs = dict(entity.get("attributes", {}))
 
@@ -558,8 +557,8 @@ class PhotoBoothCapability(CapabilityModule):
         
         # Update camera entity if it exists
         camera_entity_id = "photo_booth:camera:stream"
-        if camera_entity_id in self.entity_cache._entities:
-            entity = self.entity_cache._entities[camera_entity_id].copy()
+        entity = self.entity_cache.get(camera_entity_id)
+        if entity:
             entity["id"] = camera_entity_id  # Add missing id field
             entity["attributes"]["resolution"] = resolution
             self._publish_entity(entity)
