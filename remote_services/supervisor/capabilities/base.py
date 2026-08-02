@@ -148,6 +148,7 @@ class CapabilityModule(ABC):
             attributes = entity.get("attributes", {})
             
             # Copy other fields as extra parameters for the cache
+            # EntityCache.update() will filter out any conflicting fields
             extra = {
                 "platform": entity.get("type", "sensor"),
                 "device_class": entity.get("device_class"),

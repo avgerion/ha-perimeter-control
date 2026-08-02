@@ -96,13 +96,13 @@ class EntityCache:
     ) -> None:
         """Insert or update an entity state entry.
         
-        Filters out kwargs that conflict with explicit parameters to allow
-        graceful handling of extra fields without "multiple values for keyword argument" errors.
+        Filters out kwargs that conflict with explicit parameters or internally managed fields
+        to allow graceful handling of extra fields without "multiple values for keyword argument" errors.
         """
-        # Remove any kwargs that would conflict with explicit parameters
+        # Remove any kwargs that would conflict with explicit parameters or are managed internally
         filtered_kwargs = {
             k: v for k, v in kwargs.items()
-            if k not in ("state", "attributes", "entity_id")
+            if k not in ("state", "attributes", "entity_id", "last_updated", "capability_id")
         }
         
         self._cache[entity_id] = {
