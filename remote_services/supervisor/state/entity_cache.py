@@ -137,6 +137,7 @@ class EntityCache:
         return dict(self._cache)
 
     def get_by_capability(self, capability_id: str) -> Dict[str, Dict[str, Any]]:
+        """Get all entities for a capability."""
         result = {
             eid: state
             for eid, state in self._cache.items()

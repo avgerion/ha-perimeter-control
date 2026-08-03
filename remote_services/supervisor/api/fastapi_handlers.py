@@ -54,7 +54,7 @@ def _get_server_ip() -> str:
     except Exception:
         return "localhost"  # Fallback
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
 from pydantic import BaseModel, Field
 import yaml
 
@@ -400,6 +400,51 @@ def create_supervisor_api() -> FastAPI:
 # TYPE perimetercontrol_supervisor_uptime_seconds counter
 perimetercontrol_supervisor_uptime_seconds 3600
 """
+
+    @app.get("/api/v1/cameras/{capability_id}/latest.jpg")
+    async def get_latest_photo(capability_id: str, supervisor = Depends(get_supervisor)):
+        """Get the latest captured photo from a camera capability."""
+        try:
+            cap = supervisor.get_capability(capability_id)
+            if not cap:
+                raise HTTPException(status_code=404, detail=f"Capability {capability_id} not found")
+            
+            # Get the latest photo path from the capability
+            if hasattr(cap, '_latest_photo_path'):
+                photo_path = cap._latest_photo_path()
+                if photo_path.exists():
+                    logger.info("[API] Serving latest photo: %s", photo_path)
+                    return FileResponse(photo_path, media_type="image/jpeg")
+            
+            raise HTTPException(status_code=404, detail="No photos captured yet")
+        except Exception as exc:
+            logger.error("[API] Error serving photo: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/v1/cameras/{capability_id}/capture")
+    async def capture_photo(capability_id: str, supervisor = Depends(get_supervisor)):
+        """Capture a new photo using the specified camera capability."""
+        try:
+            cap = supervisor.get_capability(capability_id)
+            if not cap:
+                raise HTTPException(status_code=404, detail=f"Capability {capability_id} not found")
+            
+            # Call the capture action on the capability
+            if hasattr(cap, 'execute_action'):
+                result = await cap.execute_action("capture_photo", {})
+                logger.info("[API] Photo capture result: %s", result)
+                return {
+                    "status": "success",
+                    "result": result,
+                    "capability_id": capability_id
+                }
+            
+            raise HTTPException(status_code=400, detail="Capability does not support photo capture")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("[API] Error capturing photo: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
     return app
 

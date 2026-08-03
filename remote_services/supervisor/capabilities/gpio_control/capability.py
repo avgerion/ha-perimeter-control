@@ -356,8 +356,6 @@ class GpioControlCapability(CapabilityModule):
 
     def _publish_pin_entity(self, pin: PinConfig) -> None:
         """Publish pin entity state to entity cache."""
-        logger.info(f"[_publish_pin_entity] START for {pin.entity_id}, about to build entity dict")
-        
         state_on = self._states.get(pin.entity_id, False)
         brightness = self._brightness.get(pin.entity_id, 255 if state_on else 0)
         attrs: Dict[str, Any] = {

@@ -101,8 +101,20 @@ class PhotoBoothCapability(CapabilityModule):
         return self.photo_dir / "latest.jpg"
 
     def _camera_image_url(self) -> str:
-        """Return Supervisor-relative URL that serves the latest camera image."""
+        """Return URL that serves the latest camera image from Supervisor API.
+        
+        Returns relative path that dashboard server can proxy/forward to Supervisor API.
+        This works for both local and remote browser access without hardcoding IPs.
+        """
         return f"/api/v1/cameras/{self.cap_id}/latest.jpg"
+
+    def _camera_stream_url(self) -> str:
+        """Return stream URL for live MJPEG video feed.
+        
+        Returns a URL that the dashboard will rewrite to absolute using the supervisor host.
+        The gstreamer MJPEG stream listens on 0.0.0.0:8100 on the same host as Supervisor.
+        """
+        return f"http://localhost:{self._stream_port}/stream"
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -247,7 +259,7 @@ class PhotoBoothCapability(CapabilityModule):
             # rpicam-still is the standard camera tool for Pi OS Bookworm+
             test_result = self._run_camera_command([
                 "rpicam-still", "-o", test_file, "-t", "100"
-            ], timeout=3)
+            ], timeout=10)
             
             # Check if output file was actually created
             file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
@@ -261,7 +273,7 @@ class PhotoBoothCapability(CapabilityModule):
                 test_result = self._run_camera_command([
                     "fswebcam", "-d", self.camera_device, 
                     "--no-banner", "-r", "640x480", test_file
-                ], timeout=3)
+                ], timeout=10)
                 
                 file_created = os.path.exists(test_file) and os.path.getsize(test_file) > 0
                 
@@ -324,23 +336,19 @@ class PhotoBoothCapability(CapabilityModule):
             return
         
         try:
-            # Determine pipeline based on camera type
-            # For libcamera (Raspberry Pi CSI): use libcamerasrc
-            # For v4l2 (USB cameras): use v4l2src
-            # Try libcamera first, fall back to v4l2
-            
             width, height = self.resolution.split('x')
             
-            # Try libcamera pipeline first (for Raspberry Pi CSI cameras)
+            # libcamera pipeline: simple MJPEG stream (no filesink to avoid blocking)
             libcamera_pipeline = (
                 f"libcamerasrc ! "
-                f"video/x-raw,width={width},height={height} ! "
-                f"videoconvert ! jpegenc quality={self.quality} ! "
+                f"videoconvert ! video/x-raw,format=I420 ! "
+                f"videoscale ! video/x-raw,width={width},height={height} ! "
+                f"jpegenc quality={self.quality} ! "
                 f"multipartmux ! "
                 f"tcpserversink host=0.0.0.0 port={self._stream_port}"
             )
             
-            # Fallback v4l2 pipeline (for USB cameras)
+            # v4l2 fallback pipeline (for USB cameras)
             v4l2_pipeline = (
                 f"v4l2src device={self.camera_device} ! "
                 f"video/x-raw,width={width},height={height} ! "
@@ -349,16 +357,15 @@ class PhotoBoothCapability(CapabilityModule):
                 f"tcpserversink host=0.0.0.0 port={self._stream_port}"
             )
             
-            logger.info("[%s] Starting gstreamer MJPEG stream: %s", self.cap_id, self._stream_url)
+            logger.info("[%s] Starting gstreamer MJPEG stream on port %d", self.cap_id, self._stream_port)
             
             # Try libcamera first
             pipeline = libcamera_pipeline
-            cmd = ["gst-launch-1.0", "-e", pipeline]
             
             try:
                 self._stream_process = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        *cmd,
+                    asyncio.create_subprocess_shell(
+                        f"gst-launch-1.0 -e {pipeline}",
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                         stdin=asyncio.subprocess.DEVNULL
@@ -370,14 +377,17 @@ class PhotoBoothCapability(CapabilityModule):
                 logger.debug("[%s] libcamera pipeline failed (%s), trying v4l2 fallback", self.cap_id, type(e).__name__)
                 # Try v4l2 fallback
                 pipeline = v4l2_pipeline
-                cmd = ["gst-launch-1.0", "-e", pipeline]
-                self._stream_process = await asyncio.create_subprocess_exec(
-                    *cmd,
+                self._stream_process = await asyncio.create_subprocess_shell(
+                    f"gst-launch-1.0 -e {pipeline}",
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.DEVNULL
                 )
             
             self._stream_active = True
+            
+            # Start background task to extract frames from stream and save them
+            asyncio.create_task(self._capture_frames_from_stream())
             
             # Monitor process for errors
             asyncio.create_task(self._monitor_stream_process())
@@ -394,6 +404,85 @@ class PhotoBoothCapability(CapabilityModule):
             logger.error("[%s] Failed to start gstreamer stream: %s", self.cap_id, e)
             self._stream_active = False
             self._stream_process = None
+
+    async def _capture_frames_from_stream(self) -> None:
+        """Background task to extract frames from MJPEG stream and save to latest.jpg.
+        
+        This runs continuously while the stream is active, grabbing JPEG frames
+        from the raw TCP stream (gstreamer tcpserversink) and saving them to disk.
+        """
+        latest_path = self._latest_photo_path()
+        logger.info("[%s] Starting frame capture task from stream", self.cap_id)
+        
+        while self._stream_active:
+            try:
+                # Connect directly to the raw TCP stream (tcpserversink)
+                # Gstreamer tcpserversink sends multipart JPEG data over raw TCP
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection('localhost', self._stream_port),
+                    timeout=3.0
+                )
+                
+                # Read data until we get a complete JPEG frame
+                data = b""
+                
+                try:
+                    # Read up to 512KB - should be enough for one high-quality frame
+                    while len(data) < 524288:
+                        chunk = await asyncio.wait_for(reader.read(65536), timeout=2.0)
+                        if not chunk:
+                            break
+                        data += chunk
+                except asyncio.TimeoutError:
+                    logger.debug("[%s] Stream read timeout, got %d bytes", self.cap_id, len(data))
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+                
+                # Find and extract JPEG frame from the data
+                # JPEG frames start with FFD8 and end with FFD9
+                idx = 0
+                while idx < len(data) - 2:
+                    if data[idx:idx+2] == b'\xff\xd8':  # JPEG SOI marker
+                        jpeg_start = idx
+                        # Look for end marker after this start
+                        end_idx = jpeg_start + 2
+                        while end_idx < len(data) - 1:
+                            if data[end_idx:end_idx+2] == b'\xff\xd9':  # JPEG EOI marker
+                                jpeg_end = end_idx + 2
+                                break
+                            end_idx += 1
+                        
+                        if end_idx >= len(data) - 1:
+                            # Didn't find end marker in this chunk, skip it
+                            idx += 1
+                            continue
+                        
+                        # Found a complete JPEG frame
+                        jpeg_data = data[jpeg_start:jpeg_end]
+                        if len(jpeg_data) > 1000:  # Must be substantial (at least 1KB)
+                            try:
+                                latest_path.write_bytes(jpeg_data)
+                                logger.debug("[%s] Captured frame: %d bytes", self.cap_id, len(jpeg_data))
+                            except Exception as e:
+                                logger.warning("[%s] Failed to write frame: %s", self.cap_id, e)
+                            break
+                        idx = jpeg_start + 1
+                    else:
+                        idx += 1
+                
+                # Sleep before next frame capture
+                await asyncio.sleep(1.5)
+                
+            except asyncio.TimeoutError:
+                logger.debug("[%s] Frame capture timeout", self.cap_id)
+                await asyncio.sleep(2.0)
+            except ConnectionRefusedError:
+                logger.warning("[%s] Stream connection refused, stream may not be ready", self.cap_id)
+                await asyncio.sleep(2.0)
+            except Exception as e:
+                logger.debug("[%s] Frame capture error: %s", self.cap_id, e)
+                await asyncio.sleep(2.0)  # Wait longer if there's an error
 
     async def _stop_gstreamer_stream(self) -> None:
         """Stop gstreamer stream."""
@@ -446,7 +535,12 @@ class PhotoBoothCapability(CapabilityModule):
             self._stream_process = None
 
     async def _capture_photo(self, filename: Optional[str] = None) -> Dict[str, Any]:
-        """Capture a single photo."""
+        """Capture a single photo by copying the latest gstreamer frame.
+        
+        Since gstreamer is continuously writing frames to latest.jpg,
+        we just need to copy that frame to a timestamped filename.
+        This is much faster and doesn't interrupt the stream.
+        """
         if not self._camera_available:
             raise RuntimeError("Camera not available")
             
@@ -455,44 +549,23 @@ class PhotoBoothCapability(CapabilityModule):
             filename = f"photo_{timestamp}.jpg"
             
         photo_path = self.photo_dir / filename
+        latest_path = self._latest_photo_path()
         
         try:
-            result = None
+            # Wait up to 2 seconds for the latest frame to be available
+            wait_time = 0
+            while not latest_path.exists() and wait_time < 2:
+                await asyncio.sleep(0.1)
+                wait_time += 0.1
             
-            # Try rpicam-still first (modern Raspberry Pi CSI cameras)
-            rpicam_cmd = [
-                "rpicam-still",
-                "-o", str(photo_path),
-                "-t", "100"  # 100ms exposure time
-            ]
+            if not latest_path.exists():
+                raise RuntimeError("No frames available from camera stream")
             
-            logger.debug("[%s] Attempting capture with rpicam-still: %s", self.cap_id, photo_path)
-            result = self._run_camera_command(rpicam_cmd, timeout=3)
+            # Copy the latest gstreamer frame to timestamped filename
+            shutil.copyfile(latest_path, photo_path)
             
-            # If rpicam-still fails, try fswebcam (USB cameras)
-            if result.returncode != 0 or not (os.path.exists(photo_path) and os.path.getsize(photo_path) > 0):
-                logger.debug("[%s] rpicam-still failed or no output, trying fswebcam fallback", self.cap_id)
-                
-                fswebcam_cmd = [
-                    "fswebcam",
-                    "-d", self.camera_device,
-                    "--no-banner", 
-                    "-r", self.resolution,
-                    "--jpeg", str(self.quality),
-                    str(photo_path)
-                ]
-                
-                result = self._run_camera_command(fswebcam_cmd, timeout=3)
-            
-            if result.returncode == 0 and os.path.exists(photo_path) and os.path.getsize(photo_path) > 0:
+            if os.path.exists(photo_path) and os.path.getsize(photo_path) > 0:
                 self._last_capture_time = datetime.now()
-
-                # Keep a stable image path for API and HA camera polling.
-                latest_path = self._latest_photo_path()
-                try:
-                    shutil.copyfile(photo_path, latest_path)
-                except Exception as copy_exc:
-                    logger.warning("[%s] Failed to update latest image symlink/copy: %s", self.cap_id, copy_exc)
                 
                 # Update entities
                 await self._update_capture_entities()
@@ -506,7 +579,7 @@ class PhotoBoothCapability(CapabilityModule):
                     "timestamp": self._last_capture_time.isoformat()
                 })
                 
-                logger.info("[%s] Photo captured: %s (%d bytes)", self.cap_id, filename, photo_path.stat().st_size)
+                logger.info("[%s] Photo captured from stream: %s (%d bytes)", self.cap_id, filename, photo_path.stat().st_size)
                 return {
                     "status": "success",
                     "filename": filename,
@@ -514,8 +587,7 @@ class PhotoBoothCapability(CapabilityModule):
                     "timestamp": self._last_capture_time.isoformat()
                 }
             else:
-                error_msg = result.stderr.decode() if result.stderr else "Unknown error"
-                raise RuntimeError(f"Photo capture failed: {error_msg}")
+                raise RuntimeError("Failed to capture photo")
                 
         except Exception as e:
             logger.error("[%s] Photo capture error: %s", self.cap_id, e)
@@ -535,7 +607,7 @@ class PhotoBoothCapability(CapabilityModule):
         attrs["image_url"] = self._camera_image_url()
         attrs["resolution"] = self.resolution
         attrs["quality"] = self.quality
-        attrs["stream_url"] = self._stream_url if self._stream_active else None
+        attrs["stream_url"] = self._camera_stream_url() if self._stream_active else None
         attrs["stream_active"] = self._stream_active
         attrs["stream_port"] = self._stream_port
 
@@ -692,7 +764,7 @@ class PhotoBoothCapability(CapabilityModule):
                 "quality": self.quality,
                 "last_image": str(latest_path) if latest_path.exists() else None,
                 "image_url": self._camera_image_url(),
-                "stream_url": self._stream_url if self._stream_active else None,
+                "stream_url": self._camera_stream_url() if self._stream_active else None,
                 "stream_active": self._stream_active,
                 "stream_port": self._stream_port,
                 "stream_type": "mjpeg",
@@ -722,7 +794,7 @@ class PhotoBoothCapability(CapabilityModule):
             "device_class": "connectivity",
             "icon": "mdi:video-wireless",
             "attributes": {
-                "stream_url": self._stream_url if self._stream_active else None,
+                "stream_url": self._camera_stream_url() if self._stream_active else None,
                 "stream_port": self._stream_port,
             }
         }
